@@ -13,21 +13,17 @@ import (
 	servicesession "github.com/dnlopes/overseer/internal/core/service/session"
 )
 
-// groupsLoadedMsg is sent when the list use-case completes.
 type groupsLoadedMsg struct {
 	groups []servicesession.SessionGroup
 	err    error
 }
 
-// reorderRequestMsg is sent when the user requests a reorder.
 type reorderRequestMsg struct {
-	direction int // +1 = down, -1 = up
+	direction int
 }
 
-// SessionGroup is a type alias so callers don't need to import the service package.
 type SessionGroup = servicesession.SessionGroup
 
-// Model is the BubbleTea sub-model for the sessions list (left pane).
 type Model struct {
 	groups  []SessionGroup
 	cursor  int
@@ -38,7 +34,6 @@ type Model struct {
 	listUC  *servicesession.ListUseCase
 }
 
-// New constructs a Model.
 func New(s *styles.Styles, listUC *servicesession.ListUseCase) Model {
 	return Model{
 		styles: s,
@@ -146,12 +141,10 @@ func (m Model) totalItems() int {
 	return n
 }
 
-// SetFocus toggles whether this pane shows a focused border.
 func (m *Model) SetFocus(focused bool) {
 	m.focused = focused
 }
 
-// SelectedSession returns the session under the cursor, if any.
 func (m Model) SelectedSession() (domainsession.Session, bool) {
 	if m.totalItems() == 0 {
 		return domainsession.Session{}, false
@@ -168,9 +161,6 @@ func (m Model) SelectedSession() (domainsession.Session, bool) {
 	return domainsession.Session{}, false
 }
 
-// Keybindings returns the key bindings for this component (used by the help
-// registry).  Returns at least j (down), k (up), J (reorder down), K (reorder
-// up).
 func (m Model) Keybindings() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("j"), key.WithHelp("j", "move down")),
