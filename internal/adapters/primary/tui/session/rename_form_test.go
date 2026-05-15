@@ -50,8 +50,8 @@ func TestRenameForm_HappyPath(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected sessionRenamedMsg, got %T", msg)
 	}
-	if renamed.NewName != "new-name" {
-		t.Errorf("expected NewName=%q, got %q", "new-name", renamed.NewName)
+	if renamed.session.Name != "new-name" {
+		t.Errorf("expected session.Name=%q, got %q", "new-name", renamed.session.Name)
 	}
 }
 

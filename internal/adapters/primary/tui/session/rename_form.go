@@ -58,8 +58,7 @@ func (m RenameFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errMsg = err.Error()
 				return m, nil
 			}
-			newName := resp.Session.Name
-			return m, func() tea.Msg { return sessionRenamedMsg{NewName: newName} }
+			return m, func() tea.Msg { return sessionRenamedMsg{session: resp.Session} }
 		}
 	}
 

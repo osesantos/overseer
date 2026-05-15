@@ -1,0 +1,124 @@
+package session
+
+import (
+	"context"
+	"strings"
+
+	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/bubbles/textinput"
+
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	servicesession "github.com/dnlopes/overseer/internal/core/service/session"
+)
+
+type CreateFormModel struct {
+	nameInput    textinput.Model
+	projectInput textinput.Model
+	focusIndex   int
+	errMsg       string
+	createUC     *servicesession.CreateUseCase
+	styles       *styles.Styles
+}
+
+func NewCreateForm(s *styles.Styles, createUC *servicesession.CreateUseCase) CreateFormModel {
+	nameInput := textinput.New()
+	nameInput.Placeholder = "Session name"
+	nameInput.CharLimit = 100
+	nameInput.Focus()
+
+	projectInput := textinput.New()
+	projectInput.Placeholder = "Project name"
+	projectInput.CharLimit = 100
+
+	return CreateFormModel{
+		nameInput:    nameInput,
+		projectInput: projectInput,
+		focusIndex:   0,
+		createUC:     createUC,
+		styles:       s,
+	}
+}
+
+func (m CreateFormModel) Init() tea.Cmd {
+	return textinput.Blink
+}
+
+type createErrMsg struct{ err error }
+
+func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch msg := msg.(type) {
+	case tea.KeyMsg:
+		switch msg.Type {
+		case tea.KeyEsc:
+			return m, func() tea.Msg { return cancelFormMsg{} }
+		case tea.KeyTab:
+			m.focusIndex = (m.focusIndex + 1) % 2
+			if m.focusIndex == 0 {
+				m.nameInput.Focus()
+				m.projectInput.Blur()
+			} else {
+				m.projectInput.Focus()
+				m.nameInput.Blur()
+			}
+			return m, nil
+		case tea.KeyEnter:
+			return m.submit()
+		}
+	case createErrMsg:
+		m.errMsg = msg.err.Error()
+		return m, nil
+	}
+
+	var cmd tea.Cmd
+	if m.focusIndex == 0 {
+		m.nameInput, cmd = m.nameInput.Update(msg)
+	} else {
+		m.projectInput, cmd = m.projectInput.Update(msg)
+	}
+	return m, cmd
+}
+
+func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(m.nameInput.Value())
+	project := strings.TrimSpace(m.projectInput.Value())
+
+	if name == "" {
+		m.errMsg = "session name is required"
+		return m, nil
+	}
+	if project == "" {
+		m.errMsg = "project name is required"
+		return m, nil
+	}
+
+	m.errMsg = ""
+	uc := m.createUC
+	req := servicesession.CreateRequest{Name: name, ProjectName: project}
+	return m, func() tea.Msg {
+		resp, err := uc.Execute(context.Background(), req)
+		if err != nil {
+			return createErrMsg{err: err}
+		}
+		return sessionCreatedMsg{session: resp.Session}
+	}
+}
+
+func (m CreateFormModel) View() string {
+	s := m.styles.Form.Field
+
+	var b strings.Builder
+	b.WriteString(s.Label.Render("Name"))
+	b.WriteByte('\n')
+	b.WriteString(m.nameInput.View())
+	b.WriteByte('\n')
+	b.WriteString(s.Label.Render("Project"))
+	b.WriteByte('\n')
+	b.WriteString(m.projectInput.View())
+	b.WriteByte('\n')
+	if m.errMsg != "" {
+		b.WriteString(s.Error.Render(m.errMsg))
+		b.WriteByte('\n')
+	}
+	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
+	return b.String()
+}
