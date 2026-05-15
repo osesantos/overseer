@@ -1,0 +1,4 @@
+=== RUN   TestLoad_InvalidYAML_ReturnsError
+--- PASS: TestLoad_InvalidYAML_ReturnsError (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/secondary/config/yaml	0.157s
