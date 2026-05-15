@@ -1486,7 +1486,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(session): implement ListSessions use case`
 
-- [ ] 17. **SessionsList Pane Component**
+- [x] 17. **SessionsList Pane Component**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/session/list.go`:
@@ -1558,7 +1558,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): add SessionsList pane with project grouping`
 
-- [ ] 18. **StatusBar Pane Component**
+- [x] 18. **StatusBar Pane Component**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/status/bar.go`:
@@ -1609,7 +1609,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): add StatusBar with stub values`
 
-- [ ] 19. **PreviewPane Component**
+- [x] 19. **PreviewPane Component**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/preview/pane.go`:
@@ -1654,7 +1654,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): add PreviewPane with stub content`
 
-- [ ] 20. **CreateSessionForm Modal**
+- [x] 20. **CreateSessionForm Modal**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/session/create_form.go`:
@@ -1709,7 +1709,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): add CreateSessionForm modal`
 
-- [ ] 21. **RenameSessionForm Modal**
+- [x] 21. **RenameSessionForm Modal**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/session/rename_form.go`:
@@ -1746,7 +1746,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): add RenameSessionForm modal`
 
-- [ ] 22. **Help Bar Integration (bubbles/help)**
+- [x] 22. **Help Bar Integration (bubbles/help)**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/help/registry.go`:
@@ -1799,7 +1799,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): integrate bubbles/help with keybinding registry`
 
-- [ ] 23. **Dashboard Composition (Focus, Routing, Pane Assembly)**
+- [x] 23. **Dashboard Composition (Focus, Routing, Pane Assembly)**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/dashboard/model.go`:
@@ -1898,7 +1898,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(tui): compose dashboard with focus management and keyboard routing`
 
-- [ ] 24. **Composition Root: `cmd/overseer/main.go`**
+- [x] 24. **Composition Root: `cmd/overseer/main.go`**
 
   **What to do**:
   - Rewrite `cmd/overseer/main.go` (overrides T1 stub) with the full startup flow:
@@ -1974,7 +1974,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `feat(cmd): wire composition root with XDG setup and startup flow`
 
-- [ ] 25. **overseer-feature Skill — Structure + SKILL.md + Feature Shape Catalog**
+- [x] 25. **overseer-feature Skill — Structure + SKILL.md + Feature Shape Catalog**
 
   **What to do**:
   - Create `.claude/skills/overseer-feature/` with the structure matching existing skills (bubbletea-designer convention):
@@ -2061,7 +2061,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `docs(skill): add overseer-feature skill with Feature Shape Catalog`
 
-- [ ] 26. **Worked Example: Delete Feature Walkthrough in Skill**
+- [x] 26. **Worked Example: Delete Feature Walkthrough in Skill**
 
   **What to do**:
   - Add `references/worked-example-delete.md` to the overseer-feature skill containing a full, step-by-step walkthrough of how to add a `DeleteSession` feature following the standard process. The walkthrough must:
@@ -2117,7 +2117,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `docs(skill): document Delete feature worked example`
 
-- [ ] 27. **Skill Self-Test Script + Final Skill Polish**
+- [x] 27. **Skill Self-Test Script + Final Skill Polish**
 
   **What to do**:
   - Create `.claude/skills/overseer-feature/tests/self_test.sh`:
@@ -2170,7 +2170,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `docs(skill): add self-test script + README + VERSION + CHANGELOG`
 
-- [ ] 28. **End-to-End teatest Scenarios**
+- [x] 28. **End-to-End teatest Scenarios**
 
   **What to do**:
   - Create `internal/adapters/primary/tui/dashboard/e2e_test.go`:
@@ -2222,7 +2222,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `test(e2e): add end-to-end dashboard teatest scenarios`
 
-- [ ] 29. **docs/architecture.md (Architecture Overview)**
+- [x] 29. **docs/architecture.md (Architecture Overview)**
 
   **What to do**:
   - Create `docs/architecture.md` with:
@@ -2274,7 +2274,7 @@ Max Concurrent: 7 (Wave 1)
 
   **Commit**: `docs(arch): add architecture overview with diagrams`
 
-- [ ] 30. **Project README.md**
+- [x] 30. **Project README.md**
 
   **What to do**:
   - Create `README.md` at repo root with:

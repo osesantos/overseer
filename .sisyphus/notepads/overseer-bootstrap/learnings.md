@@ -64,3 +64,20 @@
 - Bubble Tea v2 rc.1 has no tea.WithAltScreen() option; alt screen is set on tea.View, so main wraps the dashboard model to force AltScreen=true.
 - Invalid YAML config must be placed at $XDG_CONFIG_HOME/overseer/config.yaml when testing paths.ConfigFile().
 - Corrupted data recovery is already handled by json storage load: bad JSON is renamed to data.json.corrupted.<unix>.json and startup continues fresh.
+
+## T29+T30 — docs/architecture.md + README.md — 2026-05-16
+
+- `docs/architecture.md`: 103 lines / 8 sections (Overview, Directory Map, Layer Responsibilities, Dependency Direction, Adding a New Feature, Persistence Model, Stub Mode, ADRs). Links all 4 ADRs and all 5 AGENTS.md files.
+- `README.md`: 54 lines / 7 sections (Status, Quick Start, Keybindings, Configuration, Architecture, Contributing/Adding Features, License). Keybindings table has 9 rows.
+- Evidence: `.sisyphus/evidence/task-29-adr-links.txt` (value: 8), `.sisyphus/evidence/task-30-readme-sections.txt` (value: 7).
+- Committed as `docs: add architecture overview and project README` (d46688b).
+
+## T25+T26+T27 overseer-feature Skill — 2026-05-16
+
+- Created `.claude/skills/overseer-feature/` with 8 files: SKILL.md, README.md, VERSION, CHANGELOG.md, DECISIONS.md, `.claude-plugin/plugin.json`, `references/worked-example-delete.md`, `tests/self_test.sh`
+- SKILL.md has 7 ## sections: Metadata (frontmatter comment), When to Use, Step-by-Step (9 steps), Feature Shape Catalog (5 shapes A–E), Layer Templates, MUST/MUST NOT, Common Pitfalls
+- Feature Shape Catalog maps directly to bootstrap exercises: Shape A → create_form.go + rename_form.go; Shape C → reorder.go + list.go J/K keys; Shapes B/D/E documented only
+- worked-example-delete.md has 10 steps (Step 0–9); Step 0 is TDD RED teatest scenario, Step 3 includes the Repository port extension + JSON store + mock update
+- Self-test script uses `--dry-run` mode to avoid mutating the project repo; full test path deferred to the worked example itself
+- DECISIONS.md links all 4 ADRs by relative path from the skill dir
+- `plugin.json` format follows bubbletea-designer convention but adds `"version"` and `"skills"` array fields per task spec

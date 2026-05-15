@@ -1,0 +1,10 @@
+=== RUN   TestRegistry_RegisterAndRetrieve
+--- PASS: TestRegistry_RegisterAndRetrieve (0.00s)
+=== RUN   TestRegistry_GlobalsAlwaysPresent
+--- PASS: TestRegistry_GlobalsAlwaysPresent (0.00s)
+=== RUN   TestHelp_ActivePaneOnly
+--- PASS: TestHelp_ActivePaneOnly (0.00s)
+=== RUN   TestHelp_Toggle
+--- PASS: TestHelp_Toggle (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/primary/tui/help	(cached)

@@ -11,7 +11,17 @@
     "ses_1d231ff10ffel6RKdBpHfrg6kG",
     "ses_1d231d669ffevGtZ55pBoMJ5KG",
     "ses_1d23197bdffeDt4PqZnh4YdVfH",
-    "ses_1d2317053ffeQGTOnWuMfbVo4T"
+    "ses_1d2317053ffeQGTOnWuMfbVo4T",
+    "ses_1d210a577ffeSVQS5QJ0ttQIZ5",
+    "ses_1d2103922ffeoC784wuVTJYHj7",
+    "ses_1d20fe6f9ffeTUAT5lknikgOe5",
+    "ses_1d1f6ba67ffelDg8TQzjyvwTQI",
+    "ses_1d1f69b10ffeNTUzpcyTSDoHTZ",
+    "ses_1d1f66a7affeH5o7rUhoyzGSUf",
+    "ses_1d1f62182ffekw7xPilPfOavZt",
+    "ses_1d1ee43eeffeFUyCoZyIVjY1Fk",
+    "ses_1d1ee2bfaffeYUCYiDiRaljsN7",
+    "ses_1d1ee1376ffe8TqagVuXefDKva"
   ],
   "session_origins": {
     "ses_1d2643d23ffeV7HgHSNp0tKn6H": "direct",
@@ -23,7 +33,17 @@
     "ses_1d231ff10ffel6RKdBpHfrg6kG": "appended",
     "ses_1d231d669ffevGtZ55pBoMJ5KG": "appended",
     "ses_1d23197bdffeDt4PqZnh4YdVfH": "appended",
-    "ses_1d2317053ffeQGTOnWuMfbVo4T": "appended"
+    "ses_1d2317053ffeQGTOnWuMfbVo4T": "appended",
+    "ses_1d210a577ffeSVQS5QJ0ttQIZ5": "appended",
+    "ses_1d2103922ffeoC784wuVTJYHj7": "appended",
+    "ses_1d20fe6f9ffeTUAT5lknikgOe5": "appended",
+    "ses_1d1f6ba67ffelDg8TQzjyvwTQI": "appended",
+    "ses_1d1f69b10ffeNTUzpcyTSDoHTZ": "appended",
+    "ses_1d1f66a7affeH5o7rUhoyzGSUf": "appended",
+    "ses_1d1f62182ffekw7xPilPfOavZt": "appended",
+    "ses_1d1ee43eeffeFUyCoZyIVjY1Fk": "appended",
+    "ses_1d1ee2bfaffeYUCYiDiRaljsN7": "appended",
+    "ses_1d1ee1376ffe8TqagVuXefDKva": "appended"
   },
   "plan_name": "overseer-bootstrap",
   "agent": "atlas",
@@ -153,6 +173,41 @@
       "agent": "Sisyphus-Junior",
       "category": "unspecified-high",
       "updated_at": "2026-05-15T22:42:52.580Z"
+    },
+    "todo:23": {
+      "task_key": "todo:23",
+      "task_label": "23",
+      "task_title": "**Dashboard Composition (Focus, Routing, Pane Assembly)**",
+      "session_id": "ses_1d221c8f4ffehjtwUx3eNMOIRU",
+      "agent": "Sisyphus-Junior",
+      "updated_at": "2026-05-15T23:07:22.045Z"
+    },
+    "todo:24": {
+      "task_key": "todo:24",
+      "task_label": "24",
+      "task_title": "**Composition Root: `cmd/overseer/main.go`**",
+      "session_id": "ses_1d21a50b3ffeNmYmFuwT3wfgLd",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-15T23:17:30.769Z"
+    },
+    "todo:25": {
+      "task_key": "todo:25",
+      "task_label": "25",
+      "task_title": "**overseer-feature Skill — Structure + SKILL.md + Feature Shape Catalog**",
+      "session_id": "ses_1d210a577ffeSVQS5QJ0ttQIZ5",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T23:43:12.663Z"
+    },
+    "final-wave:f1": {
+      "task_key": "final-wave:f1",
+      "task_label": "F1",
+      "task_title": "**Plan Compliance Audit** — `oracle`",
+      "session_id": "ses_1d1ee1376ffe8TqagVuXefDKva",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T23:56:56.146Z"
     }
   }
 }

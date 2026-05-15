@@ -1,0 +1,14 @@
+=== RUN   TestCreateForm_HappyPath
+--- PASS: TestCreateForm_HappyPath (0.00s)
+=== RUN   TestCreateForm_EmptyName
+--- PASS: TestCreateForm_EmptyName (0.00s)
+=== RUN   TestCreateForm_Esc
+--- PASS: TestCreateForm_Esc (0.00s)
+=== RUN   TestCreateForm_TabCycles
+--- PASS: TestCreateForm_TabCycles (0.00s)
+=== RUN   TestCreateForm_EmptyProject
+--- PASS: TestCreateForm_EmptyProject (0.00s)
+=== RUN   TestCreateForm_ViewContainsHelp
+--- PASS: TestCreateForm_ViewContainsHelp (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/primary/tui/session	(cached)
