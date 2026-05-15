@@ -1,0 +1,16 @@
+=== RUN   TestCreateSession_IncrementsCalls
+--- PASS: TestCreateSession_IncrementsCalls (0.00s)
+=== RUN   TestKillSession_IncrementsCalls
+--- PASS: TestKillSession_IncrementsCalls (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/secondary/tmux/stub	0.375s
+=== RUN   TestCreateWorktree_IncrementsCalls
+--- PASS: TestCreateWorktree_IncrementsCalls (0.00s)
+=== RUN   TestRemoveWorktree_IncrementsCalls
+--- PASS: TestRemoveWorktree_IncrementsCalls (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/secondary/git/stub	0.515s
+=== RUN   TestLaunch_IncrementsCalls
+--- PASS: TestLaunch_IncrementsCalls (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/secondary/agent/stub	0.229s
