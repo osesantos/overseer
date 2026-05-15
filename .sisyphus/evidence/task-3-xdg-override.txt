@@ -1,0 +1,4 @@
+=== RUN   TestDataDirUsesXDGOverride
+--- PASS: TestDataDirUsesXDGOverride (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/shared/paths	(cached)

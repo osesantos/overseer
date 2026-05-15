@@ -1,0 +1,8 @@
+=== RUN   TestStatus_Default
+--- PASS: TestStatus_Default (0.00s)
+=== RUN   TestStatus_Truncate
+--- PASS: TestStatus_Truncate (0.00s)
+=== RUN   TestStatus_WindowResize
+--- PASS: TestStatus_WindowResize (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/primary/tui/status	(cached)

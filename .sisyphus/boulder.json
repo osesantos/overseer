@@ -1,0 +1,158 @@
+{
+  "active_plan": "/Users/dnl/repos/dnlopes/cenas/.sisyphus/plans/overseer-bootstrap.md",
+  "started_at": "2026-05-15T21:47:23.281Z",
+  "session_ids": [
+    "ses_1d2643d23ffeV7HgHSNp0tKn6H",
+    "ses_1d25c6acfffetm3keYgJeTOlJS",
+    "ses_1d2371b5fffehUiSrcpHqQOAuK",
+    "ses_1d236e3dbffeL6grPvEb7fneQt",
+    "ses_1d236c21dffebLSjPFVOpOW78V",
+    "ses_1d23230cfffeMKb0MPgddXpSMw",
+    "ses_1d231ff10ffel6RKdBpHfrg6kG",
+    "ses_1d231d669ffevGtZ55pBoMJ5KG",
+    "ses_1d23197bdffeDt4PqZnh4YdVfH",
+    "ses_1d2317053ffeQGTOnWuMfbVo4T"
+  ],
+  "session_origins": {
+    "ses_1d2643d23ffeV7HgHSNp0tKn6H": "direct",
+    "ses_1d25c6acfffetm3keYgJeTOlJS": "direct",
+    "ses_1d2371b5fffehUiSrcpHqQOAuK": "appended",
+    "ses_1d236e3dbffeL6grPvEb7fneQt": "appended",
+    "ses_1d236c21dffebLSjPFVOpOW78V": "appended",
+    "ses_1d23230cfffeMKb0MPgddXpSMw": "appended",
+    "ses_1d231ff10ffel6RKdBpHfrg6kG": "appended",
+    "ses_1d231d669ffevGtZ55pBoMJ5KG": "appended",
+    "ses_1d23197bdffeDt4PqZnh4YdVfH": "appended",
+    "ses_1d2317053ffeQGTOnWuMfbVo4T": "appended"
+  },
+  "plan_name": "overseer-bootstrap",
+  "agent": "atlas",
+  "task_sessions": {
+    "todo:1": {
+      "task_key": "todo:1",
+      "task_label": "1",
+      "task_title": "**Go Project Scaffolding**",
+      "session_id": "ses_1d25b5261ffeBSeqt9UBtHkdg4",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-15T21:59:57.887Z"
+    },
+    "todo:2": {
+      "task_key": "todo:2",
+      "task_label": "2",
+      "task_title": "**Makefile with All Targets**",
+      "session_id": "ses_1d2583e19ffe4prEnRxfFWiT9q",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-15T22:03:26.676Z"
+    },
+    "todo:3": {
+      "task_key": "todo:3",
+      "task_label": "3",
+      "task_title": "**Shared Package: XDG Paths + Error Types**",
+      "session_id": "ses_1d2550ef1ffedMXYoztSKSwGGz",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-15T22:05:59.014Z"
+    },
+    "todo:4": {
+      "task_key": "todo:4",
+      "task_label": "4",
+      "task_title": "**Test Infrastructure: teatest Helpers + Mock Template**",
+      "session_id": "ses_1d252a0f7ffeJlvs4n2EwLcwOB",
+      "agent": "Sisyphus-Junior",
+      "category": "quick",
+      "updated_at": "2026-05-15T22:09:53.507Z"
+    },
+    "todo:5": {
+      "task_key": "todo:5",
+      "task_label": "5",
+      "task_title": "**Lipgloss Styles Registry**",
+      "session_id": "ses_1d24e7777ffeOma8nyyLsCumt0",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:13:56.061Z"
+    },
+    "todo:6": {
+      "task_key": "todo:6",
+      "task_label": "6",
+      "task_title": "**AGENTS.md Hierarchy (Root + 4 Per-Layer)**",
+      "session_id": "ses_1d24a6cb6ffedoaY3hc9OqwEFg",
+      "agent": "Sisyphus-Junior",
+      "category": "writing",
+      "updated_at": "2026-05-15T22:15:36.148Z"
+    },
+    "todo:8": {
+      "task_key": "todo:8",
+      "task_label": "8",
+      "task_title": "**Session Domain (Entity, Errors, Ports)**",
+      "session_id": "ses_1d2480fe2ffe772owY3xjxFhFn",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-15T22:20:32.933Z"
+    },
+    "todo:9": {
+      "task_key": "todo:9",
+      "task_label": "9",
+      "task_title": "**JSON Storage Adapter**",
+      "session_id": "ses_1d2454099ffeCyDZNz4SI4HKyq",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:26:07.916Z"
+    },
+    "todo:10": {
+      "task_key": "todo:10",
+      "task_label": "10",
+      "task_title": "**YAML Config Loader**",
+      "session_id": "ses_1d240324affeMXnE9Muc2CmB6A",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:28:39.941Z"
+    },
+    "todo:11": {
+      "task_key": "todo:11",
+      "task_label": "11",
+      "task_title": "**Logger Adapter (slog → log file)**",
+      "session_id": "ses_1d23dfc38ffeWUdd8V9iNKc55i",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:30:36.937Z"
+    },
+    "todo:12": {
+      "task_key": "todo:12",
+      "task_label": "12",
+      "task_title": "**Stub Adapters: tmux + git + agent**",
+      "session_id": "ses_1d23c3104ffe7fxACvmM2F1Ym9",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:33:21.667Z"
+    },
+    "todo:13": {
+      "task_key": "todo:13",
+      "task_label": "13",
+      "task_title": "**CreateSession Use Case**",
+      "session_id": "ses_1d23993b0ffeHXOGRcqhe94SJ4",
+      "agent": "Sisyphus-Junior",
+      "category": "deep",
+      "updated_at": "2026-05-15T22:36:12.143Z"
+    },
+    "todo:14": {
+      "task_key": "todo:14",
+      "task_label": "14",
+      "task_title": "**RenameSession Use Case**",
+      "session_id": "ses_1d236c21dffebLSjPFVOpOW78V",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:41:13.201Z"
+    },
+    "todo:17": {
+      "task_key": "todo:17",
+      "task_label": "17",
+      "task_title": "**SessionsList Pane Component**",
+      "session_id": "ses_1d2317053ffeQGTOnWuMfbVo4T",
+      "agent": "Sisyphus-Junior",
+      "category": "unspecified-high",
+      "updated_at": "2026-05-15T22:42:52.580Z"
+    }
+  }
+}

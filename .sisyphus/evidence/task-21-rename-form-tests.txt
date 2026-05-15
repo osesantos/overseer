@@ -1,0 +1,8 @@
+=== RUN   TestRenameForm_HappyPath
+--- PASS: TestRenameForm_HappyPath (0.00s)
+=== RUN   TestRenameForm_EmptyName
+--- PASS: TestRenameForm_EmptyName (0.00s)
+=== RUN   TestRenameForm_Esc
+--- PASS: TestRenameForm_Esc (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/primary/tui/session	(cached)

@@ -1,0 +1,8 @@
+=== RUN   TestPreview_Default
+--- PASS: TestPreview_Default (0.00s)
+=== RUN   TestPreview_FocusedBorder
+--- PASS: TestPreview_FocusedBorder (0.00s)
+=== RUN   TestPreview_SetFocus
+--- PASS: TestPreview_SetFocus (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/primary/tui/preview	(cached)

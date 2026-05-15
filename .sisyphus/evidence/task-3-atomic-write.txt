@@ -1,0 +1,4 @@
+=== RUN   TestAtomicWriteWritesFileAtomically
+--- PASS: TestAtomicWriteWritesFileAtomically (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/shared/paths	0.186s

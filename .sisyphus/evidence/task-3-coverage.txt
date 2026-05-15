@@ -1,0 +1,2 @@
+ok  	github.com/dnlopes/overseer/internal/shared/errs	0.186s	coverage: 100.0% of statements
+ok  	github.com/dnlopes/overseer/internal/shared/paths	0.332s	coverage: 73.1% of statements
