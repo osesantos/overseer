@@ -43,7 +43,7 @@ func (m RenameFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyEsc:
-			return m, func() tea.Msg { return cancelFormMsg{} }
+			return m, func() tea.Msg { return CancelFormMsg{} }
 		case tea.KeyEnter:
 			name := strings.TrimSpace(m.nameInput.Value())
 			if name == "" {
@@ -58,7 +58,7 @@ func (m RenameFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.errMsg = err.Error()
 				return m, nil
 			}
-			return m, func() tea.Msg { return sessionRenamedMsg{session: resp.Session} }
+			return m, func() tea.Msg { return SessionRenamedMsg{Session: resp.Session} }
 		}
 	}
 

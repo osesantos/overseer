@@ -39,15 +39,15 @@ func TestCreateForm_HappyPath(t *testing.T) {
 	}
 
 	msg := cmd()
-	created, ok := msg.(sessionCreatedMsg)
+	created, ok := msg.(SessionCreatedMsg)
 	if !ok {
-		t.Fatalf("expected sessionCreatedMsg, got %T", msg)
+		t.Fatalf("expected SessionCreatedMsg, got %T", msg)
 	}
-	if created.session.Name != "my-session" {
-		t.Errorf("session.Name: want %q, got %q", "my-session", created.session.Name)
+	if created.Session.Name != "my-session" {
+		t.Errorf("session.Name: want %q, got %q", "my-session", created.Session.Name)
 	}
-	if created.session.ProjectName != "my-project" {
-		t.Errorf("session.ProjectName: want %q, got %q", "my-project", created.session.ProjectName)
+	if created.Session.ProjectName != "my-project" {
+		t.Errorf("session.ProjectName: want %q, got %q", "my-project", created.Session.ProjectName)
 	}
 
 	_, ok = result.(CreateFormModel)
@@ -85,9 +85,9 @@ func TestCreateForm_Esc(t *testing.T) {
 	}
 
 	msg := cmd()
-	_, ok := msg.(cancelFormMsg)
+	_, ok := msg.(CancelFormMsg)
 	if !ok {
-		t.Fatalf("expected cancelFormMsg, got %T", msg)
+		t.Fatalf("expected CancelFormMsg, got %T", msg)
 	}
 }
 

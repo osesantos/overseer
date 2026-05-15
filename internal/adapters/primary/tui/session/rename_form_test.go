@@ -46,12 +46,12 @@ func TestRenameForm_HappyPath(t *testing.T) {
 	}
 
 	msg := cmd()
-	renamed, ok := msg.(sessionRenamedMsg)
+	renamed, ok := msg.(SessionRenamedMsg)
 	if !ok {
-		t.Fatalf("expected sessionRenamedMsg, got %T", msg)
+		t.Fatalf("expected SessionRenamedMsg, got %T", msg)
 	}
-	if renamed.session.Name != "new-name" {
-		t.Errorf("expected session.Name=%q, got %q", "new-name", renamed.session.Name)
+	if renamed.Session.Name != "new-name" {
+		t.Errorf("expected session.Name=%q, got %q", "new-name", renamed.Session.Name)
 	}
 }
 
@@ -85,8 +85,8 @@ func TestRenameForm_Esc(t *testing.T) {
 	}
 
 	msg := cmd()
-	_, ok := msg.(cancelFormMsg)
+	_, ok := msg.(CancelFormMsg)
 	if !ok {
-		t.Fatalf("expected cancelFormMsg, got %T", msg)
+		t.Fatalf("expected CancelFormMsg, got %T", msg)
 	}
 }

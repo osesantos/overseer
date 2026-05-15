@@ -18,8 +18,8 @@ type groupsLoadedMsg struct {
 	err    error
 }
 
-type reorderRequestMsg struct {
-	direction int
+type ReorderRequestMsg struct {
+	Direction int
 }
 
 type SessionGroup = servicesession.SessionGroup
@@ -78,9 +78,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cursor--
 			}
 		case "J":
-			return m, func() tea.Msg { return reorderRequestMsg{direction: +1} }
+			return m, func() tea.Msg { return ReorderRequestMsg{Direction: +1} }
 		case "K":
-			return m, func() tea.Msg { return reorderRequestMsg{direction: -1} }
+			return m, func() tea.Msg { return ReorderRequestMsg{Direction: -1} }
 		}
 	}
 

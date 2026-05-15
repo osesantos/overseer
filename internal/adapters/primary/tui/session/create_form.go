@@ -50,7 +50,7 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.KeyMsg:
 		switch msg.Type {
 		case tea.KeyEsc:
-			return m, func() tea.Msg { return cancelFormMsg{} }
+			return m, func() tea.Msg { return CancelFormMsg{} }
 		case tea.KeyTab:
 			m.focusIndex = (m.focusIndex + 1) % 2
 			if m.focusIndex == 0 {
@@ -99,7 +99,7 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return createErrMsg{err: err}
 		}
-		return sessionCreatedMsg{session: resp.Session}
+		return SessionCreatedMsg{Session: resp.Session}
 	}
 }
 
