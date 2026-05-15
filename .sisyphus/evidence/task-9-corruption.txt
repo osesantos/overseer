@@ -1,0 +1,4 @@
+=== RUN   TestIntegration_CorruptionRecovery
+--- PASS: TestIntegration_CorruptionRecovery (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/secondary/storage/json	0.181s

@@ -1,0 +1,22 @@
+=== RUN   TestNew_EmptyStoreHasNoSessions
+--- PASS: TestNew_EmptyStoreHasNoSessions (0.00s)
+=== RUN   TestSave_StoresSession
+--- PASS: TestSave_StoresSession (0.00s)
+=== RUN   TestGet_ReturnsStoredSession
+--- PASS: TestGet_ReturnsStoredSession (0.00s)
+=== RUN   TestGet_UnknownIDReturnsErrNotFound
+--- PASS: TestGet_UnknownIDReturnsErrNotFound (0.00s)
+=== RUN   TestList_ReturnsAllSavedSessions
+--- PASS: TestList_ReturnsAllSavedSessions (0.00s)
+=== RUN   TestDelete_RemovesSession
+--- PASS: TestDelete_RemovesSession (0.00s)
+=== RUN   TestDelete_UnknownIDReturnsErrNotFound
+--- PASS: TestDelete_UnknownIDReturnsErrNotFound (0.00s)
+=== RUN   TestSave_OverwritesExistingEntry
+--- PASS: TestSave_OverwritesExistingEntry (0.00s)
+=== RUN   TestPersistence_SurvivesReload
+--- PASS: TestPersistence_SurvivesReload (0.00s)
+=== RUN   TestDelete_PersistsAcrossReload
+--- PASS: TestDelete_PersistsAcrossReload (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/secondary/storage/json	(cached)
