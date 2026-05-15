@@ -25,3 +25,6 @@
 - Added handwritten mock template docs and a session fixture placeholder for future T8 Session type.
 - `go get` pulled the teatest dependency stack; compatibility required bumping transitive `x/ansi` and `x/cellbuf` via the module graph.
 - Verified `go test -v ./internal/testutil/...` and saved harness/tree evidence under `.sisyphus/evidence/task-4-*.txt`.
+- T5 complete: `internal/adapters/primary/tui/styles/styles.go` with 20 named styles in 9 nested structs. All styles returned from `New() *Styles` — zero package-level vars. `lipgloss.SetColorProfile(termenv.Ascii)` in TestMain strips escape sequences cleanly; HiddenBorder vs RoundedBorder renders differ even in ASCII mode (space-only vs box-drawing chars). `SetString(" | ")` on Separator pre-sets content for zero-arg `Render()` calls; `Render("x")` still works as expected (overrides). Evidence: task-5-borders-differ.txt, task-5-no-globals.txt.
+
+- T8 complete: added `internal/core/domain/session` with pure domain Session entity, sentinel errors, and domain-owned ports; `New`/`Rename` trim and enforce 100-character name/project limits. Added `github.com/google/uuid` for domain IDs and replaced session fixture placeholder with `MakeSession` helper. Evidence: task-8-new-validation.txt, task-8-imports-clean.txt.
