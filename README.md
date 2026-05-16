@@ -15,6 +15,14 @@ make build
 ./bin/overseer
 ```
 
+## Terminal Requirements
+
+| Requirement | Details |
+|-------------|---------|
+| Color support | truecolor (24-bit) recommended; degrades gracefully to 256-color |
+| `NO_COLOR` | Respected — disables all ANSI color output |
+| minimum size | 60×15 terminal (width×height); smaller shows a "terminal too small" message |
+
 ## Keybindings
 
 | Key | Action |

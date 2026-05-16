@@ -1,0 +1,4 @@
+internal/adapters/primary/AGENTS.md:13:- MAY: Define a `tui/components/` package containing pure renderer functions that consume `*styles.Styles` and return rendered strings. Components MUST NOT call `lipgloss.NewStyle()` or `lipgloss.Color()` directly — they are style-consumers only.
+internal/adapters/primary/tui/AGENTS.md:9:3. **Components** (`tui/components/`) — pure renderer functions that consume `*styles.Styles`; define NO new styles
+internal/adapters/primary/tui/AGENTS.md:15:- MUST: Components in `tui/components/` are pure functions: `func Foo(s *styles.Styles, ...) string`
+internal/adapters/primary/tui/AGENTS.md:20:- MUST NOT: Call `lipgloss.NewStyle()` or `lipgloss.Color()` inside `tui/components/` files
