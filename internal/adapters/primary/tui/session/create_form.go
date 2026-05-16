@@ -7,6 +7,7 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	servicesession "github.com/dnlopes/overseer/internal/core/service/session"
 )
@@ -124,5 +125,5 @@ func (m CreateFormModel) View() tea.View {
 		b.WriteByte('\n')
 	}
 	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
-	return tea.NewView(m.styles.Form.Container.Render(b.String()))
+	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
 }
