@@ -1,6 +1,7 @@
 package golden
 
 import (
+	"flag"
 	"os"
 	"path/filepath"
 	"testing"
@@ -37,9 +38,7 @@ func TestRequireEqualColor_UpdateMode(t *testing.T) {
 		_ = os.Remove(path)
 	})
 
-	old := *update
-	*update = true
-	t.Cleanup(func() { *update = old })
+	setUpdateFlag(t, true)
 
 	RequireEqualColor(t, name, updated)
 
@@ -65,11 +64,32 @@ func withColorGolden(t *testing.T, name, content string, run func(name string)) 
 		_ = os.Remove(path)
 	})
 
-	old := *update
-	*update = false
-	t.Cleanup(func() { *update = old })
+	setUpdateFlag(t, false)
 
 	run(name)
+}
+
+func setUpdateFlag(t *testing.T, value bool) {
+	t.Helper()
+	if flag.Lookup("update") == nil {
+		flag.Bool("update", false, "update .golden files")
+	}
+	old := flag.Lookup("update").Value.String()
+	if err := flag.Set("update", boolString(value)); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := flag.Set("update", old); err != nil {
+			t.Fatal(err)
+		}
+	})
+}
+
+func boolString(value bool) string {
+	if value {
+		return "true"
+	}
+	return "false"
 }
 
 type recordingTB struct {

@@ -13,15 +13,13 @@ import (
 	"github.com/dnlopes/overseer/internal/shared/paths"
 )
 
-var update = flag.Bool("update", false, "update .golden files")
-
 // RequireEqualColor asserts that actual matches the color golden file named by name.
 // Unlike RequireEqual, it preserves ANSI escape sequences when comparing and updating.
 func RequireEqualColor(t testing.TB, name string, actual string) {
 	t.Helper()
 
 	golden := colorGoldenPath(name)
-	if *update {
+	if updateGolden() {
 		if err := os.MkdirAll(filepath.Dir(golden), 0o750); err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +44,16 @@ func RequireEqualColor(t testing.TB, name string, actual string) {
 
 func colorGoldenPath(name string) string {
 	return filepath.Join("testdata", "golden", "color", name+".golden")
+}
+
+// updateGolden returns true if the -update flag was set.
+// Uses flag.Lookup to avoid re-registering if already defined by another package.
+func updateGolden() bool {
+	f := flag.Lookup("update")
+	if f == nil {
+		return false
+	}
+	return f.Value.String() == "true"
 }
 
 func visibleEscapes(in string) string {
