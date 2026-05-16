@@ -17,7 +17,7 @@ Adopt TDD discipline across all layers with teatest for the TUI layer:
 - **Service layer**: unit tests with handwritten mocked ports from `internal/testutil/mocks`
 - **Secondary adapters**: integration tests with `//go:build integration` tag
 - **TUI layer**: `teatest.NewTestModel` with fixed terminal size; golden files via `teatest.RequireEqualOutput`
-- ANSI codes stripped in golden files via `lipgloss.SetColorProfile(termenv.Ascii)` in `internal/testutil/golden.Setup`
+- ANSI codes stripped in golden assertions via `internal/testutil/golden.StripANSI`
 - Golden files regenerated via `make update-golden`
 - Coverage targets: domain 90%+, service 80%+, TUI 40-60%, overall 60-70%
 

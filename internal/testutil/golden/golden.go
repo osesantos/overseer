@@ -4,16 +4,16 @@ import (
 	"io"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"github.com/charmbracelet/x/ansi"
 )
 
-// Setup configures lipgloss to use ASCII color profile, stripping ANSI codes.
+// Setup keeps the old golden-test call site for consistency.
 // Call this at the start of every golden file test.
 func Setup(t *testing.T) {
 	t.Helper()
-	lipgloss.SetColorProfile(termenv.Ascii)
 }
+
+func StripANSI(s string) string { return ansi.Strip(s) }
 
 // ReadBts reads all bytes from r, failing the test on error.
 func ReadBts(tb testing.TB, r io.Reader) []byte {

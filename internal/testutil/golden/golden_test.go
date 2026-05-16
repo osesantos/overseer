@@ -4,13 +4,13 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 func TestSetupStripsANSI(t *testing.T) {
 	Setup(t)
 	style := lipgloss.NewStyle().Foreground(lipgloss.Color("1"))
-	got := style.Render("hello")
+	got := StripANSI(style.Render("hello"))
 	if strings.Contains(got, "\x1b[") {
 		t.Fatalf("expected ANSI codes stripped, got %q", got)
 	}
