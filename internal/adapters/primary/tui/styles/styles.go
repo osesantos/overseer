@@ -1,6 +1,10 @@
 package styles
 
-import "charm.land/lipgloss/v2"
+import (
+	"image/color"
+
+	"charm.land/lipgloss/v2"
+)
 
 type BorderStyles struct {
 	Focused lipgloss.Style
@@ -60,11 +64,35 @@ type TooSmallStyles struct {
 
 type Styles struct {
 	Border     BorderStyles
+	TitleBar   struct {
+		Base     lipgloss.Style
+		Branding lipgloss.Style
+		Subtext  lipgloss.Style
+	}
 	Pane       PaneStyles
+	ListRow    struct {
+		Normal   lipgloss.Style
+		Selected lipgloss.Style
+	}
 	Group      GroupStyles
 	Session    SessionStyles
 	Status     StatusStyles
+	StatusSegment struct {
+		Default   lipgloss.Style
+		Highlight lipgloss.Style
+	}
 	Form       FormStyles
+	Modal      struct {
+		Box     lipgloss.Style
+		Overlay color.Color
+	}
+	Badge      struct {
+		Key   lipgloss.Style
+		Label lipgloss.Style
+	}
+	Divider    struct {
+		Horizontal lipgloss.Style
+	}
 	Help       HelpStyles
 	EmptyState EmptyStateStyles
 	TooSmall   TooSmallStyles
