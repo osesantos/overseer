@@ -4,13 +4,11 @@ import (
 	"os"
 	"testing"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/muesli/termenv"
 )
 
 func TestMain(m *testing.M) {
-	lipgloss.SetColorProfile(termenv.Ascii)
 	os.Exit(m.Run())
 }
 

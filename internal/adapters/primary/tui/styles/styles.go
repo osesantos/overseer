@@ -1,6 +1,6 @@
 package styles
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 type BorderStyles struct {
 	Focused lipgloss.Style
@@ -39,7 +39,8 @@ type FormFieldStyles struct {
 }
 
 type FormStyles struct {
-	Field FormFieldStyles
+	Field     FormFieldStyles
+	Container lipgloss.Style
 }
 
 type HelpStyles struct {
@@ -70,10 +71,10 @@ type Styles struct {
 }
 
 func New() *Styles {
-	focusColor := lipgloss.AdaptiveColor{Light: "#874BFD", Dark: "#7D56F4"}
-	accentColor := lipgloss.AdaptiveColor{Light: "#43BF6D", Dark: "#73F59F"}
-	subtleColor := lipgloss.AdaptiveColor{Light: "#D9DCCF", Dark: "#383838"}
-	errorColor := lipgloss.AdaptiveColor{Light: "#FF0000", Dark: "#FF6B6B"}
+	focusColor := lipgloss.Color("#7D56F4")
+	accentColor := lipgloss.Color("#73F59F")
+	subtleColor := lipgloss.Color("#383838")
+	errorColor := lipgloss.Color("#FF6B6B")
 
 	return &Styles{
 		Border: BorderStyles{
@@ -103,6 +104,10 @@ func New() *Styles {
 			Separator: lipgloss.NewStyle().Foreground(subtleColor).SetString(" | "),
 		},
 		Form: FormStyles{
+			Container: lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(focusColor).
+				Padding(1, 2),
 			Field: FormFieldStyles{
 				Label: lipgloss.NewStyle().Bold(true),
 				Input: lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(subtleColor),
