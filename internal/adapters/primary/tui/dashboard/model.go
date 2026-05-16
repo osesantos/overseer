@@ -2,12 +2,10 @@ package dashboard
 
 import (
 	"context"
-	"fmt"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/charmbracelet/bubbles/key"
-	teav1 "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/key"
+	"charm.land/lipgloss/v2"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/help"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/preview"
@@ -87,9 +85,9 @@ func New(
 func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.sessionsList.Init(),
-		adaptCmd(m.statusBar.Init()),
-		adaptCmd(m.previewPane.Init()),
-		adaptCmd(m.helpBar.Init()),
+		m.statusBar.Init(),
+		m.previewPane.Init(),
+		m.helpBar.Init(),
 	)
 }
 
@@ -110,6 +108,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.renameForm = nil
 		return m, nil
 	}
+	if m.createForm != nil {
+		var cmd tea.Cmd
+		*m.createForm, cmd = updateModel(*m.createForm, msg)
+		return m, cmd
+	}
+	if m.renameForm != nil {
+		var cmd tea.Cmd
+		*m.renameForm, cmd = updateModel(*m.renameForm, msg)
+		return m, cmd
+	}
 
 	return m.routeToActivePane(msg)
 }
@@ -122,31 +130,28 @@ func (m Model) View() tea.View {
 
 	leftWidth := m.width * 40 / 100
 	rightWidth := m.width - leftWidth
-	helpView := m.helpBar.View()
+	helpView := m.viewString(m.helpBar.View())
 	helpHeight := lipgloss.Height(helpView)
+	helpHeight = max(helpHeight, 1)
 	bodyHeight := m.height - helpHeight
-	if bodyHeight < 1 {
-		bodyHeight = 1
-	}
+	bodyHeight = max(bodyHeight, 1)
 
 	left := fit(m.viewString(m.sessionsList.View()), leftWidth, bodyHeight)
-	statusView := m.statusBar.View()
+	statusView := m.viewString(m.statusBar.View())
 	previewHeight := bodyHeight - lipgloss.Height(statusView)
-	if previewHeight < 1 {
-		previewHeight = 1
-	}
+	previewHeight = max(previewHeight, 1)
 	right := lipgloss.JoinVertical(lipgloss.Left,
 		fit(statusView, rightWidth, lipgloss.Height(statusView)),
-		fit(m.previewPane.View(), rightWidth, previewHeight),
+		fit(m.viewString(m.previewPane.View()), rightWidth, previewHeight),
 	)
-	body := lipgloss.JoinHorizontal(lipgloss.Top, left, right)
+	body := fit(lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
 	full := lipgloss.JoinVertical(lipgloss.Left, body, helpView)
 
 	if m.createForm != nil {
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.createForm.View()))
+		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.viewString(m.createForm.View())))
 	}
 	if m.renameForm != nil {
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.renameForm.View()))
+		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.viewString(m.renameForm.View())))
 	}
 
 	return tea.NewView(full)
@@ -160,24 +165,20 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	leftWidth := m.width * 40 / 100
 	rightWidth := m.width - leftWidth
 	bodyHeight := m.height - 1
-	if bodyHeight < 1 {
-		bodyHeight = 1
-	}
+	bodyHeight = max(bodyHeight, 1)
 	statusHeight := 1
 	previewHeight := bodyHeight - statusHeight
-	if previewHeight < 1 {
-		previewHeight = 1
-	}
+	previewHeight = max(previewHeight, 1)
 
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
-	m.sessionsList, cmd = updateV2(m.sessionsList, tea.WindowSizeMsg{Width: leftWidth, Height: bodyHeight})
+	m.sessionsList, cmd = updateModel(m.sessionsList, tea.WindowSizeMsg{Width: leftWidth, Height: bodyHeight})
 	cmds = append(cmds, cmd)
-	m.statusBar, cmd = updateV1(m.statusBar, teav1.WindowSizeMsg{Width: rightWidth, Height: statusHeight})
+	m.statusBar, cmd = updateModel(m.statusBar, tea.WindowSizeMsg{Width: rightWidth, Height: statusHeight})
 	cmds = append(cmds, cmd)
-	m.previewPane, cmd = updateV1(m.previewPane, teav1.WindowSizeMsg{Width: rightWidth, Height: previewHeight})
+	m.previewPane, cmd = updateModel(m.previewPane, tea.WindowSizeMsg{Width: rightWidth, Height: previewHeight})
 	cmds = append(cmds, cmd)
-	m.helpBar, cmd = updateV1(m.helpBar, teav1.WindowSizeMsg{Width: m.width, Height: 1})
+	m.helpBar, cmd = updateModel(m.helpBar, tea.WindowSizeMsg{Width: m.width, Height: 1})
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
@@ -189,18 +190,18 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		return m, tea.Quit
 	case "?":
 		var cmd tea.Cmd
-		m.helpBar, cmd = updateV1(m.helpBar, adaptKey(msg))
+		m.helpBar, cmd = updateModel(m.helpBar, msg)
 		return m, cmd
 	}
 
 	if m.createForm != nil {
 		var cmd tea.Cmd
-		*m.createForm, cmd = updateV1(*m.createForm, adaptKey(msg))
+		*m.createForm, cmd = updateModel(*m.createForm, msg)
 		return m, cmd
 	}
 	if m.renameForm != nil {
 		var cmd tea.Cmd
-		*m.renameForm, cmd = updateV1(*m.renameForm, adaptKey(msg))
+		*m.renameForm, cmd = updateModel(*m.renameForm, msg)
 		return m, cmd
 	}
 
@@ -222,14 +223,14 @@ func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
 		if m.activePane == PaneSessions {
 			cf := sessionui.NewCreateForm(m.styles, m.createUC)
 			m.createForm = &cf
-			return m, adaptCmd(cf.Init())
+			return m, cf.Init()
 		}
 	case "r":
 		if m.activePane == PaneSessions {
 			if sess, ok := m.sessionsList.SelectedSession(); ok {
 				rf := sessionui.NewRenameForm(m.styles, m.renameUC, sess)
 				m.renameForm = &rf
-				return m, adaptCmd(rf.Init())
+				return m, rf.Init()
 			}
 			return m, nil
 		}
@@ -252,19 +253,25 @@ func (m *Model) focus(p Pane) {
 func (m Model) routeToActivePane(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if m.activePane == PaneSessions {
 		var cmd tea.Cmd
-		m.sessionsList, cmd = updateV2(m.sessionsList, msg)
+		m.sessionsList, cmd = updateModel(m.sessionsList, msg)
 		if cmd != nil {
-			cmdMsg := cmd()
-			if reorder, ok := cmdMsg.(sessionui.ReorderRequestMsg); ok {
-				return m, m.reorder(reorder.Direction)
+			return m, func() tea.Msg {
+				cmdMsg := cmd()
+				if reorder, ok := cmdMsg.(sessionui.ReorderRequestMsg); ok {
+					reorderCmd := m.reorder(reorder.Direction)
+					if reorderCmd == nil {
+						return nil
+					}
+					return reorderCmd()
+				}
+				return cmdMsg
 			}
-			return m, func() tea.Msg { return cmdMsg }
 		}
 		return m, cmd
 	}
 
 	var cmd tea.Cmd
-	m.previewPane, cmd = updateV1(m.previewPane, adaptMsg(msg))
+	m.previewPane, cmd = updateModel(m.previewPane, msg)
 	return m, cmd
 }
 
@@ -277,72 +284,19 @@ func (m Model) reorder(direction int) tea.Cmd {
 		if _, err := m.reorderUC.Execute(context.Background(), servicesession.ReorderRequest{ID: sess.ID, Direction: direction}); err != nil {
 			return nil
 		}
-		return m.sessionsList.Init()()
+		return m.sessionsList.ReloadPreservingSelection(sess.ID)()
 	}
 }
 
-func updateV2[T any](m T, msg tea.Msg) (T, tea.Cmd) {
+func updateModel[T any](m T, msg tea.Msg) (T, tea.Cmd) {
 	updated, cmd := any(m).(interface {
 		Update(tea.Msg) (tea.Model, tea.Cmd)
 	}).Update(msg)
 	return updated.(T), cmd
 }
 
-func updateV1[T any](m T, msg teav1.Msg) (T, tea.Cmd) {
-	updated, cmd := any(m).(interface {
-		Update(teav1.Msg) (teav1.Model, teav1.Cmd)
-	}).Update(msg)
-	return updated.(T), adaptCmd(cmd)
-}
-
-func adaptCmd(cmd teav1.Cmd) tea.Cmd {
-	if cmd == nil {
-		return nil
-	}
-	return func() tea.Msg { return cmd() }
-}
-
-func adaptMsg(msg tea.Msg) teav1.Msg {
-	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		return teav1.WindowSizeMsg{Width: msg.Width, Height: msg.Height}
-	case tea.KeyPressMsg:
-		return adaptKey(msg)
-	default:
-		return msg
-	}
-}
-
-func adaptKey(msg tea.KeyPressMsg) teav1.KeyMsg {
-	switch msg.String() {
-	case "tab":
-		return teav1.KeyMsg{Type: teav1.KeyTab}
-	case "shift+tab":
-		return teav1.KeyMsg{Type: teav1.KeyShiftTab}
-	case "enter":
-		return teav1.KeyMsg{Type: teav1.KeyEnter}
-	case "esc":
-		return teav1.KeyMsg{Type: teav1.KeyEsc}
-	case "ctrl+c":
-		return teav1.KeyMsg{Type: teav1.KeyCtrlC}
-	case "backspace":
-		return teav1.KeyMsg{Type: teav1.KeyBackspace}
-	case "ctrl+k":
-		return teav1.KeyMsg{Type: teav1.KeyCtrlK}
-	case "ctrl+u":
-		return teav1.KeyMsg{Type: teav1.KeyCtrlU}
-	case "ctrl+a":
-		return teav1.KeyMsg{Type: teav1.KeyCtrlA}
-	default:
-		return teav1.KeyMsg{Type: teav1.KeyRunes, Runes: []rune(msg.String())}
-	}
-}
-
 func (m Model) viewString(v tea.View) string {
-	if s, ok := v.Layer.(fmt.Stringer); ok {
-		return s.String()
-	}
-	return fmt.Sprint(v.Layer)
+	return v.Content
 }
 
 func fit(s string, width, height int) string {

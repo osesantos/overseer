@@ -9,8 +9,6 @@ import (
 	tea "charm.land/bubbletea/v2"
 	xgolden "github.com/charmbracelet/x/exp/golden"
 	teatestv2 "github.com/charmbracelet/x/exp/teatest/v2"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/help"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
@@ -19,7 +17,6 @@ import (
 )
 
 func TestMain(m *testing.M) {
-	lipgloss.SetColorProfile(termenv.Ascii)
 	os.Exit(m.Run())
 }
 
@@ -35,7 +32,7 @@ func sizedDashboard(t *testing.T, width, height int) Model {
 }
 
 func viewString(m Model) string {
-	return m.viewString(m.View())
+	return internalgolden.StripANSI(m.viewString(m.View()))
 }
 
 func keyMsg(text string) tea.KeyPressMsg {
@@ -191,7 +188,7 @@ func TestDashboard_DefaultViaHarness(t *testing.T) {
 	tm := internalteatest.NewHarness(t, m, 80, 24)
 
 	teatestv2.WaitFor(t, tm.Output(), func(b []byte) bool {
-		return strings.Contains(string(b), "Press n to create")
+		return strings.Contains(string(b), "j move down")
 	}, teatestv2.WithDuration(time.Second))
 
 	if err := tm.Quit(); err != nil {

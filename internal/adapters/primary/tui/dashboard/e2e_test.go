@@ -4,6 +4,8 @@ import (
 	"context"
 	"io"
 	"log/slog"
+	"sort"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -99,6 +101,12 @@ func e2eKey(text string) tea.KeyPressMsg {
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyTab})
 	case "enter":
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	case "return":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyReturn})
+	case "line-feed":
+		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter})
+	case "ctrl+j":
+		return tea.KeyPressMsg(tea.Key{Code: 'j', Mod: tea.ModCtrl})
 	case "esc":
 		return tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc})
 	case "ctrl+k":
@@ -149,6 +157,99 @@ func TestE2E_CreateFlow(t *testing.T) {
 	}
 	if sessions[0].Name != "my-session" {
 		t.Fatalf("expected session name 'my-session', got %q", sessions[0].Name)
+	}
+}
+
+func TestE2E_CreateFlowWithReturnKey(t *testing.T) {
+	internalgolden.Setup(t)
+
+	repo := newInMemoryRepo()
+	m := buildE2EModel(repo)
+	tm := internalteatest.NewHarness(t, m, 80, 24)
+
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Send(e2eKey("n"))
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Type("my-session")
+	tm.Send(e2eKey("tab"))
+	tm.Type("overseer")
+	tm.Send(e2eKey("return"))
+	time.Sleep(200 * time.Millisecond)
+
+	tm.Send(e2eKey("q"))
+	_ = readFinalOutput(t, tm)
+	sessions, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 1 {
+		t.Fatalf("expected 1 session after create, got %d", len(sessions))
+	}
+	if sessions[0].Name != "my-session" {
+		t.Fatalf("expected session name 'my-session', got %q", sessions[0].Name)
+	}
+}
+
+func TestE2E_CreateFlowEmptyProjectShowsErrorWithLineFeed(t *testing.T) {
+	internalgolden.Setup(t)
+
+	repo := newInMemoryRepo()
+	m := buildE2EModel(repo)
+	tm := internalteatest.NewHarness(t, m, 80, 24)
+
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Send(e2eKey("n"))
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Type("my-session")
+	tm.Send(e2eKey("line-feed"))
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Send(e2eKey("esc"))
+	tm.Send(e2eKey("q"))
+	out := string(readFinalOutput(t, tm))
+	if !strings.Contains(out, "project name is required") {
+		t.Fatalf("expected project validation error, got:\n%s", out)
+	}
+	sessions, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected no sessions after invalid create, got %d", len(sessions))
+	}
+}
+
+func TestE2E_CreateFlowEmptyNameShowsErrorWithCtrlJ(t *testing.T) {
+	internalgolden.Setup(t)
+
+	repo := newInMemoryRepo()
+	m := buildE2EModel(repo)
+	tm := internalteatest.NewHarness(t, m, 80, 24)
+
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Send(e2eKey("n"))
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Send(e2eKey("ctrl+j"))
+	time.Sleep(100 * time.Millisecond)
+
+	tm.Send(e2eKey("esc"))
+	tm.Send(e2eKey("q"))
+	out := string(readFinalOutput(t, tm))
+	if !strings.Contains(out, "session name is required") {
+		t.Fatalf("expected session validation error, got:\n%s", out)
+	}
+	sessions, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	if len(sessions) != 0 {
+		t.Fatalf("expected no sessions after invalid create, got %d", len(sessions))
 	}
 }
 
@@ -212,8 +313,20 @@ func TestE2E_ReorderFlow(t *testing.T) {
 	if !ok {
 		t.Fatal("expected a selected session after reorder")
 	}
-	if selected.Name != "sess-2" {
-		t.Fatalf("expected sess-2 first after reorder down, got %q", selected.Name)
+	if selected.Name != "sess-1" {
+		t.Fatalf("expected selection to follow sess-1 after reorder down, got %q", selected.Name)
+	}
+	if finalM.sessionsList.Cursor() != 1 {
+		t.Fatalf("expected cursor to follow reordered session at index 1, got %d", finalM.sessionsList.Cursor())
+	}
+
+	sessions, err := repo.List(context.Background())
+	if err != nil {
+		t.Fatalf("list sessions: %v", err)
+	}
+	sort.Slice(sessions, func(i, j int) bool { return sessions[i].Order < sessions[j].Order })
+	if got := []string{sessions[0].Name, sessions[1].Name, sessions[2].Name}; got[0] != "sess-2" || got[1] != "sess-1" || got[2] != "sess-3" {
+		t.Fatalf("expected persisted order [sess-2 sess-1 sess-3], got %v", got)
 	}
 	_ = out
 }
