@@ -139,9 +139,9 @@ func (m Model) renderGroups() string {
 		lines = append(lines, m.styles.Group.Header.Render(g.ProjectName))
 		for _, s := range g.Sessions {
 			if flatIdx == m.cursor {
-				lines = append(lines, m.styles.Session.Item.Selected.Render(s.Name))
+				lines = append(lines, m.styles.ListRow.Selected.Render(s.Name))
 			} else {
-				lines = append(lines, m.styles.Session.Item.Normal.Render(s.Name))
+				lines = append(lines, m.styles.ListRow.Normal.Render(s.Name))
 			}
 			flatIdx++
 		}
