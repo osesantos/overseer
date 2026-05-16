@@ -6,8 +6,8 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	"github.com/dnlopes/overseer/internal/testutil/golden"
 )
@@ -19,7 +19,7 @@ func TestStatus_Default(t *testing.T) {
 	m := New(s)
 	m.workdir = "/home/user/projects"
 
-	output := m.View()
+	output := golden.StripANSI(m.View().Content)
 
 	goldenPath := filepath.Join("testdata", "TestStatus_Default.golden")
 	if os.Getenv("UPDATE_GOLDEN") != "" {
@@ -46,7 +46,7 @@ func TestStatus_Truncate(t *testing.T) {
 	m.workdir = "/home/user/projects/very-long-project-name-that-exceeds-the-width"
 	m.width = 40
 
-	output := m.View()
+	output := golden.StripANSI(m.View().Content)
 
 	if !strings.Contains(output, "...") {
 		t.Errorf("expected ellipsis in truncated output: %q", output)

@@ -3,8 +3,8 @@ package status
 import (
 	"os"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 )
 
@@ -40,7 +40,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
 	sep := m.styles.Status.Separator.Render()
 
 	trailing := sep +
@@ -51,12 +51,10 @@ func (m Model) View() string {
 		m.styles.Status.Value.Render(m.agentStatus)
 
 	available := m.width - lipgloss.Width(trailing)
-	if available < 0 {
-		available = 0
-	}
+	available = max(available, 0)
 
 	wd := truncate(m.workdir, available)
-	return m.styles.Status.Value.Render(wd) + trailing
+	return tea.NewView(m.styles.Status.Value.Render(wd) + trailing)
 }
 
 func truncate(s string, maxWidth int) string {
