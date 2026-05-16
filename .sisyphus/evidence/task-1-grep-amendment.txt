@@ -1,0 +1,1 @@
+13:- MAY: Define a `tui/components/` package containing pure renderer functions that consume `*styles.Styles` and return rendered strings. Components MUST NOT call `lipgloss.NewStyle()` or `lipgloss.Color()` directly — they are style-consumers only.
