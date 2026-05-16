@@ -60,8 +60,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 		border := m.border()
-		m.viewport.SetWidth(max(msg.Width-border.GetHorizontalFrameSize(), 1))
-		m.viewport.SetHeight(max(msg.Height-border.GetVerticalFrameSize(), 1))
+		pane := m.styles.Pane.Preview
+		m.viewport.SetWidth(max(msg.Width-border.GetHorizontalFrameSize()-pane.GetHorizontalPadding(), 1))
+		m.viewport.SetHeight(max(msg.Height-border.GetVerticalFrameSize()-pane.GetVerticalPadding(), 1))
 
 	case tea.KeyPressMsg:
 		if !m.focused {
@@ -80,7 +81,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) View() tea.View {
 	border := m.border()
-	return tea.NewView(border.Render(m.viewport.View()))
+	inner := m.styles.Pane.Preview.Render(m.viewport.View())
+	return tea.NewView(border.Render(inner))
 }
 
 func (m Model) border() lipgloss.Style {
