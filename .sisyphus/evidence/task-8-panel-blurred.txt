@@ -1,0 +1,4 @@
+=== RUN   TestPanel_BlurredRoundedBorder
+--- PASS: TestPanel_BlurredRoundedBorder (0.00s)
+PASS
+ok  	github.com/dnlopes/overseer/internal/adapters/primary/tui/components	0.180s
