@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	servicesession "github.com/dnlopes/overseer/internal/core/service/session"
@@ -24,11 +24,17 @@ func NewCreateForm(s *styles.Styles, createUC *servicesession.CreateUseCase) Cre
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Session name"
 	nameInput.CharLimit = 100
+	nameInput.SetWidth(36)
+	nameInput.SetStyles(textinput.Styles{})
+	nameInput.SetVirtualCursor(false)
 	nameInput.Focus()
 
 	projectInput := textinput.New()
 	projectInput.Placeholder = "Project name"
 	projectInput.CharLimit = 100
+	projectInput.SetWidth(36)
+	projectInput.SetStyles(textinput.Styles{})
+	projectInput.SetVirtualCursor(false)
 
 	return CreateFormModel{
 		nameInput:    nameInput,
@@ -39,29 +45,27 @@ func NewCreateForm(s *styles.Styles, createUC *servicesession.CreateUseCase) Cre
 	}
 }
 
-func (m CreateFormModel) Init() tea.Cmd {
-	return textinput.Blink
-}
+func (m CreateFormModel) Init() tea.Cmd { return textinput.Blink }
 
 type createErrMsg struct{ err error }
 
 func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEsc:
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "esc":
 			return m, func() tea.Msg { return CancelFormMsg{} }
-		case tea.KeyTab:
+		case "tab", "shift+tab":
 			m.focusIndex = (m.focusIndex + 1) % 2
 			if m.focusIndex == 0 {
 				m.nameInput.Focus()
 				m.projectInput.Blur()
-			} else {
-				m.projectInput.Focus()
-				m.nameInput.Blur()
+				return m, nil
 			}
+			m.projectInput.Focus()
+			m.nameInput.Blur()
 			return m, nil
-		case tea.KeyEnter:
+		case "enter", "ctrl+j":
 			return m.submit()
 		}
 	case createErrMsg:
@@ -103,7 +107,7 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m CreateFormModel) View() string {
+func (m CreateFormModel) View() tea.View {
 	s := m.styles.Form.Field
 
 	var b strings.Builder
@@ -120,5 +124,5 @@ func (m CreateFormModel) View() string {
 		b.WriteByte('\n')
 	}
 	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
-	return b.String()
+	return tea.NewView(m.styles.Form.Container.Render(b.String()))
 }

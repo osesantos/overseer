@@ -6,7 +6,7 @@ import (
 	"strings"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	domainsession "github.com/dnlopes/overseer/internal/core/domain/session"
@@ -33,7 +33,7 @@ func TestCreateForm_HappyPath(t *testing.T) {
 	m.nameInput.SetValue("my-session")
 	m.projectInput.SetValue("my-project")
 
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	result, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd == nil {
 		t.Fatal("expected a cmd after Enter with valid inputs")
 	}
@@ -59,7 +59,7 @@ func TestCreateForm_HappyPath(t *testing.T) {
 func TestCreateForm_EmptyName(t *testing.T) {
 	m := newCreateFormFixture()
 
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	result, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd != nil {
 		t.Fatal("expected no cmd when name is empty")
 	}
@@ -79,7 +79,7 @@ func TestCreateForm_EmptyName(t *testing.T) {
 func TestCreateForm_Esc(t *testing.T) {
 	m := newCreateFormFixture()
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
 	if cmd == nil {
 		t.Fatal("expected a cmd after Esc")
 	}
@@ -98,7 +98,7 @@ func TestCreateForm_TabCycles(t *testing.T) {
 		t.Fatalf("initial focusIndex: want 0, got %d", m.focusIndex)
 	}
 
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	result, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 	if cmd != nil {
 		t.Fatal("Tab should not produce a cmd")
 	}
@@ -113,7 +113,7 @@ func TestCreateForm_TabCycles(t *testing.T) {
 		t.Error("nameInput should be blurred after Tab")
 	}
 
-	result2, _ := form.Update(tea.KeyMsg{Type: tea.KeyTab})
+	result2, _ := form.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyTab}))
 	form2 := result2.(CreateFormModel)
 	if form2.focusIndex != 0 {
 		t.Fatalf("focusIndex after second Tab: want 0, got %d", form2.focusIndex)
@@ -127,7 +127,7 @@ func TestCreateForm_EmptyProject(t *testing.T) {
 	m := newCreateFormFixture()
 	m.nameInput.SetValue("my-session")
 
-	result, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	result, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd != nil {
 		t.Fatal("expected no cmd when project is empty")
 	}
@@ -146,7 +146,7 @@ func TestCreateForm_EmptyProject(t *testing.T) {
 
 func TestCreateForm_ViewContainsHelp(t *testing.T) {
 	m := newCreateFormFixture()
-	view := m.View()
+	view := m.View().Content
 	if !strings.Contains(view, "Tab") || !strings.Contains(view, "Enter") || !strings.Contains(view, "Esc") {
 		t.Errorf("View should contain help hints, got: %q", view)
 	}

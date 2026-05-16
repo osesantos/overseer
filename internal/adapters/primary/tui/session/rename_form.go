@@ -4,8 +4,8 @@ import (
 	"context"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/bubbles/textinput"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	domainsession "github.com/dnlopes/overseer/internal/core/domain/session"
@@ -23,6 +23,9 @@ type RenameFormModel struct {
 func NewRenameForm(s *styles.Styles, renameUC *servicesession.RenameUseCase, current domainsession.Session) RenameFormModel {
 	ti := textinput.New()
 	ti.CharLimit = 100
+	ti.SetWidth(36)
+	ti.SetStyles(textinput.Styles{})
+	ti.SetVirtualCursor(false)
 	ti.SetValue(current.Name)
 	ti.Focus()
 
@@ -34,17 +37,15 @@ func NewRenameForm(s *styles.Styles, renameUC *servicesession.RenameUseCase, cur
 	}
 }
 
-func (m RenameFormModel) Init() tea.Cmd {
-	return textinput.Blink
-}
+func (m RenameFormModel) Init() tea.Cmd { return textinput.Blink }
 
 func (m RenameFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyEsc:
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "esc":
 			return m, func() tea.Msg { return CancelFormMsg{} }
-		case tea.KeyEnter:
+		case "enter", "ctrl+j":
 			name := strings.TrimSpace(m.nameInput.Value())
 			if name == "" {
 				m.errMsg = "name cannot be empty"
@@ -67,7 +68,7 @@ func (m RenameFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m RenameFormModel) View() string {
+func (m RenameFormModel) View() tea.View {
 	var b strings.Builder
 	b.WriteString(m.styles.Form.Field.Label.Render("Name") + "\n")
 	b.WriteString(m.nameInput.View() + "\n")
@@ -75,5 +76,5 @@ func (m RenameFormModel) View() string {
 		b.WriteString(m.styles.Form.Field.Error.Render(m.errMsg) + "\n")
 	}
 	b.WriteString(m.styles.Help.Description.Render("Enter: submit  Esc: cancel"))
-	return b.String()
+	return tea.NewView(m.styles.Form.Container.Render(b.String()))
 }

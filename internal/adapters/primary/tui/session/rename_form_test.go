@@ -4,7 +4,7 @@ import (
 	"log/slog"
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	domainsession "github.com/dnlopes/overseer/internal/core/domain/session"
@@ -40,7 +40,7 @@ func TestRenameForm_HappyPath(t *testing.T) {
 
 	m.nameInput.SetValue("new-name")
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd == nil {
 		t.Fatal("expected a cmd after Enter with valid name")
 	}
@@ -61,7 +61,7 @@ func TestRenameForm_EmptyName(t *testing.T) {
 
 	m.nameInput.SetValue("")
 
-	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	updated, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEnter}))
 	if cmd != nil {
 		t.Fatal("expected no cmd for empty name")
 	}
@@ -79,7 +79,7 @@ func TestRenameForm_Esc(t *testing.T) {
 	current := newTestSession("old-name")
 	m, _ := newRenameFormFixture(current)
 
-	_, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	_, cmd := m.Update(tea.KeyPressMsg(tea.Key{Code: tea.KeyEsc}))
 	if cmd == nil {
 		t.Fatal("expected a cmd after Esc")
 	}
