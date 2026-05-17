@@ -1,4 +1,0 @@
-=== RUN   TestLoad_MissingFile_ReturnsDefaults
---- PASS: TestLoad_MissingFile_ReturnsDefaults (0.00s)
-PASS
-ok  	github.com/dnlopes/overseer/internal/adapters/secondary/config/yaml	0.167s

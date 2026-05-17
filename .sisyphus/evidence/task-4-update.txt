@@ -1,5 +1,0 @@
-## go test ./internal/testutil/golden/... -run TestRequireEqualColor_UpdateMode -v
-=== RUN   TestRequireEqualColor_UpdateMode
---- PASS: TestRequireEqualColor_UpdateMode (0.00s)
-PASS
-ok  	github.com/dnlopes/overseer/internal/testutil/golden	0.183s

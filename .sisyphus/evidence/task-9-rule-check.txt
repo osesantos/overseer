@@ -1,2 +1,0 @@
-=== Rule C7 check: grep -n 'lipgloss.NewStyle\|lipgloss.Color' modal.go ===
-ZERO MATCHES - OK

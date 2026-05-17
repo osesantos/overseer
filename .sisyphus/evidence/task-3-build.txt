@@ -1,3 +1,0 @@
-go build ./...: PASS
-go vet ./...: FAIL
-vet error: internal/adapters/primary/tui/styles/theme_test.go:11:18: undefined: styles.DarkTheme

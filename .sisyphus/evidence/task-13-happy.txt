@@ -1,4 +1,0 @@
-=== RUN   TestCreateUseCase_HappyPath
---- PASS: TestCreateUseCase_HappyPath (0.00s)
-PASS
-ok  	github.com/dnlopes/overseer/internal/core/service/session	0.187s

@@ -1,4 +1,0 @@
-=== RUN   TestIntegration_ConcurrentSaves
---- PASS: TestIntegration_ConcurrentSaves (0.03s)
-PASS
-ok  	github.com/dnlopes/overseer/internal/adapters/secondary/storage/json	0.208s
