@@ -29,23 +29,32 @@ type CreateFormModel struct {
 }
 
 func NewCreateForm(s *styles.Styles, sessionsService *service.SessionService) CreateFormModel {
-	return CreateFormModel{nameInput: textinput.New(), projectInput: textinput.New(), focusIndex: shared.NewCircularInt(0, 1), sessionsService: sessionsService, styles: s}
+	nameInput := textinput.New()
+	nameInput.Placeholder = "Session name"
+	nameInput.CharLimit = 100
+	nameInput.SetWidth(36)
+	nameInput.SetStyles(textinput.Styles{})
+	nameInput.SetVirtualCursor(false)
+	nameInput.Focus()
+
+	projectInput := textinput.New()
+	projectInput.Placeholder = "Project name"
+	projectInput.CharLimit = 100
+	projectInput.SetWidth(36)
+	projectInput.SetStyles(textinput.Styles{})
+	projectInput.SetVirtualCursor(false)
+	projectInput.Blur()
+
+	return CreateFormModel{
+		nameInput:       nameInput,
+		projectInput:    projectInput,
+		focusIndex:      shared.NewCircularInt(0, 1),
+		sessionsService: sessionsService,
+		styles:          s,
+	}
 }
 
 func (m CreateFormModel) Init() tea.Cmd {
-	m.nameInput.Placeholder = "Session name"
-	m.nameInput.CharLimit = 100
-	m.nameInput.SetWidth(36)
-	m.nameInput.SetStyles(textinput.Styles{})
-	m.nameInput.SetVirtualCursor(false)
-	m.nameInput.Focus()
-	m.projectInput.Placeholder = "Project name"
-	m.projectInput.CharLimit = 100
-	m.projectInput.SetWidth(36)
-	m.projectInput.SetStyles(textinput.Styles{})
-	m.projectInput.SetVirtualCursor(false)
-	m.projectInput.Blur()
-
 	return nil
 }
 
@@ -63,11 +72,18 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if key.Matches(msg, shared.PopupNextFieldKey) {
 			m.focusIndex.Increment()
 			m.updateFocusAndBlurs()
+			return m, nil
 		}
 		if key.Matches(msg, shared.PopupPrevFieldKey) {
 			m.focusIndex.Decrement()
 			m.updateFocusAndBlurs()
+			return m, nil
 		}
+	}
+
+	if msg, ok := msg.(createErrMsg); ok {
+		m.errMsg = msg.err.Error()
+		return m, nil
 	}
 
 	switch m.focusIndex.Value() {

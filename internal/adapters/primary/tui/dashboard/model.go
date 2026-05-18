@@ -128,53 +128,6 @@ func (m Model) View() tea.View {
 	return tea.NewView(full)
 }
 
-func (m Model) updateKey(msg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
-	switch msg.String() {
-	case "q", "ctrl+c":
-		return m, tea.Quit
-	case "?":
-		var cmd tea.Cmd
-		m.helpBar, cmd = shared.UpdateModel(m.helpBar, msg)
-		return m, cmd
-	}
-
-	if m.createForm != nil {
-		var cmd tea.Cmd
-		*m.createForm, cmd = shared.UpdateModel(*m.createForm, msg)
-		return m, cmd
-	}
-
-	switch msg.String() {
-	case "tab", "shift+tab":
-		if m.activePane == PaneSessions {
-			m.focus(PanePreview)
-		} else {
-			m.focus(PaneSessions)
-		}
-		return m, nil
-	case "n":
-		if m.activePane == PaneSessions {
-			cf := sessionui.NewCreateForm(m.styles, m.sessionsService)
-			m.createForm = &cf
-			return m, cf.Init()
-		}
-	}
-
-	return m.routeToActivePane(msg)
-}
-
-func (m *Model) focus(p Pane) {
-	m.activePane = p
-	m.sessionsList.SetFocus(p == PaneSessions)
-	if p == PaneSessions {
-		m.helpBar.SetActivePane("sessions")
-		m.titlebar, _ = shared.UpdateModel(m.titlebar, TitlebarSetActivePaneMsg{Label: "Sessions"})
-		return
-	}
-	m.helpBar.SetActivePane("preview")
-	m.titlebar, _ = shared.UpdateModel(m.titlebar, TitlebarSetActivePaneMsg{Label: "Preview"})
-}
-
 func (m Model) routeToActivePane(msg tea.Msg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.sessionsList, cmd = shared.UpdateModel(m.sessionsList, msg)
