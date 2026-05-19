@@ -47,14 +47,20 @@ func (m *Model) SetProjectNameLookup(names map[uuid.UUID]string) {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok && m.focused {
-		if key.Matches(keyMsg, sessionsTabKeyBinding) && m.active != shared.LeftPaneTabSessions {
+		if key.Matches(keyMsg, sessionsTabKeyBinding) {
+			if m.active == shared.LeftPaneTabSessions {
+				return m, nil
+			}
 			m.active = shared.LeftPaneTabSessions
 			m.sessions.SetFocus(true)
 			m.projects.SetFocus(false)
 			m.applySize()
 			return m, shared.Emit(shared.LeftPaneTabChangedMsg{Tab: shared.LeftPaneTabSessions})
 		}
-		if key.Matches(keyMsg, projectsTabKeyBinding) && m.active != shared.LeftPaneTabProjects {
+		if key.Matches(keyMsg, projectsTabKeyBinding) {
+			if m.active == shared.LeftPaneTabProjects {
+				return m, nil
+			}
 			m.active = shared.LeftPaneTabProjects
 			m.projects.SetFocus(true)
 			m.sessions.SetFocus(false)
@@ -64,7 +70,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	switch typed := msg.(type) {
-	case shared.SessionsLoadedMsg, shared.SessionCreatedMsg:
+	case shared.SessionsLoadedMsg, shared.SessionCreatedMsg, shared.SessionReorderedMsg:
 		var cmd tea.Cmd
 		m.sessions, cmd = shared.UpdateModel(m.sessions, typed)
 		return m, cmd
@@ -150,8 +156,8 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) renderTabs() string {
-	sessionsTab := tabLabel(m.styles, "Sessions", m.active == shared.LeftPaneTabSessions)
-	projectsTab := tabLabel(m.styles, "Projects", m.active == shared.LeftPaneTabProjects)
+	sessionsTab := tabLabel(m.styles, "1. Sessions", m.active == shared.LeftPaneTabSessions)
+	projectsTab := tabLabel(m.styles, "2. Projects", m.active == shared.LeftPaneTabProjects)
 	row := sessionsTab + projectsTab
 	rendered := lipgloss.Width(row)
 	if m.width > rendered {

@@ -2,6 +2,8 @@ package session
 
 import "charm.land/bubbles/v2/key"
 
+const jumpRowDelta = 5
+
 var (
 	popupNextFieldKeyBinding    = key.NewBinding(key.WithKeys("tab"), key.WithHelp("tab", "next field"))
 	popupPrevFieldKeyBinding    = key.NewBinding(key.WithKeys("shift+tab"), key.WithHelp("shift+tab", "previous field"))
@@ -10,8 +12,10 @@ var (
 	popupSelectorNextKeyBinding = key.NewBinding(key.WithKeys("right", "l"), key.WithHelp("→/l", "next project"))
 	popupSelectorPrevKeyBinding = key.NewBinding(key.WithKeys("left", "h"), key.WithHelp("←/h", "previous project"))
 
-	jumpToSessionKeyBinding = key.NewBinding(
-		key.WithKeys("1", "2", "3", "4", "5", "6", "7", "8", "9"),
-		key.WithHelp("1-9", "jump to session"),
-	)
+	jumpUpKeyBinding      = key.NewBinding(key.WithKeys("ctrl+up"), key.WithHelp("ctrl+↑", "jump up"))
+	jumpDownKeyBinding    = key.NewBinding(key.WithKeys("ctrl+down"), key.WithHelp("ctrl+↓", "jump down"))
+	reorderUpKeyBinding   = key.NewBinding(key.WithKeys("shift+up"), key.WithHelp("shift+↑", "move row up"))
+	reorderDownKeyBinding = key.NewBinding(key.WithKeys("shift+down"), key.WithHelp("shift+↓", "move row down"))
+	nextGroupKeyBinding   = key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "next group"))
+	prevGroupKeyBinding   = key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "previous group"))
 )

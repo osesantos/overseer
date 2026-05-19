@@ -11,6 +11,12 @@ type SessionsLoadedMsg struct {
 	Err      error
 }
 
+type SessionReorderedMsg struct {
+	Sessions []domain.Session
+	FocusID  string
+	Err      error
+}
+
 type NewSessionPopupCloseMsg struct{}
 
 type SessionCreateErrMsg struct{ Err error }

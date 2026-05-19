@@ -55,7 +55,7 @@ func DefaultTreeKeyMap() TreeKeyMap {
 	return TreeKeyMap{
 		Up:          key.NewBinding(key.WithKeys("k", "up"), key.WithHelp("k/↑", "up")),
 		Down:        key.NewBinding(key.WithKeys("j", "down"), key.WithHelp("j/↓", "down")),
-		Toggle:      key.NewBinding(key.WithKeys("enter", " "), key.WithHelp("⏎/space", "toggle")),
+		Toggle:      key.NewBinding(key.WithKeys("enter", "space"), key.WithHelp("⏎/space", "toggle")),
 		ExpandAll:   key.NewBinding(key.WithKeys("E"), key.WithHelp("E", "expand all")),
 		CollapseAll: key.NewBinding(key.WithKeys("C"), key.WithHelp("C", "collapse all")),
 	}
@@ -183,6 +183,55 @@ func (m TreeModel[T]) SelectIndex(idx int) TreeModel[T] {
 	}
 	m.cursor = idx
 	return m
+}
+
+// MoveCursor moves the cursor by delta rows, clamping to the visible row
+// range. Negative delta moves up, positive moves down. The cursor never
+// wraps. Returns a cmd that emits a [TreeSelectMsg] if the cursor actually
+// changed position, or nil if no movement happened (already at bounds or
+// empty tree).
+func (m TreeModel[T]) MoveCursor(delta int) (TreeModel[T], tea.Cmd) {
+	if len(m.rows) == 0 {
+		return m, nil
+	}
+	target := clamp(m.cursor+delta, 0, len(m.rows)-1)
+	if target == m.cursor {
+		return m, nil
+	}
+	m.cursor = target
+	return m, m.emitSelection()
+}
+
+// MoveToNext moves the cursor to the next row (after current cursor) whose
+// item matches pred. If no matching row exists, the cursor stays put.
+// Returns a cmd that emits a [TreeSelectMsg] if the cursor moved.
+func (m TreeModel[T]) MoveToNext(pred func(item T) bool) (TreeModel[T], tea.Cmd) {
+	if len(m.rows) == 0 || pred == nil {
+		return m, nil
+	}
+	for i := m.cursor + 1; i < len(m.rows); i++ {
+		if pred(m.rows[i].item) {
+			m.cursor = i
+			return m, m.emitSelection()
+		}
+	}
+	return m, nil
+}
+
+// MoveToPrev moves the cursor to the previous row (before current cursor)
+// whose item matches pred. If no matching row exists, the cursor stays put.
+// Returns a cmd that emits a [TreeSelectMsg] if the cursor moved.
+func (m TreeModel[T]) MoveToPrev(pred func(item T) bool) (TreeModel[T], tea.Cmd) {
+	if len(m.rows) == 0 || pred == nil {
+		return m, nil
+	}
+	for i := m.cursor - 1; i >= 0; i-- {
+		if pred(m.rows[i].item) {
+			m.cursor = i
+			return m, m.emitSelection()
+		}
+	}
+	return m, nil
 }
 
 // RowCount returns the number of currently visible (post-flatten) rows.

@@ -143,6 +143,193 @@ func TestModel_GroupRowRendersDifferentlyWhenCursorMovesToIt(t *testing.T) {
 	}
 }
 
+func TestModel_RenderHasNoNumberPrefix(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
+
+	view := updated.(Model).View().Content
+	if strings.Contains(view, "01.") || strings.Contains(view, "02.") {
+		t.Fatalf("View() should not contain number prefixes: %q", view)
+	}
+}
+
+func TestModel_NextGroupJumpsToNextProject(t *testing.T) {
+	overseerID := uuid.New()
+	otherID := uuid.New()
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer", otherID: "other"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+	beta := testutil.MakeSession("beta", otherID)
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
+	updated = navigateToTop(t, updated)
+
+	updated, _ = updated.(Model).Update(keyPress("g"))
+
+	got := updated.(Model).tree.SelectedID()
+	if got != "project:"+overseerID.String() {
+		t.Fatalf("SelectedID after 'g' = %q, want overseer group id", got)
+	}
+}
+
+func TestModel_PrevGroupJumpsToPreviousProject(t *testing.T) {
+	overseerID := uuid.New()
+	otherID := uuid.New()
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer", otherID: "other"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+	beta := testutil.MakeSession("beta", otherID)
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
+
+	updated, _ = updated.(Model).Update(keyPress("G"))
+
+	got := updated.(Model).tree.SelectedID()
+	if got != "project:"+overseerID.String() {
+		t.Fatalf("SelectedID after 'G' from alpha = %q, want overseer group id", got)
+	}
+}
+
+func TestModel_CtrlDownMovesCursorFiveRows(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	sessions := make([]domain.Session, 0, 10)
+	for i := 0; i < 10; i++ {
+		sessions = append(sessions, testutil.MakeSession("session-"+string(rune('a'+i)), overseerID))
+	}
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: sessions})
+
+	updated, cmd := updated.(Model).Update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModCtrl})
+
+	if cmd == nil {
+		t.Fatalf("Update(ctrl+down) cmd = nil, want selection emit")
+	}
+	msg, ok := cmd().(shared.SessionSelectedMsg)
+	if !ok {
+		t.Fatalf("cmd msg type = %T, want shared.SessionSelectedMsg", cmd())
+	}
+	wantID := sessions[5].ID.String()
+	if msg.ID != wantID {
+		t.Fatalf("SessionSelectedMsg.ID = %q, want %q (initial session-a + 5 rows = session-f)", msg.ID, wantID)
+	}
+}
+
+func TestModel_CtrlUpMovesCursorFiveRowsClampedAtTop(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+	beta := testutil.MakeSession("beta", overseerID)
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
+
+	updated, _ = updated.(Model).Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl})
+
+	got := updated.(Model).tree.SelectedID()
+	if !strings.HasPrefix(got, "project:") {
+		t.Fatalf("SelectedID after ctrl+up from top = %q, want clamped at group row", got)
+	}
+}
+
+func TestModel_ShiftDownReordersSelectedSession(t *testing.T) {
+	overseerID := uuid.New()
+	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha.Order = 1
+	beta := testutil.MakeSession("beta", overseerID)
+	beta.Order = 2
+	repo := &mocks.MockSessionRepository{
+		ListResult: []domain.Session{alpha, beta},
+		GetResult:  alpha,
+	}
+	model := New(styles.New(), newSessionService(repo))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
+
+	_, cmd := updated.(Model).Update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift})
+
+	if cmd == nil {
+		t.Fatalf("Update(shift+down) cmd = nil, want reorder command")
+	}
+	msg, ok := cmd().(shared.SessionReorderedMsg)
+	if !ok {
+		t.Fatalf("cmd msg type = %T, want shared.SessionReorderedMsg", cmd())
+	}
+	if msg.Err != nil {
+		t.Fatalf("SessionReorderedMsg.Err = %v, want nil", msg.Err)
+	}
+	if msg.FocusID != alpha.ID.String() {
+		t.Fatalf("SessionReorderedMsg.FocusID = %q, want %q (the moved session)", msg.FocusID, alpha.ID.String())
+	}
+}
+
+func TestModel_ShiftDownNoOpOnGroupRow(t *testing.T) {
+	overseerID := uuid.New()
+	alpha := testutil.MakeSession("alpha", overseerID)
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
+	updated, _ = updated.(Model).Update(keyPress("k"))
+
+	_, cmd := updated.(Model).Update(tea.KeyPressMsg{Code: tea.KeyDown, Mod: tea.ModShift})
+
+	if cmd != nil {
+		t.Fatalf("Update(shift+down) on group row cmd = %#v, want nil", cmd)
+	}
+}
+
+func TestModel_SessionReorderedMsgRestoresCursorOnMovedSession(t *testing.T) {
+	overseerID := uuid.New()
+	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha.Order = 1
+	beta := testutil.MakeSession("beta", overseerID)
+	beta.Order = 2
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
+
+	updated, _ = updated.(Model).Update(shared.SessionReorderedMsg{
+		Sessions: []domain.Session{beta, alpha},
+		FocusID:  beta.ID.String(),
+	})
+
+	got := updated.(Model).tree.SelectedID()
+	want := "session:" + beta.ID.String()
+	if got != want {
+		t.Fatalf("SelectedID after reorder = %q, want %q (focused on moved session)", got, want)
+	}
+}
+
+func navigateToTop(t *testing.T, m tea.Model) tea.Model {
+	t.Helper()
+	for i := 0; i < 50; i++ {
+		next, _ := m.(Model).Update(keyPress("k"))
+		if next.(Model).tree.SelectedID() == m.(Model).tree.SelectedID() {
+			return next
+		}
+		m = next
+	}
+	t.Fatalf("did not reach top after 50 'k' presses")
+	return m
+}
+
 func newSessionService(repo *mocks.MockSessionRepository) service.SessionService {
 	if repo == nil {
 		repo = &mocks.MockSessionRepository{}

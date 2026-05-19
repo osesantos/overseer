@@ -63,6 +63,103 @@ func TestTreeModel_HeightLimitsVisibleRows(t *testing.T) {
 	}
 }
 
+func TestTreeModel_MoveCursorClampsToLastRowWhenOverflowing(t *testing.T) {
+	tree := newTestTree().ExpandAll().Focus()
+
+	tree, cmd := tree.MoveCursor(99)
+
+	if got := tree.SelectedID(); got != "session-beta" {
+		t.Fatalf("SelectedID() = %q, want %q", got, "session-beta")
+	}
+	if cmd == nil {
+		t.Fatalf("MoveCursor() cmd = nil, want selection emit")
+	}
+}
+
+func TestTreeModel_MoveCursorClampsToFirstRowWhenUnderflowing(t *testing.T) {
+	tree := newTestTree().ExpandAll().SelectID("session-beta").Focus()
+
+	tree, cmd := tree.MoveCursor(-99)
+
+	if got := tree.SelectedID(); got != "project" {
+		t.Fatalf("SelectedID() = %q, want %q", got, "project")
+	}
+	if cmd == nil {
+		t.Fatalf("MoveCursor() cmd = nil, want selection emit")
+	}
+}
+
+func TestTreeModel_MoveCursorReturnsNilCmdWhenNoMovement(t *testing.T) {
+	tree := newTestTree().ExpandAll().Focus()
+
+	_, cmd := tree.MoveCursor(-1)
+
+	if cmd != nil {
+		t.Fatalf("MoveCursor(-1) at top: cmd = %#v, want nil", cmd)
+	}
+}
+
+func TestTreeModel_MoveToNextFindsMatchingItem(t *testing.T) {
+	tree := newTreeWithTwoGroups().ExpandAll().Focus()
+
+	tree, cmd := tree.MoveToNext(func(item string) bool { return item == "second" })
+
+	if got := tree.SelectedID(); got != "group-second" {
+		t.Fatalf("SelectedID() = %q, want %q", got, "group-second")
+	}
+	if cmd == nil {
+		t.Fatalf("MoveToNext() cmd = nil, want selection emit")
+	}
+}
+
+func TestTreeModel_MoveToNextNoMatchKeepsCursor(t *testing.T) {
+	tree := newTreeWithTwoGroups().ExpandAll().Focus()
+
+	tree, cmd := tree.MoveToNext(func(item string) bool { return item == "nonexistent" })
+
+	if got := tree.SelectedID(); got != "group-first" {
+		t.Fatalf("SelectedID() = %q, want %q (unchanged)", got, "group-first")
+	}
+	if cmd != nil {
+		t.Fatalf("MoveToNext() cmd = %#v, want nil when no match", cmd)
+	}
+}
+
+func TestTreeModel_MoveToPrevFindsMatchingItem(t *testing.T) {
+	tree := newTreeWithTwoGroups().ExpandAll().SelectID("group-second").Focus()
+
+	tree, cmd := tree.MoveToPrev(func(item string) bool { return item == "first" })
+
+	if got := tree.SelectedID(); got != "group-first" {
+		t.Fatalf("SelectedID() = %q, want %q", got, "group-first")
+	}
+	if cmd == nil {
+		t.Fatalf("MoveToPrev() cmd = nil, want selection emit")
+	}
+}
+
+func newTreeWithTwoGroups() components.TreeModel[string] {
+	tree := components.NewTree(func(item string, _, depth int, _, _, _ bool) string {
+		return item
+	})
+	return tree.SetNodes([]components.TreeNode[string]{
+		{
+			ID:   "group-first",
+			Item: "first",
+			Children: []components.TreeNode[string]{
+				{ID: "child-a", Item: "a"},
+			},
+		},
+		{
+			ID:   "group-second",
+			Item: "second",
+			Children: []components.TreeNode[string]{
+				{ID: "child-b", Item: "b"},
+			},
+		},
+	})
+}
+
 func newTestTree() components.TreeModel[string] {
 	tree := components.NewTree(func(item string, _, depth int, hasKids, expanded, _ bool) string {
 		prefix := "· "
