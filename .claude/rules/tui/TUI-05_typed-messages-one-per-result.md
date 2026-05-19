@@ -5,7 +5,7 @@ paths:
 # TUI-05: Typed Messages, One Per Result
 
 ## Rule
-Each async result is its own typed message defined in the feature's `messages.go`; no generic `EventMsg` with a string discriminator.
+Each async result is its own typed message defined in `internal/adapters/primary/tui/shared/messages.go`; no generic `EventMsg` with a string discriminator.
 
 ## Why
 Typed messages make `Update` switch cases exhaustive and compiler-checked; string discriminators are stringly-typed and error-prone.
@@ -13,7 +13,7 @@ Typed messages make `Update` switch cases exhaustive and compiler-checked; strin
 ## Example
 ✅ Good:
 ```go
-// internal/adapters/primary/tui/session/messages.go
+// internal/adapters/primary/tui/shared/messages.go
 type SessionCreatedMsg struct{ Session domain.Session }
 type SessionRenamedMsg struct{ Session domain.Session }
 type CancelFormMsg struct{}

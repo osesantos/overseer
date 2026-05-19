@@ -8,7 +8,7 @@ paths:
 `Update()` switch cases on `tea.KeyPressMsg` must use `key.Matches(msg, binding)` — never compare raw key strings like `msg.String() == "enter"` or `msg.Type == tea.KeyCtrlC`.
 
 ## Why
-`key.Matches` respects the binding's full key set and help text; raw string comparisons bypass the centralized key registry and break when bindings change.
+`key.Matches` respects the binding's full key set and help text; raw string comparisons break when bindings change.
 
 ## Example
 ✅ Good:
