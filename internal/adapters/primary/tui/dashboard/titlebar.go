@@ -1,10 +1,7 @@
 package dashboard
 
 import (
-	"strings"
-
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 )
@@ -37,16 +34,6 @@ func (m TitleBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m TitleBarModel) View() tea.View {
-	branding := m.styles.TitleBar.Branding.Render(m.appName)
-	right := ""
-	gap := ""
-	if m.width > 0 {
-		brandingWidth := lipgloss.Width(branding)
-		rightWidth := lipgloss.Width(right)
-		gapWidth := m.width - brandingWidth - rightWidth
-		if gapWidth > 0 {
-			gap = m.styles.TitleBar.Base.Render(strings.Repeat(" ", gapWidth))
-		}
-	}
-	return tea.NewView(branding + gap + right)
+	branding := m.styles.TitleBar.Branding.Width(m.width).Height(m.height).Render(m.appName)
+	return tea.NewView(branding)
 }

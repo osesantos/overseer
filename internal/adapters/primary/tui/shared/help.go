@@ -41,7 +41,7 @@ func (m *HelpBarModel) SetSize(width, height int) {
 // including the gaps between key chips, descriptions, and separators —
 // carries the bar background, so the bar reads as one continuous strip.
 func (m HelpBarModel) renderHelpBar(s *styles.Styles, bindings []key.Binding) string {
-	bar := s.Help.Bar
+	bar := s.Help.Bar.Height(m.height).Width(m.width)
 	available := m.width - bar.GetHorizontalFrameSize()
 	sep := s.Help.Separator.Render(" • ")
 	sepW := lipgloss.Width(sep)

@@ -17,11 +17,6 @@ const (
 	SessionsListWidthPercent = 30
 	TitleBarHeight           = 1
 	HelpBarHeight            = 1
-	RootDefaultWidth         = 80
-	RootDefaultHeight        = 24
-	SessionsPaneID           = "sessions"
-	DetailsPaneID            = "details"
-	NewSessionPopupID        = "new-session-form"
 )
 
 type Model struct {
@@ -42,7 +37,7 @@ type Model struct {
 }
 
 func New(styles *styles.Styles, sessionsService service.SessionService) Model {
-	m := Model{styles: styles, titlebar: newTitlebar(styles, "Overseer"), width: RootDefaultWidth, height: RootDefaultHeight, focused: true,
+	m := Model{styles: styles, titlebar: newTitlebar(styles, "Overseer"), width: 0, height: 0, focused: true,
 		sessionsModel:   sessionui.New(styles, sessionsService),
 		detailsModel:    newDetailsModel(*styles),
 		helpBar:         shared.NewHelpBarModel(styles, sessionsListKeyBindings),
