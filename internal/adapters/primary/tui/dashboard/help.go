@@ -64,8 +64,8 @@ func defaultHelpBarKeys() helpBarKeys {
 	}
 }
 
-// HelpModel is the BubbleTea sub-model for the help bar.
-type HelpModel struct {
+// HelpBarModel is the BubbleTea sub-model for the help bar.
+type HelpBarModel struct {
 	help       bubblehelp.Model
 	registry   HelpRegistry
 	activePane string
@@ -73,8 +73,8 @@ type HelpModel struct {
 	keys       helpBarKeys
 }
 
-func newHelpBar(registry HelpRegistry, s *styles.Styles) HelpModel {
-	return HelpModel{
+func newHelpBar(registry HelpRegistry, s *styles.Styles) HelpBarModel {
+	return HelpBarModel{
 		help:     newHelpComponent(s),
 		registry: registry,
 		keys:     defaultHelpBarKeys(),
@@ -98,9 +98,9 @@ func newHelpComponent(s *styles.Styles) bubblehelp.Model {
 	return h
 }
 
-func (m HelpModel) Init() tea.Cmd { return nil }
+func (m HelpBarModel) Init() tea.Cmd { return nil }
 
-func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m HelpBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if key.Matches(msg, m.keys.toggleHelp) {
@@ -113,11 +113,12 @@ func (m HelpModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m HelpModel) View() tea.View {
+func (m HelpBarModel) View() tea.View {
 	km := helpKeyMapAdapter{bindings: m.registry.BindingsFor(m.activePane)}
 	return tea.NewView(m.help.View(km))
 }
 
-func (m *HelpModel) SetActivePane(name string) {
+func (m HelpBarModel) SetActivePane(name string) HelpBarModel {
 	m.activePane = name
+	return m
 }

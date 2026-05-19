@@ -103,14 +103,12 @@ func (m Model) SetSize(width, height int) Model {
 	return m
 }
 
-func (m Model) Focus() Model {
-	m.focused = true
-	return m
+func (m Model) SetFocus(focus bool) {
+	m.focused = focus
 }
 
-func (m Model) Blur() Model {
-	m.focused = false
-	return m
+func (m Model) IsFocused() bool {
+	return m.focused
 }
 
 func (m Model) View() tea.View {

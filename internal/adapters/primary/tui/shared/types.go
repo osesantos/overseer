@@ -10,8 +10,8 @@ type Resizable interface {
 }
 
 type Focusable interface {
-	Focus()
-	Blur()
+	IsFocused() bool
+	Focus() tea.Model
 }
 
 type KeyBindable interface {

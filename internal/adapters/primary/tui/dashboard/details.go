@@ -10,26 +10,26 @@ import (
 var AttachShell = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "attach shell"))
 var AttachAgent = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "attach agent"))
 
-type PreviewModel struct {
+type DetailsModel struct {
 	width   int
 	height  int
 	styles  styles.Styles
 	focused bool
 }
 
-func newPreview(s styles.Styles) PreviewModel {
-	return PreviewModel{styles: s}
+func newDetailsModel(s styles.Styles) DetailsModel {
+	return DetailsModel{styles: s}
 }
 
-func (m PreviewModel) Init() tea.Cmd {
+func (m DetailsModel) Init() tea.Cmd {
 	return nil
 }
 
-func (m PreviewModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m DetailsModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m PreviewModel) View() tea.View {
+func (m DetailsModel) View() tea.View {
 	title := m.styles.EmptyState.Title.Render("Not implemented yet")
 	hint := components.KeyBadge(&m.styles, "n", "create session")
 	content := title + "\n" + hint
@@ -37,15 +37,16 @@ func (m PreviewModel) View() tea.View {
 	return components.PanelWithSize(&m.styles, content, m.focused, m.width, m.height)
 }
 
-func (m *PreviewModel) SetSize(width, height int) {
+func (m DetailsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 }
 
-func (m PreviewModel) KeyBindings() []key.Binding {
+func (m DetailsModel) KeyBindings() []key.Binding {
 	return []key.Binding{AttachShell, AttachAgent}
 }
 
-func (m *PreviewModel) SetFocus(focus bool) {
+func (m DetailsModel) SetFocus(focus bool) DetailsModel {
 	m.focused = focus
+	return m
 }

@@ -14,58 +14,50 @@ import (
 type Pane int
 
 const (
-	PaneSessions Pane = iota
-	PanePreview
 	SessionsListWidthPercent = 30
 	TitleBarHeight           = 1
 	HelpBarHeight            = 1
+	RootDefaultWidth         = 80
+	RootDefaultHeight        = 24
+	SessionsPaneID           = "sessions"
+	DetailsPaneID            = "details"
 )
 
 type Model struct {
-	titlebar     TitlebarModel
-	sessionsList sessionui.Model
-	previewPanel PreviewModel
-	helpBar      HelpModel
-	createForm   *sessionui.CreateFormModel
+	// children
+	titlebar      TitleBarModel
+	sessionsModel sessionui.Model
+	detailsModel  DetailsModel
+	helpBar       HelpBarModel
+	createForm    sessionui.CreateFormModel
 
-	// this model state
-	activePane      Pane
+	// model state
 	width           int
 	height          int
 	tooSmall        bool
+	focused         bool
 	styles          *styles.Styles
 	sessionsService service.SessionService
 }
 
 func New(styles *styles.Styles, sessionsService service.SessionService, registry HelpRegistry) Model {
-	sessions := sessionui.New(styles, sessionsService)
-	helpBar := newHelpBar(registry, styles)
-	previewPanel := newPreview(*styles)
-	registry.RegisterPane("sessions", sessions.KeyBindings())
-	registry.RegisterPane("preview", previewPanel.KeyBindings())
-	sessions.Focus()
-	previewPanel.SetFocus(false)
-	helpBar.SetActivePane("sessions")
-
-	return Model{
-		styles:          styles,
-		titlebar:        newTitlebar(styles, "Overseer"),
-		sessionsList:    sessions,
-		helpBar:         helpBar,
-		activePane:      PaneSessions,
-		previewPanel:    previewPanel,
+	m := Model{styles: styles, titlebar: newTitlebar(styles, "Overseer"), width: RootDefaultWidth, height: RootDefaultHeight, focused: true,
+		sessionsModel:   sessionui.New(styles, sessionsService),
+		helpBar:         newHelpBar(registry, styles),
+		detailsModel:    newDetailsModel(*styles),
 		sessionsService: sessionsService,
-		width:           80,
-		height:          24,
 	}
+
+	registry.RegisterPane(SessionsPaneID, m.sessionsModel.KeyBindings())
+	registry.RegisterPane(DetailsPaneID, m.detailsModel.KeyBindings())
+	m.helpBar.SetActivePane(SessionsPaneID)
+	m.sessionsModel.SetFocus(true)
+
+	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.titlebar.Init(), m.sessionsList.Init(), m.previewPanel.Init(), m.helpBar.Init())
-}
-
-func (m Model) hasFocus() bool {
-	return m.createForm == nil
+	return tea.Batch(m.titlebar.Init(), m.sessionsModel.Init(), m.detailsModel.Init(), m.helpBar.Init())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -73,32 +65,44 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return m.resize(msg)
 	case sessionui.SessionCreatedMsg:
-		m.createForm = nil
-		return m, m.sessionsList.Init()
+		return m, m.sessionsModel.Init()
 	case sessionui.CancelFormMsg:
-		m.createForm = nil
+		m.focused = true
 		return m, nil
 	case tea.KeyPressMsg:
-		if key.Matches(msg, shared.QuitKey) && m.hasFocus() {
+		if key.Matches(msg, quitKeyBinding) && m.focused {
 			return m, tea.Quit
 		}
-		if key.Matches(msg, shared.HelpMenuKey) && m.hasFocus() {
+		if key.Matches(msg, helpMenuKeyBinding) && m.focused {
 			var cmd tea.Cmd
 			m.helpBar, cmd = shared.UpdateModel(m.helpBar, msg)
 			return m, cmd
 		}
-		if key.Matches(msg, shared.NewSessionKey) && m.createForm == nil && m.activePane == PaneSessions {
-			cf := sessionui.NewCreateForm(m.styles, m.sessionsService)
-			m.createForm = &cf
-			return m, cf.Init()
+		if key.Matches(msg, nextTabKeyBinding) && m.focused {
+			if m.sessionsModel.IsFocused() {
+				m.sessionsModel.SetFocus(false)
+				m.detailsModel = m.detailsModel.SetFocus(true)
+				m.helpBar = m.helpBar.SetActivePane(DetailsPaneID)
+			} else {
+				m.sessionsModel.SetFocus(true)
+				m.detailsModel = m.detailsModel.SetFocus(false)
+				m.helpBar = m.helpBar.SetActivePane(SessionsPaneID)
+			}
+
+			return m, nil
+
+		}
+		if key.Matches(msg, newSessionKeyBinding) && !m.focused && m.sessionsModel.IsFocused() {
+			m.createForm = sessionui.NewCreateForm(m.styles, m.sessionsService)
+			m.focused = false
+			return m, m.createForm.Init()
 		}
 	}
 
 	// If a form is open, route all messages to it first
-	if m.createForm != nil {
+	if !m.focused {
 		var cmd tea.Cmd
-		createForm, cmd := shared.UpdateModel(*m.createForm, msg)
-		m.createForm = &createForm
+		m.createForm, cmd = shared.UpdateModel(m.createForm, msg)
 		return m, cmd
 	}
 
@@ -110,7 +114,7 @@ func (m Model) View() tea.View {
 		msg := m.styles.TooSmall.Message.Render("Terminal too small. Minimum size: 60x15.")
 		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
 	}
-	if m.createForm != nil {
+	if !m.focused {
 		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.createForm.View().Content))
 	}
 
@@ -123,8 +127,8 @@ func (m Model) View() tea.View {
 	leftWidth := m.width * SessionsListWidthPercent / 100
 	rightWidth := m.width - leftWidth // right pane
 
-	left := fit(m.styles, m.sessionsList.View().Content, leftWidth, bodyHeight)
-	right := fit(m.styles, m.previewPanel.View().Content, rightWidth, bodyHeight)
+	left := fit(m.styles, m.sessionsModel.View().Content, leftWidth, bodyHeight)
+	right := fit(m.styles, m.detailsModel.View().Content, rightWidth, bodyHeight)
 	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
 	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, body, helpView)
 
@@ -143,14 +147,14 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
 
-	m.sessionsList.SetSize(leftWidth, bodyHeight)
-	m.previewPanel.SetSize(rightWidth, bodyHeight)
+	m.sessionsModel.SetSize(leftWidth, bodyHeight)
+	m.detailsModel.SetSize(rightWidth, bodyHeight)
 
 	m.titlebar, cmd = shared.UpdateModel(m.titlebar, tea.WindowSizeMsg{Width: m.width, Height: TitleBarHeight})
 	cmds = append(cmds, cmd)
-	m.sessionsList, cmd = shared.UpdateModel(m.sessionsList, tea.WindowSizeMsg{Width: leftWidth, Height: bodyHeight})
+	m.sessionsModel, cmd = shared.UpdateModel(m.sessionsModel, tea.WindowSizeMsg{Width: leftWidth, Height: bodyHeight})
 	cmds = append(cmds, cmd)
-	m.previewPanel, cmd = shared.UpdateModel(m.previewPanel, tea.WindowSizeMsg{Width: rightWidth, Height: bodyHeight})
+	m.detailsModel, cmd = shared.UpdateModel(m.detailsModel, tea.WindowSizeMsg{Width: rightWidth, Height: bodyHeight})
 	cmds = append(cmds, cmd)
 	m.helpBar, cmd = shared.UpdateModel(m.helpBar, tea.WindowSizeMsg{Width: m.width, Height: HelpBarHeight})
 	cmds = append(cmds, cmd)
