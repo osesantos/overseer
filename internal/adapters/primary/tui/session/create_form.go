@@ -7,10 +7,12 @@ import (
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
+	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
@@ -21,14 +23,15 @@ const (
 
 type CreateFormModel struct {
 	nameInput       textinput.Model
-	projectInput    textinput.Model
+	projectIdx      int
+	projects        []domain.Project
 	focusIndex      shared.CircularInt
 	errMsg          string
 	sessionsService service.SessionService
 	styles          *styles.Styles
 }
 
-func NewCreateForm(s *styles.Styles, sessionsService service.SessionService) CreateFormModel {
+func NewCreateForm(s *styles.Styles, sessionsService service.SessionService, projects []domain.Project) CreateFormModel {
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Session name"
 	nameInput.CharLimit = 100
@@ -37,17 +40,10 @@ func NewCreateForm(s *styles.Styles, sessionsService service.SessionService) Cre
 	nameInput.SetVirtualCursor(false)
 	nameInput.Focus()
 
-	projectInput := textinput.New()
-	projectInput.Placeholder = "Project name"
-	projectInput.CharLimit = 100
-	projectInput.SetWidth(36)
-	projectInput.SetStyles(textinput.Styles{})
-	projectInput.SetVirtualCursor(false)
-	projectInput.Blur()
-
 	return CreateFormModel{
 		nameInput:       nameInput,
-		projectInput:    projectInput,
+		projectIdx:      0,
+		projects:        projects,
 		focusIndex:      shared.NewCircularInt(0, 1),
 		sessionsService: sessionsService,
 		styles:          s,
@@ -62,7 +58,7 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if key.Matches(msg, popupCloseKeyBinding) {
-			return m, func() tea.Msg { return shared.NewSessionPopupCloseMsg{} }
+			return m, shared.Emit(shared.NewSessionPopupCloseMsg{})
 		}
 		if key.Matches(msg, popupSubmitFormKeyBinding) {
 			return m.submit()
@@ -77,6 +73,16 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.updateFocusAndBlurs()
 			return m, nil
 		}
+		if m.focusIndex.Value() == FieldProjectSelectedIndex {
+			if key.Matches(msg, popupSelectorNextKeyBinding) {
+				m.cycleProject(1)
+				return m, nil
+			}
+			if key.Matches(msg, popupSelectorPrevKeyBinding) {
+				m.cycleProject(-1)
+				return m, nil
+			}
+		}
 	}
 
 	if msg, ok := msg.(shared.SessionCreateErrMsg); ok {
@@ -85,40 +91,49 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if _, ok := msg.(shared.SessionCreatedMsg); ok {
-		return m, tea.Batch(
-			//shared.Emit(msg),
-			shared.Emit(shared.NewSessionPopupCloseMsg{}),
-		)
+		return m, shared.Emit(shared.NewSessionPopupCloseMsg{})
 	}
 
-	switch m.focusIndex.Value() {
-	case FieldNameSelectedIndex:
+	if m.focusIndex.Value() == FieldNameSelectedIndex {
 		var cmd tea.Cmd
 		m.nameInput, cmd = m.nameInput.Update(msg)
-		return m, cmd
-	case FieldProjectSelectedIndex:
-		var cmd tea.Cmd
-		m.projectInput, cmd = m.projectInput.Update(msg)
 		return m, cmd
 	}
 
 	return m, nil
 }
 
+func (m *CreateFormModel) cycleProject(direction int) {
+	choices := len(m.projects) + 1
+	if choices <= 0 {
+		return
+	}
+	m.projectIdx = ((m.projectIdx + direction) % choices + choices) % choices
+}
+
+func (m CreateFormModel) selectedProjectID() uuid.UUID {
+	if m.projectIdx == 0 {
+		return uuid.Nil
+	}
+	return m.projects[m.projectIdx-1].ID
+}
+
+func (m CreateFormModel) selectedProjectLabel() string {
+	if m.projectIdx == 0 || len(m.projects) == 0 {
+		return "(none)"
+	}
+	return m.projects[m.projectIdx-1].Name
+}
+
 func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 	name := strings.TrimSpace(m.nameInput.Value())
-	project := strings.TrimSpace(m.projectInput.Value())
 	if name == "" {
 		m.errMsg = "session name is required"
 		return m, nil
 	}
-	if project == "" {
-		m.errMsg = "project name is required"
-		return m, nil
-	}
 
 	m.errMsg = ""
-	req := service.CreateSessionRequest{Name: name, ProjectName: project}
+	req := service.CreateSessionRequest{Name: name, ProjectID: m.selectedProjectID()}
 	return m, func() tea.Msg {
 		resp, err := m.sessionsService.Create(context.Background(), req)
 		if err != nil {
@@ -129,14 +144,11 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 }
 
 func (m *CreateFormModel) updateFocusAndBlurs() {
-	switch m.focusIndex.Value() {
-	case FieldNameSelectedIndex:
+	if m.focusIndex.Value() == FieldNameSelectedIndex {
 		m.nameInput.Focus()
-		m.projectInput.Blur()
-	case FieldProjectSelectedIndex:
-		m.projectInput.Focus()
-		m.nameInput.Blur()
+		return
 	}
+	m.nameInput.Blur()
 }
 
 func (m CreateFormModel) View() tea.View {
@@ -149,17 +161,25 @@ func (m CreateFormModel) View() tea.View {
 	b.WriteByte('\n')
 	b.WriteString(s.Label.Render("Project"))
 	b.WriteByte('\n')
-	b.WriteString(m.projectInput.View())
+	b.WriteString(m.projectSelectorView())
 	b.WriteByte('\n')
 	b.WriteString(s.Error.Render(m.errMsg))
 	b.WriteByte('\n')
 	if m.errMsg != "" {
 		b.WriteByte('\n')
 	}
-	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
+	b.WriteString(m.styles.Help.Description.Render("Tab: next field  ←/→: cycle project  Enter: submit  Esc: cancel"))
 	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
 }
 
+func (m CreateFormModel) projectSelectorView() string {
+	label := m.selectedProjectLabel()
+	if m.focusIndex.Value() == FieldProjectSelectedIndex {
+		return m.styles.ListRow.Selected.Render("< " + label + " >")
+	}
+	return m.styles.ListRow.Normal.Render("  " + label + "  ")
+}
+
 func (m CreateFormModel) KeyBindings() []key.Binding {
-	return []key.Binding{popupNextFieldKeyBinding, popupPrevFieldKeyBinding, popupSubmitFormKeyBinding, popupCloseKeyBinding}
+	return []key.Binding{popupNextFieldKeyBinding, popupPrevFieldKeyBinding, popupSelectorNextKeyBinding, popupSelectorPrevKeyBinding, popupSubmitFormKeyBinding, popupCloseKeyBinding}
 }

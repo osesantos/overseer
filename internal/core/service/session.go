@@ -12,7 +12,6 @@ import (
 	"github.com/dnlopes/overseer/internal/shared/errs"
 )
 
-// SessionService orchestrates Session use cases.
 type SessionService struct {
 	repo   domain.SessionRepository
 	tmux   domain.TmuxAdapter
@@ -27,8 +26,8 @@ func NewSessionService(repo domain.SessionRepository, tmux domain.TmuxAdapter, g
 // --- Create ---
 
 type CreateSessionRequest struct {
-	Name        string
-	ProjectName string
+	Name      string
+	ProjectID uuid.UUID
 }
 
 type CreateSessionResponse struct {
@@ -36,7 +35,7 @@ type CreateSessionResponse struct {
 }
 
 func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (CreateSessionResponse, error) {
-	sess, err := domain.NewSession(req.Name, req.ProjectName)
+	sess, err := domain.NewSession(req.Name, req.ProjectID)
 	if err != nil {
 		return CreateSessionResponse{}, err
 	}
@@ -48,7 +47,7 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 
 	nextOrder := 1
 	for _, candidate := range existing {
-		if candidate.ProjectName != sess.ProjectName {
+		if candidate.ProjectID != sess.ProjectID {
 			continue
 		}
 		if candidate.Name == sess.Name {
@@ -99,7 +98,7 @@ func (s *SessionService) Rename(ctx context.Context, req RenameSessionRequest) (
 		if candidate.ID == sess.ID {
 			continue
 		}
-		if candidate.ProjectName == sess.ProjectName && candidate.Name == req.NewName {
+		if candidate.ProjectID == sess.ProjectID && candidate.Name == req.NewName {
 			return RenameSessionResponse{}, domain.ErrSessionAlreadyExists
 		}
 	}
@@ -130,10 +129,10 @@ func (s *SessionService) List(ctx context.Context, _ ListSessionsRequest) (ListS
 	}
 
 	sort.Slice(sessions, func(i, j int) bool {
-		if sessions[i].ProjectName == sessions[j].ProjectName {
+		if sessions[i].ProjectID == sessions[j].ProjectID {
 			return sessions[i].Order < sessions[j].Order
 		}
-		return sessions[i].ProjectName < sessions[j].ProjectName
+		return sessions[i].ProjectID.String() < sessions[j].ProjectID.String()
 	})
 
 	return ListSessionsResponse{Sessions: sessions}, nil
@@ -163,7 +162,7 @@ func (s *SessionService) Reorder(ctx context.Context, req ReorderSessionRequest)
 
 	projectSessions := make([]domain.Session, 0, len(all))
 	for _, sess := range all {
-		if sess.ProjectName == target.ProjectName {
+		if sess.ProjectID == target.ProjectID {
 			projectSessions = append(projectSessions, sess)
 		}
 	}

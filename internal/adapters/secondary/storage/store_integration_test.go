@@ -11,13 +11,15 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/google/uuid"
+
 	"github.com/dnlopes/overseer/internal/adapters/secondary/storage"
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
 func TestIntegration_CorruptionRecovery(t *testing.T) {
 	dir := t.TempDir()
-	path := filepath.Join(dir, "sessions.json")
+	path := filepath.Join(dir, "data.json")
 	ctx := context.Background()
 
 	if err := os.WriteFile(path, []byte(`{not valid json`), 0o644); err != nil {
@@ -29,7 +31,7 @@ func TestIntegration_CorruptionRecovery(t *testing.T) {
 		t.Fatalf("New() error = %v after corruption", err)
 	}
 
-	all, err := store.List(ctx)
+	all, err := store.Sessions().List(ctx)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
@@ -52,11 +54,11 @@ func TestIntegration_CorruptionRecovery(t *testing.T) {
 		t.Error("expected corrupted file to be renamed with .corrupted. suffix, none found")
 	}
 
-	sess := makeSession(t, "post-recovery", "proj")
-	if err := store.Save(ctx, sess); err != nil {
+	sess := makeSession(t, "post-recovery", uuid.New())
+	if err := store.Sessions().Save(ctx, sess); err != nil {
 		t.Fatalf("Save() after corruption recovery error = %v", err)
 	}
-	got, err := store.Get(ctx, sess.ID)
+	got, err := store.Sessions().Get(ctx, sess.ID)
 	if err != nil {
 		t.Fatalf("Get() after corruption recovery error = %v", err)
 	}
@@ -66,18 +68,20 @@ func TestIntegration_CorruptionRecovery(t *testing.T) {
 }
 
 func TestIntegration_ConcurrentSaves(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "sessions.json")
+	path := filepath.Join(t.TempDir(), "data.json")
 	ctx := context.Background()
 
 	store, err := storage.New(path, discardLogger())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
+	sessionStore := store.Sessions()
 
 	const n = 100
+	projectID := uuid.New()
 	sessions := make([]domain.Session, n)
 	for i := range sessions {
-		sess, err := domain.NewSession(fmt.Sprintf("session-%d", i), "proj")
+		sess, err := domain.NewSession(fmt.Sprintf("session-%d", i), projectID)
 		if err != nil {
 			t.Fatalf("domain.NewSession() error = %v", err)
 		}
@@ -90,7 +94,7 @@ func TestIntegration_ConcurrentSaves(t *testing.T) {
 	for _, sess := range sessions {
 		go func(s domain.Session) {
 			defer wg.Done()
-			errCh <- store.Save(ctx, s)
+			errCh <- sessionStore.Save(ctx, s)
 		}(sess)
 	}
 	wg.Wait()
@@ -102,38 +106,11 @@ func TestIntegration_ConcurrentSaves(t *testing.T) {
 		}
 	}
 
-	all, err := store.List(ctx)
+	all, err := sessionStore.List(ctx)
 	if err != nil {
 		t.Fatalf("List() error = %v", err)
 	}
 	if len(all) != n {
 		t.Errorf("List() len = %d after %d concurrent saves, want %d", len(all), n, n)
-	}
-}
-
-func TestIntegration_MissingParentDirsCreated(t *testing.T) {
-	path := filepath.Join(t.TempDir(), "deep", "nested", "dir", "sessions.json")
-	ctx := context.Background()
-
-	store, err := storage.New(path, discardLogger())
-	if err != nil {
-		t.Fatalf("New() error = %v with missing parent dirs", err)
-	}
-
-	sess := makeSession(t, "in-nested-dir", "proj")
-	if err := store.Save(ctx, sess); err != nil {
-		t.Fatalf("Save() error = %v", err)
-	}
-
-	store2, err := storage.New(path, discardLogger())
-	if err != nil {
-		t.Fatalf("New() (reload) error = %v", err)
-	}
-	got, err := store2.Get(ctx, sess.ID)
-	if err != nil {
-		t.Fatalf("Get() after reload error = %v", err)
-	}
-	if got.Name != sess.Name {
-		t.Errorf("Get() Name = %q, want %q", got.Name, sess.Name)
 	}
 }

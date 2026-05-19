@@ -10,18 +10,18 @@ import (
 )
 
 // Session is the aggregate representing a single AI agent session.
+// ProjectID is uuid.Nil when the session is not associated with any project.
 type Session struct {
-	ID          uuid.UUID
-	Name        string
-	ProjectName string
-	Order       int
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID        uuid.UUID
+	Name      string
+	ProjectID uuid.UUID
+	Order     int
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
-func NewSession(name, project string) (Session, error) {
+func NewSession(name string, projectID uuid.UUID) (Session, error) {
 	name = strings.TrimSpace(name)
-	project = strings.TrimSpace(project)
 
 	if name == "" {
 		return Session{}, ErrSessionEmptyName
@@ -29,21 +29,15 @@ func NewSession(name, project string) (Session, error) {
 	if len(name) > 100 {
 		return Session{}, ErrSessionNameTooLong
 	}
-	if project == "" {
-		return Session{}, ErrSessionEmptyProject
-	}
-	if len(project) > 100 {
-		return Session{}, ErrSessionProjectTooLong
-	}
 
 	now := time.Now()
 	return Session{
-		ID:          uuid.New(),
-		Name:        name,
-		ProjectName: project,
-		Order:       0,
-		CreatedAt:   now,
-		UpdatedAt:   now,
+		ID:        uuid.New(),
+		Name:      name,
+		ProjectID: projectID,
+		Order:     0,
+		CreatedAt: now,
+		UpdatedAt: now,
 	}, nil
 }
 
@@ -59,10 +53,6 @@ func (s *Session) Rename(newName string) error {
 	s.Name = newName
 	s.UpdatedAt = time.Now()
 	return nil
-}
-
-func (s Session) String() string {
-	return "[" + s.ProjectName + "] " + s.Name
 }
 
 // Session ports.
@@ -82,6 +72,7 @@ type TmuxAdapter interface {
 type GitAdapter interface {
 	CreateWorktree(ctx context.Context, baseBranch, path string) error
 	RemoveWorktree(ctx context.Context, path string) error
+	IsGitRepo(ctx context.Context, path string) error
 }
 
 type AgentLauncher interface {
@@ -90,10 +81,8 @@ type AgentLauncher interface {
 
 // Session sentinel errors.
 var (
-	ErrSessionEmptyName      = errors.New("session name cannot be empty")
-	ErrSessionNameTooLong    = errors.New("session name exceeds 100 characters")
-	ErrSessionEmptyProject   = errors.New("project name cannot be empty")
-	ErrSessionProjectTooLong = errors.New("project name exceeds 100 characters")
-	ErrSessionNotFound       = errors.New("session not found")
-	ErrSessionAlreadyExists  = errors.New("session already exists")
+	ErrSessionEmptyName     = errors.New("session name cannot be empty")
+	ErrSessionNameTooLong   = errors.New("session name exceeds 100 characters")
+	ErrSessionNotFound      = errors.New("session not found")
+	ErrSessionAlreadyExists = errors.New("session already exists")
 )

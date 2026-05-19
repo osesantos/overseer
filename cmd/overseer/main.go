@@ -43,10 +43,11 @@ func main() {
 	agentStub := &agent.Stub{}
 	_ = agentStub
 
-	sessionSvc := service.NewSessionService(store, tmuxStub, gitStub, log)
+	sessionSvc := service.NewSessionService(store.Sessions(), tmuxStub, gitStub, log)
+	projectSvc := service.NewProjectService(store.Projects(), gitStub, log)
 
 	s := styles.New()
-	dash := dashboard.New(s, *sessionSvc)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {

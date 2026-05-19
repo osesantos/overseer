@@ -8,6 +8,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/google/uuid"
+
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/shared/errs"
 	"github.com/dnlopes/overseer/internal/testutil"
@@ -34,12 +36,13 @@ func assertSessionOrder(t *testing.T, sessions []domain.Session, name string, wa
 // --- Create ---
 
 func TestSessionService_Create_HappyPath(t *testing.T) {
+	overseerID := uuid.New()
 	repo := &mocks.MockSessionRepository{}
 	tmux := &mocks.MockTmuxAdapter{CreateSessionResult: "tmux-alpha"}
 	git := &mocks.MockGitAdapter{}
 	svc := NewSessionService(repo, tmux, git, testLogger())
 
-	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectName: "overseer"})
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: overseerID})
 
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -47,8 +50,8 @@ func TestSessionService_Create_HappyPath(t *testing.T) {
 	if resp.Session.Name != "alpha" {
 		t.Fatalf("Create() Session.Name = %q, want %q", resp.Session.Name, "alpha")
 	}
-	if resp.Session.ProjectName != "overseer" {
-		t.Fatalf("Create() Session.ProjectName = %q, want %q", resp.Session.ProjectName, "overseer")
+	if resp.Session.ProjectID != overseerID {
+		t.Fatalf("Create() Session.ProjectID = %v, want %v", resp.Session.ProjectID, overseerID)
 	}
 	if resp.Session.Order != 1 {
 		t.Fatalf("Create() Session.Order = %d, want 1", resp.Session.Order)
@@ -65,8 +68,22 @@ func TestSessionService_Create_HappyPath(t *testing.T) {
 	if repo.SaveCalls != 1 {
 		t.Fatalf("SessionRepository.Save calls = %d, want 1", repo.SaveCalls)
 	}
-	if repo.SavedSession.Name != "alpha" || repo.SavedSession.ProjectName != "overseer" || repo.SavedSession.Order != 1 {
-		t.Fatalf("SessionRepository.Save session = %#v, want alpha/overseer order 1", repo.SavedSession)
+	if repo.SavedSession.Name != "alpha" || repo.SavedSession.ProjectID != overseerID || repo.SavedSession.Order != 1 {
+		t.Fatalf("SessionRepository.Save session = %#v, want alpha/<overseerID>/order 1", repo.SavedSession)
+	}
+}
+
+func TestSessionService_Create_WithoutProjectAllowed(t *testing.T) {
+	repo := &mocks.MockSessionRepository{}
+	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
+
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "orphan", ProjectID: uuid.Nil})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v, want nil for project-less session", err)
+	}
+	if resp.Session.ProjectID != uuid.Nil {
+		t.Fatalf("Create() Session.ProjectID = %v, want uuid.Nil", resp.Session.ProjectID)
 	}
 }
 
@@ -76,7 +93,7 @@ func TestSessionService_Create_EmptyName(t *testing.T) {
 	git := &mocks.MockGitAdapter{}
 	svc := NewSessionService(repo, tmux, git, testLogger())
 
-	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "", ProjectName: "overseer"})
+	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "", ProjectID: uuid.New()})
 
 	if !errors.Is(err, domain.ErrSessionEmptyName) {
 		t.Fatalf("Create() error = %v, want %v", err, domain.ErrSessionEmptyName)
@@ -86,39 +103,61 @@ func TestSessionService_Create_EmptyName(t *testing.T) {
 	}
 }
 
-func TestSessionService_Create_DuplicateName(t *testing.T) {
-	existing := testutil.MakeSession("alpha", "overseer")
+func TestSessionService_Create_DuplicateNameWithinSameProject(t *testing.T) {
+	overseerID := uuid.New()
+	existing := testutil.MakeSession("alpha", overseerID)
 	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{existing}}
-	tmux := &mocks.MockTmuxAdapter{}
-	git := &mocks.MockGitAdapter{}
-	svc := NewSessionService(repo, tmux, git, testLogger())
+	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
-	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectName: "overseer"})
+	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: overseerID})
 
 	if !errors.Is(err, domain.ErrSessionAlreadyExists) {
 		t.Fatalf("Create() error = %v, want %v", err, domain.ErrSessionAlreadyExists)
 	}
-	if repo.ListCalls != 1 {
-		t.Fatalf("SessionRepository.List calls = %d, want 1", repo.ListCalls)
+	if repo.SaveCalls != 0 {
+		t.Fatalf("SessionRepository.Save calls = %d, want 0 on duplicate", repo.SaveCalls)
 	}
-	if tmux.CreateSessionCalls != 0 || git.CreateWorktreeCalls != 0 || repo.SaveCalls != 0 {
-		t.Fatalf("mocks called on duplicate: tmux=%d git=%d save=%d", tmux.CreateSessionCalls, git.CreateWorktreeCalls, repo.SaveCalls)
+}
+
+func TestSessionService_Create_DuplicateNameAcrossProjectsAllowed(t *testing.T) {
+	overseerID := uuid.New()
+	otherID := uuid.New()
+	existing := testutil.MakeSession("alpha", otherID)
+	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{existing}}
+	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
+
+	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: overseerID})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v, want nil (same name in different project is allowed)", err)
+	}
+}
+
+func TestSessionService_Create_DuplicateNameAmongUnassignedSessions(t *testing.T) {
+	existing := testutil.MakeSession("solo", uuid.Nil)
+	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{existing}}
+	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
+
+	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "solo", ProjectID: uuid.Nil})
+
+	if !errors.Is(err, domain.ErrSessionAlreadyExists) {
+		t.Fatalf("Create() error = %v, want %v (duplicate in unassigned bucket)", err, domain.ErrSessionAlreadyExists)
 	}
 }
 
 func TestSessionService_Create_OrderIncrement(t *testing.T) {
-	first := testutil.MakeSession("alpha", "overseer")
+	overseerID := uuid.New()
+	otherID := uuid.New()
+	first := testutil.MakeSession("alpha", overseerID)
 	first.Order = 1
-	second := testutil.MakeSession("beta", "overseer")
+	second := testutil.MakeSession("beta", overseerID)
 	second.Order = 2
-	otherProject := testutil.MakeSession("gamma", "other")
+	otherProject := testutil.MakeSession("gamma", otherID)
 	otherProject.Order = 9
 	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{first, second, otherProject}}
-	tmux := &mocks.MockTmuxAdapter{}
-	git := &mocks.MockGitAdapter{}
-	svc := NewSessionService(repo, tmux, git, testLogger())
+	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
-	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "gamma", ProjectName: "overseer"})
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "gamma", ProjectID: overseerID})
 
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -138,7 +177,7 @@ func TestSessionService_Create_TmuxError(t *testing.T) {
 	git := &mocks.MockGitAdapter{}
 	svc := NewSessionService(repo, tmux, git, testLogger())
 
-	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectName: "overseer"})
+	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: uuid.New()})
 
 	if !errors.Is(err, tmuxErr) {
 		t.Fatalf("Create() error = %v, want wrapped %v", err, tmuxErr)
@@ -152,14 +191,14 @@ func TestSessionService_Create_TmuxError(t *testing.T) {
 }
 
 func TestSessionService_Create_FirstSessionOrder(t *testing.T) {
-	otherProject := testutil.MakeSession("alpha", "other")
+	overseerID := uuid.New()
+	otherID := uuid.New()
+	otherProject := testutil.MakeSession("alpha", otherID)
 	otherProject.Order = 4
 	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{otherProject}}
-	tmux := &mocks.MockTmuxAdapter{}
-	git := &mocks.MockGitAdapter{}
-	svc := NewSessionService(repo, tmux, git, testLogger())
+	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
-	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectName: "overseer"})
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: overseerID})
 
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -172,7 +211,7 @@ func TestSessionService_Create_FirstSessionOrder(t *testing.T) {
 // --- Rename ---
 
 func TestSessionService_Rename_HappyPath(t *testing.T) {
-	original := testutil.MakeSession("alpha", "overseer")
+	original := testutil.MakeSession("alpha", uuid.New())
 	repo := &mocks.MockSessionRepository{
 		GetResult:  original,
 		ListResult: []domain.Session{original},
@@ -202,7 +241,7 @@ func TestSessionService_Rename_HappyPath(t *testing.T) {
 }
 
 func TestSessionService_Rename_EmptyName(t *testing.T) {
-	original := testutil.MakeSession("alpha", "overseer")
+	original := testutil.MakeSession("alpha", uuid.New())
 	repo := &mocks.MockSessionRepository{GetResult: original}
 	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
@@ -220,7 +259,7 @@ func TestSessionService_Rename_NotFound(t *testing.T) {
 	repo := &mocks.MockSessionRepository{GetErr: domain.ErrSessionNotFound}
 	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
-	_, err := svc.Rename(context.Background(), RenameSessionRequest{ID: testutil.MakeSession("x", "p").ID, NewName: "beta"})
+	_, err := svc.Rename(context.Background(), RenameSessionRequest{ID: uuid.New(), NewName: "beta"})
 
 	if !errors.Is(err, domain.ErrSessionNotFound) {
 		t.Fatalf("Rename() error = %v, want %v", err, domain.ErrSessionNotFound)
@@ -230,9 +269,10 @@ func TestSessionService_Rename_NotFound(t *testing.T) {
 	}
 }
 
-func TestSessionService_Rename_DuplicateName(t *testing.T) {
-	original := testutil.MakeSession("alpha", "overseer")
-	conflicting := testutil.MakeSession("beta", "overseer")
+func TestSessionService_Rename_DuplicateNameInSameProject(t *testing.T) {
+	overseerID := uuid.New()
+	original := testutil.MakeSession("alpha", overseerID)
+	conflicting := testutil.MakeSession("beta", overseerID)
 	repo := &mocks.MockSessionRepository{
 		GetResult:  original,
 		ListResult: []domain.Session{original, conflicting},
@@ -250,7 +290,7 @@ func TestSessionService_Rename_DuplicateName(t *testing.T) {
 }
 
 func TestSessionService_Rename_UpdatedAtChanges(t *testing.T) {
-	original := testutil.MakeSession("alpha", "overseer")
+	original := testutil.MakeSession("alpha", uuid.New())
 	original.UpdatedAt = time.Now().Add(-time.Minute)
 	beforeRename := original.UpdatedAt
 
@@ -289,12 +329,13 @@ func TestSessionService_List_Empty(t *testing.T) {
 	}
 }
 
-func TestSessionService_List_ReturnsRawSessionsSortedByProjectThenOrder(t *testing.T) {
-	s1 := testutil.MakeSession("alpha", "overseer")
+func TestSessionService_List_SortsByOrderWithinSameProject(t *testing.T) {
+	projectID := uuid.New()
+	s1 := testutil.MakeSession("alpha", projectID)
 	s1.Order = 2
-	s2 := testutil.MakeSession("beta", "overseer")
+	s2 := testutil.MakeSession("beta", projectID)
 	s2.Order = 1
-	s3 := testutil.MakeSession("gamma", "overseer")
+	s3 := testutil.MakeSession("gamma", projectID)
 	s3.Order = 3
 	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{s1, s2, s3}}
 	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
@@ -318,12 +359,14 @@ func TestSessionService_List_ReturnsRawSessionsSortedByProjectThenOrder(t *testi
 	}
 }
 
-func TestSessionService_List_SortsProjectsWithoutGrouping(t *testing.T) {
-	s1 := testutil.MakeSession("alpha", "bravo")
-	s1.Order = 1
-	s2 := testutil.MakeSession("beta", "alpha")
-	s2.Order = 1
-	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{s1, s2}}
+func TestSessionService_List_GroupsByProjectID(t *testing.T) {
+	lowID := uuid.MustParse("00000000-0000-0000-0000-000000000001")
+	highID := uuid.MustParse("ffffffff-ffff-ffff-ffff-ffffffffffff")
+	highSession := testutil.MakeSession("alpha", highID)
+	highSession.Order = 1
+	lowSession := testutil.MakeSession("beta", lowID)
+	lowSession.Order = 1
+	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{highSession, lowSession}}
 	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
 	resp, err := svc.List(context.Background(), ListSessionsRequest{})
@@ -334,20 +377,21 @@ func TestSessionService_List_SortsProjectsWithoutGrouping(t *testing.T) {
 	if len(resp.Sessions) != 2 {
 		t.Fatalf("List() len(Sessions) = %d, want 2", len(resp.Sessions))
 	}
-	if resp.Sessions[0].ProjectName != "alpha" {
-		t.Fatalf("Sessions[0].ProjectName = %q, want %q", resp.Sessions[0].ProjectName, "alpha")
+	if resp.Sessions[0].ProjectID != lowID {
+		t.Fatalf("Sessions[0].ProjectID = %v, want lowID", resp.Sessions[0].ProjectID)
 	}
-	if resp.Sessions[1].ProjectName != "bravo" {
-		t.Fatalf("Sessions[1].ProjectName = %q, want %q", resp.Sessions[1].ProjectName, "bravo")
+	if resp.Sessions[1].ProjectID != highID {
+		t.Fatalf("Sessions[1].ProjectID = %v, want highID", resp.Sessions[1].ProjectID)
 	}
 }
 
 func TestSessionService_List_OrderWithinGroup(t *testing.T) {
-	s1 := testutil.MakeSession("first", "overseer")
+	projectID := uuid.New()
+	s1 := testutil.MakeSession("first", projectID)
 	s1.Order = 10
-	s2 := testutil.MakeSession("second", "overseer")
+	s2 := testutil.MakeSession("second", projectID)
 	s2.Order = 3
-	s3 := testutil.MakeSession("third", "overseer")
+	s3 := testutil.MakeSession("third", projectID)
 	s3.Order = 7
 	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{s1, s2, s3}}
 	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
@@ -367,11 +411,12 @@ func TestSessionService_List_OrderWithinGroup(t *testing.T) {
 // --- Reorder ---
 
 func TestSessionService_Reorder_MoveDown(t *testing.T) {
-	a := testutil.MakeSession("A", "proj")
+	projectID := uuid.New()
+	a := testutil.MakeSession("A", projectID)
 	a.Order = 1
-	b := testutil.MakeSession("B", "proj")
+	b := testutil.MakeSession("B", projectID)
 	b.Order = 2
-	c := testutil.MakeSession("C", "proj")
+	c := testutil.MakeSession("C", projectID)
 	c.Order = 3
 
 	repo := &mocks.MockSessionRepository{
@@ -397,11 +442,12 @@ func TestSessionService_Reorder_MoveDown(t *testing.T) {
 }
 
 func TestSessionService_Reorder_MoveUp(t *testing.T) {
-	a := testutil.MakeSession("A", "proj")
+	projectID := uuid.New()
+	a := testutil.MakeSession("A", projectID)
 	a.Order = 1
-	b := testutil.MakeSession("B", "proj")
+	b := testutil.MakeSession("B", projectID)
 	b.Order = 2
-	c := testutil.MakeSession("C", "proj")
+	c := testutil.MakeSession("C", projectID)
 	c.Order = 3
 
 	repo := &mocks.MockSessionRepository{
@@ -427,11 +473,12 @@ func TestSessionService_Reorder_MoveUp(t *testing.T) {
 }
 
 func TestSessionService_Reorder_BoundaryFirst_Up(t *testing.T) {
-	a := testutil.MakeSession("A", "proj")
+	projectID := uuid.New()
+	a := testutil.MakeSession("A", projectID)
 	a.Order = 1
-	b := testutil.MakeSession("B", "proj")
+	b := testutil.MakeSession("B", projectID)
 	b.Order = 2
-	c := testutil.MakeSession("C", "proj")
+	c := testutil.MakeSession("C", projectID)
 	c.Order = 3
 
 	repo := &mocks.MockSessionRepository{
@@ -451,11 +498,12 @@ func TestSessionService_Reorder_BoundaryFirst_Up(t *testing.T) {
 }
 
 func TestSessionService_Reorder_BoundaryLast_Down(t *testing.T) {
-	a := testutil.MakeSession("A", "proj")
+	projectID := uuid.New()
+	a := testutil.MakeSession("A", projectID)
 	a.Order = 1
-	b := testutil.MakeSession("B", "proj")
+	b := testutil.MakeSession("B", projectID)
 	b.Order = 2
-	c := testutil.MakeSession("C", "proj")
+	c := testutil.MakeSession("C", projectID)
 	c.Order = 3
 
 	repo := &mocks.MockSessionRepository{
@@ -475,7 +523,7 @@ func TestSessionService_Reorder_BoundaryLast_Down(t *testing.T) {
 }
 
 func TestSessionService_Reorder_SingleSession(t *testing.T) {
-	a := testutil.MakeSession("A", "proj")
+	a := testutil.MakeSession("A", uuid.New())
 	a.Order = 1
 
 	repo := &mocks.MockSessionRepository{
@@ -500,7 +548,7 @@ func TestSessionService_Reorder_NotFound(t *testing.T) {
 	}
 	svc := NewSessionService(repo, &mocks.MockTmuxAdapter{}, &mocks.MockGitAdapter{}, testLogger())
 
-	_, err := svc.Reorder(context.Background(), ReorderSessionRequest{ID: testutil.MakeSession("X", "proj").ID, Direction: 1})
+	_, err := svc.Reorder(context.Background(), ReorderSessionRequest{ID: uuid.New(), Direction: 1})
 
 	if !errors.Is(err, domain.ErrSessionNotFound) {
 		t.Fatalf("Reorder() error = %v, want %v", err, domain.ErrSessionNotFound)

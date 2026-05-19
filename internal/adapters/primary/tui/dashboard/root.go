@@ -4,14 +4,16 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/google/uuid"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
+	projectui "github.com/dnlopes/overseer/internal/adapters/primary/tui/project"
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 )
-
-type Pane int
 
 const (
 	SessionsListWidthPercent = 30
@@ -19,93 +21,174 @@ const (
 	HelpBarHeight            = 1
 )
 
-type Model struct {
-	// children
-	titlebar      TitleBarModel
-	sessionsModel sessionui.Model
-	detailsModel  DetailsModel
-	helpBar       shared.HelpBarModel
-	createForm    sessionui.CreateFormModel
+type popupKind int
 
-	// model state
+const (
+	popupNone popupKind = iota
+	popupNewSession
+	popupNewProject
+)
+
+type Model struct {
+	titlebar       TitleBarModel
+	leftPane       leftpane.Model
+	detailsModel   DetailsModel
+	helpBar        shared.HelpBarModel
+	createForm     sessionui.CreateFormModel
+	registerForm   projectui.RegisterFormModel
+	activePopup    popupKind
+	cachedProjects []domain.Project
+
 	width           int
 	height          int
 	tooSmall        bool
-	focused         bool
+	leftPaneFocused bool
 	styles          *styles.Styles
 	sessionsService service.SessionService
+	projectsService service.ProjectService
 }
 
-func New(styles *styles.Styles, sessionsService service.SessionService) Model {
-	m := Model{styles: styles, titlebar: newTitlebar(styles, "Overseer"), width: 0, height: 0, focused: true,
-		sessionsModel:   sessionui.New(styles, sessionsService),
+func New(styles *styles.Styles, sessionsService service.SessionService, projectsService service.ProjectService) Model {
+	sessionsModel := sessionui.New(styles, sessionsService)
+	projectsModel := projectui.New(styles, projectsService)
+	left := leftpane.New(styles, sessionsModel, projectsModel)
+	left.SetFocus(true)
+	m := Model{
+		styles:          styles,
+		titlebar:        newTitlebar(styles, "Overseer"),
+		leftPane:        left,
 		detailsModel:    newDetailsModel(*styles),
-		helpBar:         shared.NewHelpBarModel(styles, sessionsListKeyBindings),
+		helpBar:         shared.NewHelpBarModel(styles, sessionsTabKeyBindings),
 		sessionsService: sessionsService,
+		projectsService: projectsService,
+		leftPaneFocused: true,
 	}
-
-	m.sessionsModel.SetFocus(true)
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.titlebar.Init(), m.sessionsModel.Init(), m.detailsModel.Init(), m.helpBar.Init())
+	return tea.Batch(m.titlebar.Init(), m.leftPane.Init(), m.detailsModel.Init(), m.helpBar.Init())
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.resize(msg)
+	case shared.ProjectsLoadedMsg:
+		if msg.Err == nil {
+			m.cachedProjects = msg.Projects
+			m.refreshProjectNameLookup()
+		}
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.ProjectRegisteredMsg:
+		m.activePopup = popupNone
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
 	case shared.SessionCreatedMsg:
-		m.focused = true
-		return m, m.sessionsModel.Init()
-	case shared.NewSessionPopupCloseMsg:
-		m.focused = true
+		m.activePopup = popupNone
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.NewSessionPopupCloseMsg, shared.NewProjectPopupCloseMsg:
+		m.activePopup = popupNone
 		return m, nil
-	case tea.KeyPressMsg:
-		if key.Matches(msg, quitKeyBinding) && m.focused {
-			return m, tea.Quit
-		}
-		if key.Matches(msg, helpMenuKeyBinding) && m.focused {
-			var cmd tea.Cmd
-			m.helpBar, cmd = shared.UpdateModel(m.helpBar, msg)
+	case shared.LeftPaneTabChangedMsg:
+		m.helpBar.SetBindings(m.bindingsForActiveTab())
+		return m, nil
+	}
+
+	if m.activePopup != popupNone {
+		return m.routeToPopup(msg)
+	}
+
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		if cmd, handled := m.handleKey(keyMsg); handled {
 			return m, cmd
-		}
-		if key.Matches(msg, newSessionKeyBinding) && m.focused && m.sessionsModel.IsFocused() {
-			m.createForm = sessionui.NewCreateForm(m.styles, m.sessionsService)
-			m.focused = false
-			return m, m.createForm.Init()
-		}
-		if key.Matches(msg, nextTabKeyBinding) && m.focused {
-			if m.sessionsModel.IsFocused() {
-				m.sessionsModel.SetFocus(false)
-				m.detailsModel.SetFocus(true)
-				m.helpBar.SetBindings(detailsPanelKeyBindings)
-			} else {
-				m.helpBar.SetBindings(sessionsListKeyBindings)
-				m.sessionsModel.SetFocus(true)
-				m.detailsModel.SetFocus(false)
-			}
-			return m, nil
 		}
 	}
 
-	// If a form is open, route all messages to it first
-	if !m.focused {
+	if m.leftPaneFocused {
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	}
+	var cmd tea.Cmd
+	m.detailsModel, cmd = shared.UpdateModel(m.detailsModel, msg)
+	return m, cmd
+}
+
+func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
+	if key.Matches(msg, quitKeyBinding) {
+		return tea.Quit, true
+	}
+	if key.Matches(msg, helpMenuKeyBinding) {
+		var cmd tea.Cmd
+		m.helpBar, cmd = shared.UpdateModel(m.helpBar, msg)
+		return cmd, true
+	}
+	if key.Matches(msg, nextPaneKeyBinding) {
+		m.toggleLeftRightFocus()
+		return nil, true
+	}
+	if m.leftPaneFocused {
+		if m.leftPane.SessionsActive() && key.Matches(msg, newSessionKeyBinding) {
+			m.createForm = sessionui.NewCreateForm(m.styles, m.sessionsService, m.cachedProjects)
+			m.activePopup = popupNewSession
+			return m.createForm.Init(), true
+		}
+		if m.leftPane.ProjectsActive() && key.Matches(msg, newProjectKeyBinding) {
+			m.registerForm = projectui.NewRegisterForm(m.styles, m.projectsService)
+			m.activePopup = popupNewProject
+			return m.registerForm.Init(), true
+		}
+	}
+	return nil, false
+}
+
+func (m *Model) toggleLeftRightFocus() {
+	if m.leftPaneFocused {
+		m.leftPaneFocused = false
+		m.leftPane.SetFocus(false)
+		m.detailsModel.SetFocus(true)
+		m.helpBar.SetBindings(detailsPanelKeyBindings)
+		return
+	}
+	m.leftPaneFocused = true
+	m.leftPane.SetFocus(true)
+	m.detailsModel.SetFocus(false)
+	m.helpBar.SetBindings(m.bindingsForActiveTab())
+}
+
+func (m Model) bindingsForActiveTab() []key.Binding {
+	if m.leftPane.ProjectsActive() {
+		return projectsTabKeyBindings
+	}
+	return sessionsTabKeyBindings
+}
+
+func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
+	switch m.activePopup {
+	case popupNewSession:
 		var cmd tea.Cmd
 		m.createForm, cmd = shared.UpdateModel(m.createForm, msg)
 		return m, cmd
+	case popupNewProject:
+		var cmd tea.Cmd
+		m.registerForm, cmd = shared.UpdateModel(m.registerForm, msg)
+		return m, cmd
 	}
+	return m, nil
+}
 
-	// forward to the focused child
-	var cmd tea.Cmd
-	if m.sessionsModel.IsFocused() {
-		m.sessionsModel, cmd = shared.UpdateModel(m.sessionsModel, msg)
-		return m, cmd
-	} else {
-		m.detailsModel, cmd = shared.UpdateModel(m.detailsModel, msg)
-		return m, cmd
+func (m *Model) refreshProjectNameLookup() {
+	names := make(map[uuid.UUID]string, len(m.cachedProjects))
+	for _, p := range m.cachedProjects {
+		names[p.ID] = p.Name
 	}
+	m.leftPane.SetProjectNameLookup(names)
 }
 
 func (m Model) View() tea.View {
@@ -113,8 +196,8 @@ func (m Model) View() tea.View {
 		msg := m.styles.TooSmall.Message.Render("Terminal too small. Minimum size: 60x15.")
 		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, msg))
 	}
-	if !m.focused {
-		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.createForm.View().Content))
+	if m.activePopup != popupNone {
+		return tea.NewView(lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, m.popupView()))
 	}
 
 	titlebarView := m.titlebar.View().Content
@@ -126,12 +209,22 @@ func (m Model) View() tea.View {
 	leftWidth := m.width * SessionsListWidthPercent / 100
 	rightWidth := m.width - leftWidth
 
-	left := fit(m.styles, m.sessionsModel.View().Content, leftWidth, bodyHeight)
+	left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
 	right := fit(m.styles, m.detailsModel.View().Content, rightWidth, bodyHeight)
 	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
 	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, body, helpView)
 
 	return tea.NewView(full)
+}
+
+func (m Model) popupView() string {
+	switch m.activePopup {
+	case popupNewSession:
+		return m.createForm.View().Content
+	case popupNewProject:
+		return m.registerForm.View().Content
+	}
+	return ""
 }
 
 func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
@@ -143,7 +236,7 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	rightWidth := m.width - leftWidth
 	bodyHeight := max(m.height-TitleBarHeight-HelpBarHeight, 1)
 
-	m.sessionsModel.SetSize(leftWidth, bodyHeight)
+	m.leftPane.SetSize(leftWidth, bodyHeight)
 	m.detailsModel.SetSize(rightWidth, bodyHeight)
 	m.helpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)

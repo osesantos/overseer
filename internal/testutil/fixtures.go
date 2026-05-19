@@ -1,11 +1,23 @@
 package testutil
 
-import "github.com/dnlopes/overseer/internal/core/domain"
+import (
+	"github.com/google/uuid"
 
-func MakeSession(name, project string) domain.Session {
-	s, err := domain.NewSession(name, project)
+	"github.com/dnlopes/overseer/internal/core/domain"
+)
+
+func MakeSession(name string, projectID uuid.UUID) domain.Session {
+	s, err := domain.NewSession(name, projectID)
 	if err != nil {
 		panic(err)
 	}
 	return s
+}
+
+func MakeProject(path, name string) domain.Project {
+	p, err := domain.NewProject(path, name)
+	if err != nil {
+		panic(err)
+	}
+	return p
 }

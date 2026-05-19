@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -13,6 +14,8 @@ import (
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 )
+
+const unassignedProjectLabel = "(no project)"
 
 type sessionGroupingMode int
 
@@ -36,6 +39,7 @@ type sessionNode struct {
 
 type Model struct {
 	sessions     []domain.Session
+	projectNames map[uuid.UUID]string
 	groupingMode sessionGroupingMode
 	styles       *styles.Styles
 	service      service.SessionService
@@ -48,7 +52,18 @@ type Model struct {
 
 func New(s *styles.Styles, service service.SessionService) Model {
 	tree := components.NewTree(renderSessionNode(s))
-	return Model{styles: s, service: service, tree: tree, groupingMode: sessionGroupingProject}
+	return Model{
+		styles:       s,
+		service:      service,
+		tree:         tree,
+		groupingMode: sessionGroupingProject,
+		projectNames: map[uuid.UUID]string{},
+	}
+}
+
+func (m *Model) SetProjectNames(names map[uuid.UUID]string) {
+	m.projectNames = names
+	m.tree = m.tree.SetNodes(m.sessionTreeNodes()).ExpandAll()
 }
 
 func (m Model) Init() tea.Cmd {
@@ -70,6 +85,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.tree = m.tree.SelectID("session:" + firstSessionID)
 		return m, shared.Emit(shared.SessionSelectedMsg{ID: firstSessionID})
+	case shared.SessionCreatedMsg:
+		return m, m.loadSessions()
 	case components.TreeSelectMsg[sessionNode]:
 		if msg.Item.kind == sessionNodeSession {
 			return m, shared.Emit(shared.SessionSelectedMsg{ID: msg.Item.sessionID})
@@ -138,7 +155,7 @@ func (m Model) sessionTreeNodes() []components.TreeNode[sessionNode] {
 	if m.groupingMode == sessionGroupingNone {
 		return rawSessionNodes(m.sessions)
 	}
-	return projectSessionNodes(m.sessions)
+	return projectSessionNodes(m.sessions, m.projectNames)
 }
 
 func rawSessionNodes(sessions []domain.Session) []components.TreeNode[sessionNode] {
@@ -149,31 +166,44 @@ func rawSessionNodes(sessions []domain.Session) []components.TreeNode[sessionNod
 	return nodes
 }
 
-func projectSessionNodes(sessions []domain.Session) []components.TreeNode[sessionNode] {
-	projectSessions := make(map[string][]domain.Session)
-	projectNames := make([]string, 0)
+func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]string) []components.TreeNode[sessionNode] {
+	grouped := make(map[uuid.UUID][]domain.Session)
+	ids := make([]uuid.UUID, 0)
 	for _, sess := range sessions {
-		if _, ok := projectSessions[sess.ProjectName]; !ok {
-			projectNames = append(projectNames, sess.ProjectName)
+		if _, ok := grouped[sess.ProjectID]; !ok {
+			ids = append(ids, sess.ProjectID)
 		}
-		projectSessions[sess.ProjectName] = append(projectSessions[sess.ProjectName], sess)
+		grouped[sess.ProjectID] = append(grouped[sess.ProjectID], sess)
 	}
-	sort.Strings(projectNames)
+	sort.Slice(ids, func(i, j int) bool {
+		return projectLabel(ids[i], projectNames) < projectLabel(ids[j], projectNames)
+	})
 
-	nodes := make([]components.TreeNode[sessionNode], len(projectNames))
-	for i, projectName := range projectNames {
-		sessions := projectSessions[projectName]
-		children := make([]components.TreeNode[sessionNode], len(sessions))
-		for j, sess := range sessions {
+	nodes := make([]components.TreeNode[sessionNode], len(ids))
+	for i, id := range ids {
+		groupSessions := grouped[id]
+		children := make([]components.TreeNode[sessionNode], len(groupSessions))
+		for j, sess := range groupSessions {
 			children[j] = sessionTreeNode(sess)
 		}
+		label := projectLabel(id, projectNames)
 		nodes[i] = components.TreeNode[sessionNode]{
-			ID:       "project:" + projectName,
-			Item:     sessionNode{kind: sessionNodeGroup, label: projectName},
+			ID:       "project:" + id.String(),
+			Item:     sessionNode{kind: sessionNodeGroup, label: label},
 			Children: children,
 		}
 	}
 	return nodes
+}
+
+func projectLabel(id uuid.UUID, names map[uuid.UUID]string) string {
+	if id == uuid.Nil {
+		return unassignedProjectLabel
+	}
+	if name, ok := names[id]; ok {
+		return name
+	}
+	return id.String()
 }
 
 func sessionTreeNode(sess domain.Session) components.TreeNode[sessionNode] {

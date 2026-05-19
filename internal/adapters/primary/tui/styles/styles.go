@@ -68,6 +68,12 @@ type LayoutStyles struct {
 	Box lipgloss.Style
 }
 
+type TabStyles struct {
+	Active   lipgloss.Style
+	Inactive lipgloss.Style
+	Bar      lipgloss.Style
+}
+
 type Styles struct {
 	Border   BorderStyles
 	TitleBar struct {
@@ -104,6 +110,7 @@ type Styles struct {
 	EmptyState EmptyStateStyles
 	TooSmall   TooSmallStyles
 	Layout     LayoutStyles
+	Tab        TabStyles
 }
 
 func New() *Styles {
@@ -216,6 +223,11 @@ func New() *Styles {
 		},
 		Layout: LayoutStyles{
 			Box: lipgloss.NewStyle(),
+		},
+		Tab: TabStyles{
+			Active:   lipgloss.NewStyle().Foreground(theme.TitleText).Background(theme.Primary).Bold(true).Padding(0, 2),
+			Inactive: lipgloss.NewStyle().Foreground(theme.Subtext).Padding(0, 2),
+			Bar:      lipgloss.NewStyle().Foreground(theme.Border),
 		},
 	}
 }

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
@@ -16,11 +17,13 @@ import (
 )
 
 func TestModel_SessionsLoadedRendersProjectTree(t *testing.T) {
+	overseerID := uuid.New()
 	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", "overseer")
-	beta := testutil.MakeSession("beta", "overseer")
+	alpha := testutil.MakeSession("alpha", overseerID)
+	beta := testutil.MakeSession("beta", overseerID)
 
 	updated, cmd := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
@@ -43,11 +46,14 @@ func TestModel_SessionsLoadedRendersProjectTree(t *testing.T) {
 }
 
 func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
+	overseerID := uuid.New()
+	otherID := uuid.New()
 	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer", otherID: "other"})
 	model.groupingMode = sessionGroupingNone
 	model.SetSize(80, 20)
-	alpha := testutil.MakeSession("alpha", "overseer")
-	beta := testutil.MakeSession("beta", "other")
+	alpha := testutil.MakeSession("alpha", overseerID)
+	beta := testutil.MakeSession("beta", otherID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
@@ -63,9 +69,11 @@ func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
 }
 
 func TestModel_SelectionOnlyEmitsForSessionNodes(t *testing.T) {
+	overseerID := uuid.New()
 	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", "overseer")
+	alpha := testutil.MakeSession("alpha", overseerID)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 
 	updated, cmd := updated.(Model).Update(keyPress("k"))
@@ -88,7 +96,7 @@ func TestModel_SelectionOnlyEmitsForSessionNodes(t *testing.T) {
 }
 
 func TestModel_LoadSessionsUsesRawSessions(t *testing.T) {
-	alpha := testutil.MakeSession("alpha", "overseer")
+	alpha := testutil.MakeSession("alpha", uuid.New())
 	repo := &mocks.MockSessionRepository{ListResult: []domain.Session{alpha}}
 	model := New(styles.New(), newSessionService(repo))
 
@@ -99,6 +107,20 @@ func TestModel_LoadSessionsUsesRawSessions(t *testing.T) {
 	}
 	if len(msg.Sessions) != 1 || msg.Sessions[0].ID != alpha.ID {
 		t.Fatalf("loadSessions() sessions = %+v, want raw session list", msg.Sessions)
+	}
+}
+
+func TestModel_SessionsLoadedWithUnassignedProjectShowsNoProjectGroup(t *testing.T) {
+	model := New(styles.New(), newSessionService(nil))
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	orphan := testutil.MakeSession("orphan", uuid.Nil)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{orphan}})
+
+	view := updated.(Model).View().Content
+	if !strings.Contains(view, "(no project)") {
+		t.Fatalf("View() missing '(no project)' label for unassigned session: %q", view)
 	}
 }
 

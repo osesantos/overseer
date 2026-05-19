@@ -3,6 +3,9 @@ package git
 
 import (
 	"context"
+	"fmt"
+	"os"
+	"path/filepath"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
@@ -10,22 +13,35 @@ import (
 // Compile-time interface check.
 var _ domain.GitAdapter = (*Stub)(nil)
 
-// Stub is a stub implementation of domain.GitAdapter.
-// It records call counts for test assertions and returns nil for all operations.
-// Replace with a real implementation when integrating real git.
 type Stub struct {
 	CreateWorktreeCalls int
 	RemoveWorktreeCalls int
 }
 
-// CreateWorktree records the call and returns nil without touching any real git worktree.
 func (s *Stub) CreateWorktree(_ context.Context, _, _ string) error {
 	s.CreateWorktreeCalls++
 	return nil
 }
 
-// RemoveWorktree records the call and returns nil without touching any real git worktree.
 func (s *Stub) RemoveWorktree(_ context.Context, _ string) error {
 	s.RemoveWorktreeCalls++
+	return nil
+}
+
+func (s *Stub) IsGitRepo(_ context.Context, path string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return fmt.Errorf("%w: path does not exist: %s", domain.ErrProjectNotGitRepo, path)
+		}
+		return fmt.Errorf("stat %s: %w", path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%w: not a directory: %s", domain.ErrProjectNotGitRepo, path)
+	}
+	gitPath := filepath.Join(path, ".git")
+	if _, err := os.Stat(gitPath); err != nil {
+		return fmt.Errorf("%w: missing .git in %s", domain.ErrProjectNotGitRepo, path)
+	}
 	return nil
 }

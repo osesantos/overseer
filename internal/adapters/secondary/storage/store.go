@@ -1,4 +1,4 @@
-// Package storage provides the JSON-backed session repository.
+// Package storage provides the JSON-backed repository for sessions and projects.
 package storage
 
 import (
@@ -18,19 +18,17 @@ import (
 	"github.com/dnlopes/overseer/internal/shared/paths"
 )
 
-var _ domain.SessionRepository = (*Store)(nil)
-
 type fileSchema struct {
-	SchemaVersion int              `json:"schemaVersion"`
-	Sessions      []domain.Session `json:"sessions"`
+	Projects []domain.Project `json:"projects"`
+	Sessions []domain.Session `json:"sessions"`
 }
 
 type Store struct {
-	path          string
-	mu            sync.Mutex
-	sessions      map[uuid.UUID]domain.Session
-	schemaVersion int
-	logger        *slog.Logger
+	path     string
+	mu       sync.Mutex
+	sessions map[uuid.UUID]domain.Session
+	projects map[uuid.UUID]domain.Project
+	logger   *slog.Logger
 }
 
 func New(path string, logger *slog.Logger) (*Store, error) {
@@ -38,16 +36,19 @@ func New(path string, logger *slog.Logger) (*Store, error) {
 		return nil, fmt.Errorf("storage: ensure dir: %w", err)
 	}
 	s := &Store{
-		path:          path,
-		sessions:      make(map[uuid.UUID]domain.Session),
-		schemaVersion: 1,
-		logger:        logger,
+		path:     path,
+		sessions: make(map[uuid.UUID]domain.Session),
+		projects: make(map[uuid.UUID]domain.Project),
+		logger:   logger,
 	}
 	if err := s.load(); err != nil {
 		return nil, err
 	}
 	return s, nil
 }
+
+func (s *Store) Sessions() *SessionStore { return &SessionStore{store: s} }
+func (s *Store) Projects() *ProjectStore { return &ProjectStore{store: s} }
 
 func (s *Store) load() error {
 	data, err := os.ReadFile(s.path)
@@ -60,36 +61,46 @@ func (s *Store) load() error {
 
 	var schema fileSchema
 	if err := json.Unmarshal(data, &schema); err != nil {
-		corruptedPath := s.path + ".corrupted." + strconv.FormatInt(time.Now().Unix(), 10) + ".json"
-		if renameErr := os.Rename(s.path, corruptedPath); renameErr != nil {
-			s.logger.Warn("storage: failed to rename corrupted file",
-				"path", s.path,
-				"error", renameErr,
-			)
-		} else {
-			s.logger.Warn("storage: corrupted data file detected, renamed and starting fresh",
-				"corrupted_path", corruptedPath,
-			)
-		}
+		s.quarantine("invalid JSON")
 		return nil
 	}
 
+	for _, project := range schema.Projects {
+		s.projects[project.ID] = project
+	}
 	for _, sess := range schema.Sessions {
 		s.sessions[sess.ID] = sess
 	}
 	return nil
 }
 
+func (s *Store) quarantine(reason string) {
+	corruptedPath := s.path + ".corrupted." + strconv.FormatInt(time.Now().Unix(), 10) + ".json"
+	if renameErr := os.Rename(s.path, corruptedPath); renameErr != nil {
+		s.logger.Warn("storage: failed to rename corrupted file",
+			"path", s.path,
+			"reason", reason,
+			"error", renameErr,
+		)
+		return
+	}
+	s.logger.Warn("storage: data file quarantined, starting fresh",
+		"corrupted_path", corruptedPath,
+		"reason", reason,
+	)
+}
+
 // persist must be called with s.mu held.
 func (s *Store) persist() error {
-	all := make([]domain.Session, 0, len(s.sessions))
+	projects := make([]domain.Project, 0, len(s.projects))
+	for _, p := range s.projects {
+		projects = append(projects, p)
+	}
+	sessions := make([]domain.Session, 0, len(s.sessions))
 	for _, sess := range s.sessions {
-		all = append(all, sess)
+		sessions = append(sessions, sess)
 	}
-	schema := fileSchema{
-		SchemaVersion: s.schemaVersion,
-		Sessions:      all,
-	}
+	schema := fileSchema{Projects: projects, Sessions: sessions}
 	data, err := json.MarshalIndent(schema, "", "  ")
 	if err != nil {
 		return fmt.Errorf("storage: marshal: %w", err)
@@ -97,39 +108,103 @@ func (s *Store) persist() error {
 	return paths.AtomicWrite(s.path, data)
 }
 
-func (s *Store) Save(_ context.Context, sess domain.Session) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sessions[sess.ID] = sess
-	return s.persist()
+// --- SessionStore ---
+
+var _ domain.SessionRepository = (*SessionStore)(nil)
+
+type SessionStore struct {
+	store *Store
 }
 
-func (s *Store) Get(_ context.Context, id uuid.UUID) (domain.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sess, ok := s.sessions[id]
+func (s *SessionStore) Save(_ context.Context, sess domain.Session) error {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	s.store.sessions[sess.ID] = sess
+	return s.store.persist()
+}
+
+func (s *SessionStore) Get(_ context.Context, id uuid.UUID) (domain.Session, error) {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	sess, ok := s.store.sessions[id]
 	if !ok {
 		return domain.Session{}, domain.ErrSessionNotFound
 	}
 	return sess, nil
 }
 
-func (s *Store) List(_ context.Context) ([]domain.Session, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	result := make([]domain.Session, 0, len(s.sessions))
-	for _, sess := range s.sessions {
+func (s *SessionStore) List(_ context.Context) ([]domain.Session, error) {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	result := make([]domain.Session, 0, len(s.store.sessions))
+	for _, sess := range s.store.sessions {
 		result = append(result, sess)
 	}
 	return result, nil
 }
 
-func (s *Store) Delete(_ context.Context, id uuid.UUID) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	if _, ok := s.sessions[id]; !ok {
+func (s *SessionStore) Delete(_ context.Context, id uuid.UUID) error {
+	s.store.mu.Lock()
+	defer s.store.mu.Unlock()
+	if _, ok := s.store.sessions[id]; !ok {
 		return domain.ErrSessionNotFound
 	}
-	delete(s.sessions, id)
-	return s.persist()
+	delete(s.store.sessions, id)
+	return s.store.persist()
+}
+
+// --- ProjectStore ---
+
+var _ domain.ProjectRepository = (*ProjectStore)(nil)
+
+type ProjectStore struct {
+	store *Store
+}
+
+func (p *ProjectStore) Save(_ context.Context, project domain.Project) error {
+	p.store.mu.Lock()
+	defer p.store.mu.Unlock()
+	p.store.projects[project.ID] = project
+	return p.store.persist()
+}
+
+func (p *ProjectStore) Get(_ context.Context, id uuid.UUID) (domain.Project, error) {
+	p.store.mu.Lock()
+	defer p.store.mu.Unlock()
+	project, ok := p.store.projects[id]
+	if !ok {
+		return domain.Project{}, domain.ErrProjectNotFound
+	}
+	return project, nil
+}
+
+func (p *ProjectStore) GetByPath(_ context.Context, path string) (domain.Project, error) {
+	p.store.mu.Lock()
+	defer p.store.mu.Unlock()
+	for _, project := range p.store.projects {
+		if project.Path == path {
+			return project, nil
+		}
+	}
+	return domain.Project{}, domain.ErrProjectNotFound
+}
+
+func (p *ProjectStore) List(_ context.Context) ([]domain.Project, error) {
+	p.store.mu.Lock()
+	defer p.store.mu.Unlock()
+	result := make([]domain.Project, 0, len(p.store.projects))
+	for _, project := range p.store.projects {
+		result = append(result, project)
+	}
+	return result, nil
+}
+
+func (p *ProjectStore) Delete(_ context.Context, id uuid.UUID) error {
+	p.store.mu.Lock()
+	defer p.store.mu.Unlock()
+	if _, ok := p.store.projects[id]; !ok {
+		return domain.ErrProjectNotFound
+	}
+	delete(p.store.projects, id)
+	return p.store.persist()
 }
