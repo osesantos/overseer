@@ -21,6 +21,7 @@ const (
 	RootDefaultHeight        = 24
 	SessionsPaneID           = "sessions"
 	DetailsPaneID            = "details"
+	NewSessionPopupID        = "new-session-form"
 )
 
 type Model struct {
@@ -28,7 +29,7 @@ type Model struct {
 	titlebar      TitleBarModel
 	sessionsModel sessionui.Model
 	detailsModel  DetailsModel
-	helpBar       HelpBarModel
+	helpBar       shared.HelpBarModel
 	createForm    sessionui.CreateFormModel
 
 	// model state
@@ -40,19 +41,15 @@ type Model struct {
 	sessionsService service.SessionService
 }
 
-func New(styles *styles.Styles, sessionsService service.SessionService, registry HelpRegistry) Model {
+func New(styles *styles.Styles, sessionsService service.SessionService) Model {
 	m := Model{styles: styles, titlebar: newTitlebar(styles, "Overseer"), width: RootDefaultWidth, height: RootDefaultHeight, focused: true,
 		sessionsModel:   sessionui.New(styles, sessionsService),
-		helpBar:         newHelpBar(registry, styles),
 		detailsModel:    newDetailsModel(*styles),
+		helpBar:         shared.NewHelpBarModel(styles, sessionsListKeyBindings),
 		sessionsService: sessionsService,
 	}
 
 	m.sessionsModel.SetFocus(true)
-	m.helpBar.SetActivePane(SessionsPaneID)
-	registry.RegisterPane(SessionsPaneID, m.sessionsModel.KeyBindings())
-	registry.RegisterPane(DetailsPaneID, m.detailsModel.KeyBindings())
-
 	return m
 }
 
@@ -87,11 +84,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.sessionsModel.IsFocused() {
 				m.sessionsModel.SetFocus(false)
 				m.detailsModel.SetFocus(true)
-				m.helpBar.SetActivePane(DetailsPaneID)
+				m.helpBar = shared.NewHelpBarModel(m.styles, detailsPanelKeyBindings)
 			} else {
+				m.helpBar = shared.NewHelpBarModel(m.styles, sessionsListKeyBindings)
 				m.sessionsModel.SetFocus(true)
 				m.detailsModel.SetFocus(false)
-				m.helpBar.SetActivePane(SessionsPaneID)
 			}
 			return m, nil
 		}
@@ -150,22 +147,11 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	rightWidth := m.width - leftWidth
 	bodyHeight := max(m.height-TitleBarHeight-HelpBarHeight, 1)
 
-	var cmds []tea.Cmd
-	var cmd tea.Cmd
-
 	m.sessionsModel.SetSize(leftWidth, bodyHeight)
 	m.detailsModel.SetSize(rightWidth, bodyHeight)
-
-	m.titlebar, cmd = shared.UpdateModel(m.titlebar, tea.WindowSizeMsg{Width: m.width, Height: TitleBarHeight})
-	cmds = append(cmds, cmd)
-	m.sessionsModel, cmd = shared.UpdateModel(m.sessionsModel, tea.WindowSizeMsg{Width: leftWidth, Height: bodyHeight})
-	cmds = append(cmds, cmd)
-	m.detailsModel, cmd = shared.UpdateModel(m.detailsModel, tea.WindowSizeMsg{Width: rightWidth, Height: bodyHeight})
-	cmds = append(cmds, cmd)
-	m.helpBar, cmd = shared.UpdateModel(m.helpBar, tea.WindowSizeMsg{Width: m.width, Height: HelpBarHeight})
-	cmds = append(cmds, cmd)
-
-	return m, tea.Batch(cmds...)
+	m.helpBar.SetSize(rightWidth, bodyHeight)
+	m.titlebar.SetSize(m.width, TitleBarHeight)
+	return m, nil
 }
 
 func fit(_ *styles.Styles, s string, width, height int) string {

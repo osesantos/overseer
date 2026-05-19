@@ -3,7 +3,6 @@ package session
 import (
 	"context"
 
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
 	"charm.land/bubbles/v2/list"
@@ -84,7 +83,8 @@ func (m Model) emitSelection() tea.Cmd {
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	m.list.SetSize(width, height)
+	innerW, innerH := components.PanelInnerSize(m.styles, m.focused, width, height)
+	m.list.SetSize(innerW, innerH)
 }
 
 func (m *Model) SetFocus(focus bool) {
@@ -98,10 +98,6 @@ func (m Model) IsFocused() bool {
 func (m Model) View() tea.View {
 	return components.PanelWithSize(m.styles, m.list.View(), m.focused, m.width, m.height)
 
-}
-
-func (m Model) KeyBindings() []key.Binding {
-	return []key.Binding{moveDownKeyBinding, moveUpKeyBinding, reorderDownKeyBinding, reorderUpKeyBinding}
 }
 
 // The Cmd: a function that does the work and returns a Msg

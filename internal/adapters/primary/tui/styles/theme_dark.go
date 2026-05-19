@@ -16,6 +16,7 @@ func DarkTheme() Theme {
 		TitleText:    lipgloss.Color("#F9FAFB"),
 		TitleSubtext: lipgloss.Color("#E0E7FF"),
 		HelpBg:       lipgloss.Color("#111827"),
+		HelpBarBg:    lipgloss.Color("#2E1065"),
 		HelpKeyBg:    lipgloss.Color("#1F2937"),
 		ModalBg:      lipgloss.Color("#1F2937"),
 		OverlayBg:    lipgloss.Color("#111827"),

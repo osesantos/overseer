@@ -25,12 +25,13 @@ func TestDarkTheme_NoZeroColors(t *testing.T) {
 		{"TitleText", theme.TitleText},
 		{"TitleSubtext", theme.TitleSubtext},
 		{"HelpBg", theme.HelpBg},
+		{"HelpBarBg", theme.HelpBarBg},
 		{"HelpKeyBg", theme.HelpKeyBg},
 		{"ModalBg", theme.ModalBg},
 		{"OverlayBg", theme.OverlayBg},
 	}
-	if len(fields) != 15 {
-		t.Fatalf("expected 15 color fields, got %d", len(fields))
+	if len(fields) != 16 {
+		t.Fatalf("expected 16 color fields, got %d", len(fields))
 	}
 	for _, f := range fields {
 		if f.color == nil {

@@ -1,14 +1,10 @@
 package dashboard
 
 import (
-	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 )
-
-var AttachShell = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "attach shell"))
-var AttachAgent = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "attach agent"))
 
 type DetailsModel struct {
 	width   int
@@ -40,10 +36,6 @@ func (m DetailsModel) View() tea.View {
 func (m *DetailsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-}
-
-func (m DetailsModel) KeyBindings() []key.Binding {
-	return []key.Binding{AttachShell, AttachAgent}
 }
 
 func (m *DetailsModel) SetFocus(focus bool) {

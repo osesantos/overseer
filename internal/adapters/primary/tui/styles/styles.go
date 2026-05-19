@@ -49,6 +49,7 @@ type FormStyles struct {
 }
 
 type HelpStyles struct {
+	Bar         lipgloss.Style
 	Key         lipgloss.Style
 	Description lipgloss.Style
 	Separator   lipgloss.Style
@@ -103,7 +104,8 @@ type Styles struct {
 func New() *Styles {
 	theme := LoadTheme("dark")
 
-	helpKeyStyle := lipgloss.NewStyle().Foreground(theme.Text).Background(theme.HelpKeyBg).Padding(0, 1)
+	helpKeyStyle := lipgloss.NewStyle().Foreground(theme.Text).Background(theme.HelpBarBg).Bold(true)
+	helpBarStyle := lipgloss.NewStyle().Background(theme.HelpBarBg).Padding(0, 1)
 
 	return &Styles{
 		Border: BorderStyles{
@@ -195,9 +197,10 @@ func New() *Styles {
 			Horizontal: lipgloss.NewStyle().Foreground(theme.Border),
 		},
 		Help: HelpStyles{
+			Bar:         helpBarStyle,
 			Key:         helpKeyStyle,
-			Description: lipgloss.NewStyle().Foreground(theme.Subtext),
-			Separator:   lipgloss.NewStyle().Foreground(theme.Muted),
+			Description: lipgloss.NewStyle().Foreground(theme.Subtext).Background(theme.HelpBarBg),
+			Separator:   lipgloss.NewStyle().Foreground(theme.Muted).Background(theme.HelpBarBg),
 		},
 		EmptyState: EmptyStateStyles{
 			Title: lipgloss.NewStyle().Foreground(theme.Text).Bold(true),

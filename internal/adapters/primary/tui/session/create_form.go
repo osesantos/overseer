@@ -61,18 +61,18 @@ func (m CreateFormModel) Init() tea.Cmd {
 func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		if key.Matches(msg, shared.PopupCloseKey) {
+		if key.Matches(msg, popupCloseKeyBinding) {
 			return m, func() tea.Msg { return shared.NewSessionPopupCloseMsg{} }
 		}
-		if key.Matches(msg, shared.PopupConfirmKey) {
+		if key.Matches(msg, popupSubmitFormKeyBinding) {
 			return m.submit()
 		}
-		if key.Matches(msg, shared.PopupNextFieldKey) {
+		if key.Matches(msg, popupNextFieldKeyBinding) {
 			m.focusIndex.Increment()
 			m.updateFocusAndBlurs()
 			return m, nil
 		}
-		if key.Matches(msg, shared.PopupPrevFieldKey) {
+		if key.Matches(msg, popupPrevFieldKeyBinding) {
 			m.focusIndex.Decrement()
 			m.updateFocusAndBlurs()
 			return m, nil
@@ -84,9 +84,9 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if msg, ok := msg.(shared.SessionCreatedMsg); ok {
+	if _, ok := msg.(shared.SessionCreatedMsg); ok {
 		return m, tea.Batch(
-			shared.Emit(msg),
+			//shared.Emit(msg),
 			shared.Emit(shared.NewSessionPopupCloseMsg{}),
 		)
 	}
@@ -108,7 +108,6 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 	name := strings.TrimSpace(m.nameInput.Value())
 	project := strings.TrimSpace(m.projectInput.Value())
-
 	if name == "" {
 		m.errMsg = "session name is required"
 		return m, nil
@@ -152,10 +151,15 @@ func (m CreateFormModel) View() tea.View {
 	b.WriteByte('\n')
 	b.WriteString(m.projectInput.View())
 	b.WriteByte('\n')
+	b.WriteString(s.Error.Render(m.errMsg))
+	b.WriteByte('\n')
 	if m.errMsg != "" {
-		b.WriteString(s.Error.Render(m.errMsg))
 		b.WriteByte('\n')
 	}
 	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
 	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
+}
+
+func (m CreateFormModel) KeyBindings() []key.Binding {
+	return []key.Binding{popupNextFieldKeyBinding, popupPrevFieldKeyBinding, popupSubmitFormKeyBinding, popupCloseKeyBinding}
 }

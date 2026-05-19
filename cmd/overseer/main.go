@@ -46,8 +46,7 @@ func main() {
 	sessionSvc := service.NewSessionService(store, tmuxStub, gitStub, log)
 
 	s := styles.New()
-	registry := dashboard.NewHelpRegistry()
-	dash := dashboard.New(s, *sessionSvc, registry)
+	dash := dashboard.New(s, *sessionSvc)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {
