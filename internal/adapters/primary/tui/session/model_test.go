@@ -38,7 +38,7 @@ func TestModel_SessionsLoadedRendersProjectTree(t *testing.T) {
 		t.Fatalf("initial SessionSelectedMsg.ID = %q, want %q", msg.ID, alpha.ID.String())
 	}
 	view := updated.(Model).View().Content
-	for _, want := range []string{"▾ overseer", "alpha", "beta"} {
+	for _, want := range []string{"● overseer", "alpha", "beta"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() missing %q: %q", want, view)
 		}
@@ -58,7 +58,7 @@ func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
 	view := updated.(Model).View().Content
-	if strings.Contains(view, "▾ overseer") || strings.Contains(view, "▾ other") {
+	if strings.Contains(view, "● overseer") || strings.Contains(view, "● other") {
 		t.Fatalf("View() rendered virtual group rows in raw mode: %q", view)
 	}
 	for _, want := range []string{"alpha", "beta"} {
@@ -121,6 +121,25 @@ func TestModel_SessionsLoadedWithUnassignedProjectShowsNoProjectGroup(t *testing
 	view := updated.(Model).View().Content
 	if !strings.Contains(view, "(no project)") {
 		t.Fatalf("View() missing '(no project)' label for unassigned session: %q", view)
+	}
+}
+
+func TestModel_GroupRowRendersDifferentlyWhenCursorMovesToIt(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(nil))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
+	viewSessionFocused := updated.(Model).View().Content
+
+	updated, _ = updated.(Model).Update(keyPress("k"))
+	viewGroupFocused := updated.(Model).View().Content
+
+	if viewSessionFocused == viewGroupFocused {
+		t.Fatalf("View() did not change when cursor moved from session to group: %q", viewGroupFocused)
 	}
 }
 

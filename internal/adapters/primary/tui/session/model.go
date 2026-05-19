@@ -250,7 +250,11 @@ func firstSessionID(sessions []domain.Session) string {
 func renderSessionNode(s *styles.Styles) components.TreeRenderFunc[sessionNode] {
 	return func(item sessionNode, _, depth int, hasKids, expanded, focused bool) string {
 		if item.kind == sessionNodeGroup {
-			return s.Group.Header.Render(components.TreePrefix(depth, hasKids, expanded) + item.label)
+			style := s.Group.Header
+			if focused {
+				style = s.Group.HeaderSelected
+			}
+			return style.Render(components.TreePrefix(depth, hasKids, expanded) + item.label)
 		}
 		number := fmt.Sprintf("%s%02d. ", strings.Repeat(" ", depth*styles.ListIndentUnit), item.number)
 		if focused {

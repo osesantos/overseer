@@ -33,7 +33,8 @@ type PaneStyles struct {
 }
 
 type GroupStyles struct {
-	Header lipgloss.Style
+	Header         lipgloss.Style
+	HeaderSelected lipgloss.Style
 }
 
 type StatusStyles struct {
@@ -175,7 +176,8 @@ func New() *Styles {
 			NumberSelected: lipgloss.NewStyle().Foreground(theme.Subtext).Bold(true).Background(theme.SelectionBg),
 		},
 		Group: GroupStyles{
-			Header: lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
+			Header:         lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
+			HeaderSelected: lipgloss.NewStyle().Foreground(theme.Accent).Bold(true).Background(theme.SelectionBg),
 		},
 		Status: StatusStyles{
 			Label:     lipgloss.NewStyle().Foreground(theme.Subtext),
