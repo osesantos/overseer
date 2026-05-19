@@ -149,6 +149,6 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func fit(_ *styles.Styles, s string, width, height int) string {
-	return lipgloss.NewStyle().Width(width).Height(height).Render(s)
+func fit(s *styles.Styles, content string, width, height int) string {
+	return s.Layout.Box.Width(width).Height(height).Render(content)
 }

@@ -64,6 +64,10 @@ type TooSmallStyles struct {
 	Message lipgloss.Style
 }
 
+type LayoutStyles struct {
+	Box lipgloss.Style
+}
+
 type Styles struct {
 	Border   BorderStyles
 	TitleBar struct {
@@ -99,6 +103,7 @@ type Styles struct {
 	Help       HelpStyles
 	EmptyState EmptyStateStyles
 	TooSmall   TooSmallStyles
+	Layout     LayoutStyles
 }
 
 func New() *Styles {
@@ -208,6 +213,9 @@ func New() *Styles {
 		},
 		TooSmall: TooSmallStyles{
 			Message: lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
+		},
+		Layout: LayoutStyles{
+			Box: lipgloss.NewStyle(),
 		},
 	}
 }
