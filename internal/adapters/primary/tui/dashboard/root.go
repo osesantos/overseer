@@ -48,10 +48,10 @@ func New(styles *styles.Styles, sessionsService service.SessionService, registry
 		sessionsService: sessionsService,
 	}
 
+	m.sessionsModel.SetFocus(true)
+	m.helpBar.SetActivePane(SessionsPaneID)
 	registry.RegisterPane(SessionsPaneID, m.sessionsModel.KeyBindings())
 	registry.RegisterPane(DetailsPaneID, m.detailsModel.KeyBindings())
-	m.helpBar.SetActivePane(SessionsPaneID)
-	m.sessionsModel.SetFocus(true)
 
 	return m
 }
@@ -64,9 +64,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
 		return m.resize(msg)
-	case sessionui.SessionCreatedMsg:
+	case shared.SessionCreatedMsg:
 		return m, m.sessionsModel.Init()
-	case sessionui.CancelFormMsg:
+	case shared.NewSessionPopupCloseMsg:
 		m.focused = true
 		return m, nil
 	case tea.KeyPressMsg:
@@ -78,24 +78,22 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.helpBar, cmd = shared.UpdateModel(m.helpBar, msg)
 			return m, cmd
 		}
-		if key.Matches(msg, nextTabKeyBinding) && m.focused {
-			if m.sessionsModel.IsFocused() {
-				m.sessionsModel.SetFocus(false)
-				m.detailsModel = m.detailsModel.SetFocus(true)
-				m.helpBar = m.helpBar.SetActivePane(DetailsPaneID)
-			} else {
-				m.sessionsModel.SetFocus(true)
-				m.detailsModel = m.detailsModel.SetFocus(false)
-				m.helpBar = m.helpBar.SetActivePane(SessionsPaneID)
-			}
-
-			return m, nil
-
-		}
 		if key.Matches(msg, newSessionKeyBinding) && !m.focused && m.sessionsModel.IsFocused() {
 			m.createForm = sessionui.NewCreateForm(m.styles, m.sessionsService)
 			m.focused = false
 			return m, m.createForm.Init()
+		}
+		if key.Matches(msg, nextTabKeyBinding) && m.focused {
+			if m.sessionsModel.IsFocused() {
+				m.sessionsModel.SetFocus(false)
+				m.detailsModel.SetFocus(true)
+				m.helpBar.SetActivePane(DetailsPaneID)
+			} else {
+				m.sessionsModel.SetFocus(true)
+				m.detailsModel.SetFocus(false)
+				m.helpBar.SetActivePane(SessionsPaneID)
+			}
+			return m, nil
 		}
 	}
 
@@ -106,7 +104,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	return m, nil
+	// forward to the focused child
+	var cmd tea.Cmd
+	if m.sessionsModel.IsFocused() {
+		m.sessionsModel, cmd = shared.UpdateModel(m.sessionsModel, msg)
+		return m, cmd
+	} else {
+		m.detailsModel, cmd = shared.UpdateModel(m.detailsModel, msg)
+		return m, cmd
+	}
 }
 
 func (m Model) View() tea.View {
@@ -125,7 +131,7 @@ func (m Model) View() tea.View {
 
 	bodyHeight := max(m.height-titlebarHeight-helpHeight, 1)
 	leftWidth := m.width * SessionsListWidthPercent / 100
-	rightWidth := m.width - leftWidth // right pane
+	rightWidth := m.width - leftWidth
 
 	left := fit(m.styles, m.sessionsModel.View().Content, leftWidth, bodyHeight)
 	right := fit(m.styles, m.detailsModel.View().Content, rightWidth, bodyHeight)
@@ -141,7 +147,7 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.tooSmall = m.width < 60 || m.height < 15
 
 	leftWidth := m.width * SessionsListWidthPercent / 100
-	rightWidth := m.width - leftWidth // right width
+	rightWidth := m.width - leftWidth
 	bodyHeight := max(m.height-TitleBarHeight-HelpBarHeight, 1)
 
 	var cmds []tea.Cmd

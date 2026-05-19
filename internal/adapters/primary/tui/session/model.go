@@ -14,15 +14,6 @@ import (
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
-type SessionsLoadedMsg struct {
-	Sessions []domain.Session
-	Err      error
-}
-
-type SessionSelectedMsg struct {
-	ID string
-}
-
 // sessionItem wraps a domain.Session so it satisfies list.Item.
 type sessionItem struct {
 	session domain.Session
@@ -58,11 +49,7 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
-
-	case SessionsLoadedMsg:
+	case shared.SessionsLoadedMsg:
 		if msg.Err != nil {
 			return m, nil
 		}
@@ -71,19 +58,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			items[i] = sessionItem{session: s}
 		}
 		m.list.SetItems(items)
-
-	case tea.KeyMsg:
-		if !m.focused {
-			return m, nil
-		}
-		// Forward all keys to list.Model — it handles j/k, filter, pagination, etc.
-		var cmd tea.Cmd
-		m.list, cmd = m.list.Update(msg)
-		// After the list processes the key, the cursor might have moved —
-		// announce the new selection.
-		return m, tea.Batch(cmd, m.emitSelection())
 	}
-	return m, nil
+
+	if !m.focused {
+		return m, nil
+	}
+	// Forward all keys to list.Model — it handles j/k, filter, pagination, etc.
+	var cmd tea.Cmd
+	m.list, cmd = m.list.Update(msg)
+	// After the list processes the key, the cursor might have moved — announce the new selection.
+	return m, tea.Batch(cmd, m.emitSelection())
+
 }
 
 // emitSelection announces the currently-focused session to the rest of the app.
@@ -93,17 +78,16 @@ func (m Model) emitSelection() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	return shared.Emit(SessionSelectedMsg{ID: cur.session.ID.String()})
+	return shared.Emit(shared.SessionSelectedMsg{ID: cur.session.ID.String()})
 }
 
-func (m Model) SetSize(width, height int) Model {
+func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	m.list.SetSize(width, height)
-	return m
 }
 
-func (m Model) SetFocus(focus bool) {
+func (m *Model) SetFocus(focus bool) {
 	m.focused = focus
 }
 
@@ -117,12 +101,7 @@ func (m Model) View() tea.View {
 }
 
 func (m Model) KeyBindings() []key.Binding {
-	return []key.Binding{
-		key.NewBinding(key.WithKeys("j"), key.WithHelp("j", "move down")),
-		key.NewBinding(key.WithKeys("k"), key.WithHelp("k", "move up")),
-		key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "reorder down")),
-		key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "reorder up")),
-	}
+	return []key.Binding{moveDownKeyBinding, moveUpKeyBinding, reorderDownKeyBinding, reorderUpKeyBinding}
 }
 
 // The Cmd: a function that does the work and returns a Msg
@@ -131,10 +110,8 @@ func (m Model) loadSessions() tea.Cmd {
 	return func() tea.Msg {
 		result, err := m.service.List(context.Background(), service.ListSessionsRequest{})
 		for _, group := range result.Groups {
-			for _, session := range group.Sessions {
-				sessions = append(sessions, session)
-			}
+			sessions = append(sessions, group.Sessions...)
 		}
-		return SessionsLoadedMsg{Sessions: sessions, Err: err}
+		return shared.SessionsLoadedMsg{Sessions: sessions, Err: err}
 	}
 }

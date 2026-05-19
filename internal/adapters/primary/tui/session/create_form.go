@@ -64,7 +64,7 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if key.Matches(msg, shared.PopupCloseKey) {
-			return m, func() tea.Msg { return CancelFormMsg{} }
+			return m, func() tea.Msg { return shared.NewSessionPopupCloseMsg{} }
 		}
 		if key.Matches(msg, shared.PopupConfirmKey) {
 			return m.submit()
@@ -120,7 +120,7 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return createErrMsg{err: err}
 		}
-		return SessionCreatedMsg{Session: resp.Session}
+		return shared.SessionCreatedMsg{Session: resp.Session}
 	}
 }
 

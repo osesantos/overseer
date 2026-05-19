@@ -37,7 +37,7 @@ func (m DetailsModel) View() tea.View {
 	return components.PanelWithSize(&m.styles, content, m.focused, m.width, m.height)
 }
 
-func (m DetailsModel) SetSize(width, height int) {
+func (m *DetailsModel) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 }
@@ -46,7 +46,6 @@ func (m DetailsModel) KeyBindings() []key.Binding {
 	return []key.Binding{AttachShell, AttachAgent}
 }
 
-func (m DetailsModel) SetFocus(focus bool) DetailsModel {
+func (m *DetailsModel) SetFocus(focus bool) {
 	m.focused = focus
-	return m
 }

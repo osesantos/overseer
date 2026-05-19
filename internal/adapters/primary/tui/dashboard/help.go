@@ -118,7 +118,6 @@ func (m HelpBarModel) View() tea.View {
 	return tea.NewView(m.help.View(km))
 }
 
-func (m HelpBarModel) SetActivePane(name string) HelpBarModel {
+func (m *HelpBarModel) SetActivePane(name string) {
 	m.activePane = name
-	return m
 }
