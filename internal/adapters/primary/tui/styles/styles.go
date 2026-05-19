@@ -12,9 +12,10 @@ type BorderStyles struct {
 }
 
 type PaneStyles struct {
-	Sessions lipgloss.Style
-	Status   lipgloss.Style
-	Preview  lipgloss.Style
+	Sessions  lipgloss.Style
+	Status    lipgloss.Style
+	Preview   lipgloss.Style
+	Container lipgloss.Style
 }
 
 type GroupStyles struct {
@@ -63,35 +64,35 @@ type TooSmallStyles struct {
 }
 
 type Styles struct {
-	Border     BorderStyles
-	TitleBar   struct {
+	Border   BorderStyles
+	TitleBar struct {
 		Base     lipgloss.Style
 		Branding lipgloss.Style
 		Subtext  lipgloss.Style
 	}
-	Pane       PaneStyles
-	ListRow    struct {
+	Pane    PaneStyles
+	ListRow struct {
 		Normal   lipgloss.Style
 		Selected lipgloss.Style
 	}
-	Group      GroupStyles
-	Session    SessionStyles
-	Status     StatusStyles
+	Group         GroupStyles
+	Session       SessionStyles
+	Status        StatusStyles
 	StatusSegment struct {
 		Default   lipgloss.Style
 		Highlight lipgloss.Style
 	}
-	Form       FormStyles
-	Modal      struct {
+	Form  FormStyles
+	Modal struct {
 		Box          lipgloss.Style
 		Overlay      color.Color
 		OverlayStyle lipgloss.Style
 	}
-	Badge      struct {
+	Badge struct {
 		Key   lipgloss.Style
 		Label lipgloss.Style
 	}
-	Divider    struct {
+	Divider struct {
 		Horizontal lipgloss.Style
 	}
 	Help       HelpStyles
@@ -123,9 +124,10 @@ func New() *Styles {
 			Subtext:  lipgloss.NewStyle().Background(theme.Primary).Foreground(theme.TitleSubtext).Padding(0, 1),
 		},
 		Pane: PaneStyles{
-			Sessions: lipgloss.NewStyle().Padding(0, 1),
-			Status:   lipgloss.NewStyle().Padding(0, 1),
-			Preview:  lipgloss.NewStyle().Padding(0, 1),
+			Sessions:  lipgloss.NewStyle().Padding(0, 1),
+			Status:    lipgloss.NewStyle().Padding(0, 1),
+			Preview:   lipgloss.NewStyle().Padding(0, 1),
+			Container: lipgloss.NewStyle().Padding(0, 1),
 		},
 		ListRow: struct {
 			Normal   lipgloss.Style

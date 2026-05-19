@@ -7,15 +7,19 @@ require (
 	charm.land/bubbletea/v2 v2.0.0
 	charm.land/lipgloss/v2 v2.0.0
 	github.com/charmbracelet/x/ansi v0.11.7
-	github.com/charmbracelet/x/exp/golden v0.0.0-20260511125431-fe5d686e0c99
 	github.com/charmbracelet/x/exp/teatest/v2 v2.0.0-20260511125431-fe5d686e0c99
 	github.com/google/uuid v1.6.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
+	github.com/charmbracelet/x/exp/golden v0.0.0-20260511125431-fe5d686e0c99 // indirect
+	github.com/sahilm/fuzzy v0.1.1 // indirect
+)
+
+require (
 	github.com/atotto/clipboard v0.1.4 // indirect
-	github.com/aymanbagabas/go-udiff v0.4.1 // indirect
+	github.com/aymanbagabas/go-udiff v0.4.1
 	github.com/charmbracelet/colorprofile v0.4.2 // indirect
 	github.com/charmbracelet/ultraviolet v0.0.0-20260205113103-524a6607adb8 // indirect
 	github.com/charmbracelet/x/term v0.2.2 // indirect

@@ -24,11 +24,11 @@ type CreateFormModel struct {
 	projectInput    textinput.Model
 	focusIndex      shared.CircularInt
 	errMsg          string
-	sessionsService *service.SessionService
+	sessionsService service.SessionService
 	styles          *styles.Styles
 }
 
-func NewCreateForm(s *styles.Styles, sessionsService *service.SessionService) CreateFormModel {
+func NewCreateForm(s *styles.Styles, sessionsService service.SessionService) CreateFormModel {
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Session name"
 	nameInput.CharLimit = 100

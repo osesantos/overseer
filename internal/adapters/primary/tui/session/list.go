@@ -2,60 +2,58 @@ package session
 
 import (
 	"context"
-	"strings"
 
-	tea "charm.land/bubbletea/v2"
 	"charm.land/bubbles/v2/key"
-	"charm.land/lipgloss/v2"
-	"github.com/google/uuid"
+	tea "charm.land/bubbletea/v2"
 
+	"charm.land/bubbles/v2/list"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
-type groupsLoadedMsg struct {
-	groups         []service.SessionGroup
-	err            error
-	selectedID     uuid.UUID
-	preserveCursor bool
+type SessionsLoadedMsg struct {
+	Sessions []domain.Session
+	Err      error
 }
 
-type ReorderRequestMsg struct {
-	Direction int
+type SessionSelectedMsg struct {
+	ID string
 }
 
-type SessionGroup = service.SessionGroup
+// sessionItem wraps a domain.Session so it satisfies list.Item.
+type sessionItem struct {
+	session domain.Session
+}
+
+func (i sessionItem) FilterValue() string { return i.session.Name }
+func (i sessionItem) Title() string       { return i.session.Name }
+func (i sessionItem) Description() string { return i.session.ProjectName }
 
 type Model struct {
-	groups  []SessionGroup
-	cursor  int
-	styles  *styles.Styles
-	focused bool
-	width   int
-	height  int
-	svc     *service.SessionService
+	sessions []domain.Session
+	styles   *styles.Styles
+	service  service.SessionService
+	list     list.Model
+	focused  bool
+	width    int
+	height   int
+	err      error
 }
 
-func New(s *styles.Styles, svc *service.SessionService) Model {
-	return Model{
-		styles: s,
-		svc:    svc,
-	}
+func New(s *styles.Styles, service service.SessionService) Model {
+	delegate := list.NewDefaultDelegate()
+	l := list.New(nil, delegate, 0, 0)
+	l.Title = "Sessions"
+	l.SetShowStatusBar(true)
+	l.SetFilteringEnabled(true)
+	return Model{styles: s, service: service, list: l}
 }
 
 func (m Model) Init() tea.Cmd {
-	if m.svc == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		resp, err := m.svc.List(context.Background(), service.ListSessionsRequest{})
-		if err != nil {
-			return groupsLoadedMsg{err: err}
-		}
-		return groupsLoadedMsg{groups: resp.Groups}
-	}
+	return m.loadSessions()
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -64,174 +62,81 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
-	case groupsLoadedMsg:
-		if msg.err == nil {
-			m.groups = msg.groups
-			if msg.preserveCursor {
-				m.cursor = m.indexOf(msg.selectedID)
-			} else {
-				m.cursor = 0
-			}
+	case SessionsLoadedMsg:
+		if msg.Err != nil {
+			return m, nil
 		}
+		items := make([]list.Item, len(msg.Sessions))
+		for i, s := range msg.Sessions {
+			items[i] = sessionItem{session: s}
+		}
+		m.list.SetItems(items)
 
-	case tea.KeyPressMsg:
-		total := m.totalItems()
-		switch msg.String() {
-		case "j":
-			if total > 0 && m.cursor < total-1 {
-				m.cursor++
-			}
-		case "k":
-			if m.cursor > 0 {
-				m.cursor--
-			}
-		case "J":
-			return m, func() tea.Msg { return ReorderRequestMsg{Direction: +1} }
-		case "K":
-			return m, func() tea.Msg { return ReorderRequestMsg{Direction: -1} }
+	case tea.KeyMsg:
+		if !m.focused {
+			return m, nil
 		}
+		// Forward all keys to list.Model — it handles j/k, filter, pagination, etc.
+		var cmd tea.Cmd
+		m.list, cmd = m.list.Update(msg)
+		// After the list processes the key, the cursor might have moved —
+		// announce the new selection.
+		return m, tea.Batch(cmd, m.emitSelection())
 	}
-
 	return m, nil
 }
 
-func (m Model) View() tea.View {
-	return tea.NewView(m.render())
-}
+// emitSelection announces the currently-focused session to the rest of the app.
+func (m Model) emitSelection() tea.Cmd {
+	cur, ok := m.list.SelectedItem().(sessionItem)
 
-func (m Model) render() string {
-	var content string
-	if m.totalItems() == 0 {
-		content = m.renderEmpty()
-	} else {
-		content = m.renderGroups()
-	}
-
-	var border lipgloss.Style
-	if m.focused {
-		border = m.styles.Border.Focused
-	} else {
-		border = m.styles.Border.Blurred
-	}
-	if m.width > 0 {
-		contentWidth := m.width - border.GetHorizontalFrameSize()
-		contentWidth = max(contentWidth, 1)
-		content = lipgloss.NewStyle().Width(contentWidth).Render(content)
-	}
-	if m.height > 0 {
-		contentHeight := m.height - border.GetVerticalFrameSize()
-		contentHeight = max(contentHeight, 1)
-		content = lipgloss.NewStyle().Height(contentHeight).Render(content)
-	}
-	return border.Render(content)
-}
-
-func (m Model) renderEmpty() string {
-	title := m.styles.EmptyState.Title.Render("No sessions yet")
-	hint := components.KeyBadge(m.styles, "n", "create session")
-	content := title + "\n" + hint
-
-	if m.width <= 0 || m.height <= 0 {
-		return content
-	}
-
-	var border lipgloss.Style
-	if m.focused {
-		border = m.styles.Border.Focused
-	} else {
-		border = m.styles.Border.Blurred
-	}
-
-	w := max(m.width-border.GetHorizontalFrameSize(), 1)
-	h := max(m.height-border.GetVerticalFrameSize(), 1)
-	return lipgloss.Place(w, h, lipgloss.Center, lipgloss.Center, content)
-}
-
-func (m Model) renderGroups() string {
-	lines := make([]string, 0, len(m.groups)*2)
-	flatIdx := 0
-
-	for _, g := range m.groups {
-		lines = append(lines, m.styles.Group.Header.Render(g.ProjectName))
-		for _, s := range g.Sessions {
-			if flatIdx == m.cursor {
-				lines = append(lines, m.styles.ListRow.Selected.Render(s.Name))
-			} else {
-				lines = append(lines, m.styles.ListRow.Normal.Render(s.Name))
-			}
-			flatIdx++
-		}
-	}
-
-	return strings.Join(lines, "\n")
-}
-
-func (m Model) totalItems() int {
-	n := 0
-	for _, g := range m.groups {
-		n += len(g.Sessions)
-	}
-	return n
-}
-
-func (m *Model) SetFocus(focused bool) {
-	m.focused = focused
-}
-
-func (m Model) SelectedSession() (domain.Session, bool) {
-	if m.totalItems() == 0 {
-		return domain.Session{}, false
-	}
-	flatIdx := 0
-	for _, g := range m.groups {
-		for _, s := range g.Sessions {
-			if flatIdx == m.cursor {
-				return s, true
-			}
-			flatIdx++
-		}
-	}
-	return domain.Session{}, false
-}
-
-func (m Model) Cursor() int {
-	return m.cursor
-}
-
-func (m Model) ReloadPreservingSelection(id uuid.UUID) tea.Cmd {
-	if m.svc == nil {
+	if !ok {
 		return nil
 	}
-	return func() tea.Msg {
-		resp, err := m.svc.List(context.Background(), service.ListSessionsRequest{})
-		if err != nil {
-			return groupsLoadedMsg{err: err, selectedID: id, preserveCursor: true}
-		}
-		return groupsLoadedMsg{groups: resp.Groups, selectedID: id, preserveCursor: true}
-	}
+	return shared.Emit(SessionSelectedMsg{ID: cur.session.ID.String()})
 }
 
-func (m Model) indexOf(id uuid.UUID) int {
-	flatIdx := 0
-	for _, g := range m.groups {
-		for _, s := range g.Sessions {
-			if s.ID == id {
-				return flatIdx
-			}
-			flatIdx++
-		}
-	}
-	if total := m.totalItems(); total > 0 && m.cursor >= total {
-		return total - 1
-	}
-	return m.cursor
+func (m Model) SetSize(width, height int) Model {
+	m.width = width
+	m.height = height
+	m.list.SetSize(width, height)
+	return m
 }
 
-func (m Model) Keybindings() []key.Binding {
+func (m Model) Focus() Model {
+	m.focused = true
+	return m
+}
+
+func (m Model) Blur() Model {
+	m.focused = false
+	return m
+}
+
+func (m Model) View() tea.View {
+	return components.PanelWithSize(m.styles, m.list.View(), m.focused, m.width, m.height)
+
+}
+
+func (m Model) KeyBindings() []key.Binding {
 	return []key.Binding{
 		key.NewBinding(key.WithKeys("j"), key.WithHelp("j", "move down")),
 		key.NewBinding(key.WithKeys("k"), key.WithHelp("k", "move up")),
 		key.NewBinding(key.WithKeys("J"), key.WithHelp("J", "reorder down")),
 		key.NewBinding(key.WithKeys("K"), key.WithHelp("K", "reorder up")),
+	}
+}
+
+// The Cmd: a function that does the work and returns a Msg
+func (m Model) loadSessions() tea.Cmd {
+	sessions := []domain.Session{}
+	return func() tea.Msg {
+		result, err := m.service.List(context.Background(), service.ListSessionsRequest{})
+		for _, group := range result.Groups {
+			for _, session := range group.Sessions {
+				sessions = append(sessions, session)
+			}
+		}
+		return SessionsLoadedMsg{Sessions: sessions, Err: err}
 	}
 }

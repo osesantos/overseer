@@ -1,8 +1,6 @@
 package dashboard
 
 import (
-	"context"
-
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -20,11 +18,13 @@ const (
 	PanePreview
 	SessionsListWidthPercent = 30
 	TitleBarHeight           = 1
+	HelpBarHeight            = 1
 )
 
 type Model struct {
 	titlebar     TitlebarModel
 	sessionsList sessionui.Model
+	previewPanel PreviewModel
 	helpBar      HelpModel
 	createForm   *sessionui.CreateFormModel
 
@@ -34,23 +34,26 @@ type Model struct {
 	height          int
 	tooSmall        bool
 	styles          *styles.Styles
-	sessionsService *service.SessionService
+	sessionsService service.SessionService
 }
 
-func New(styles *styles.Styles, sessionsService *service.SessionService, registry HelpRegistry) Model {
+func New(styles *styles.Styles, sessionsService service.SessionService, registry HelpRegistry) Model {
 	sessions := sessionui.New(styles, sessionsService)
 	helpBar := newHelpBar(registry, styles)
-
-	registry.RegisterPane("sessions", sessions.Keybindings())
-	sessions.SetFocus(true)
+	previewPanel := newPreview(*styles)
+	registry.RegisterPane("sessions", sessions.KeyBindings())
+	registry.RegisterPane("preview", previewPanel.KeyBindings())
+	sessions.Focus()
+	previewPanel.SetFocus(false)
 	helpBar.SetActivePane("sessions")
 
 	return Model{
+		styles:          styles,
 		titlebar:        newTitlebar(styles, "Overseer"),
 		sessionsList:    sessions,
 		helpBar:         helpBar,
 		activePane:      PaneSessions,
-		styles:          styles,
+		previewPanel:    previewPanel,
 		sessionsService: sessionsService,
 		width:           80,
 		height:          24,
@@ -58,7 +61,7 @@ func New(styles *styles.Styles, sessionsService *service.SessionService, registr
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.titlebar.Init(), m.sessionsList.Init(), m.helpBar.Init())
+	return tea.Batch(m.titlebar.Init(), m.sessionsList.Init(), m.previewPanel.Init(), m.helpBar.Init())
 }
 
 func (m Model) hasFocus() bool {
@@ -99,7 +102,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	return m.routeToActivePane(msg)
+	return m, nil
 }
 
 func (m Model) View() tea.View {
@@ -118,46 +121,14 @@ func (m Model) View() tea.View {
 
 	bodyHeight := max(m.height-titlebarHeight-helpHeight, 1)
 	leftWidth := m.width * SessionsListWidthPercent / 100
-	_ = m.width - leftWidth // right pane
+	rightWidth := m.width - leftWidth // right pane
 
-	left := fit(m.sessionsList.View().Content, leftWidth, bodyHeight)
-	right := fit("", leftWidth, bodyHeight)
-	body := fit(lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
+	left := fit(m.styles, m.sessionsList.View().Content, leftWidth, bodyHeight)
+	right := fit(m.styles, m.previewPanel.View().Content, rightWidth, bodyHeight)
+	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
 	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, body, helpView)
 
 	return tea.NewView(full)
-}
-
-func (m Model) routeToActivePane(msg tea.Msg) (tea.Model, tea.Cmd) {
-	var cmd tea.Cmd
-	m.sessionsList, cmd = shared.UpdateModel(m.sessionsList, msg)
-	if cmd != nil {
-		return m, func() tea.Msg {
-			cmdMsg := cmd()
-			if reorder, ok := cmdMsg.(sessionui.ReorderRequestMsg); ok {
-				reorderCmd := m.reorder(reorder.Direction)
-				if reorderCmd == nil {
-					return nil
-				}
-				return reorderCmd()
-			}
-			return cmdMsg
-		}
-	}
-	return m, cmd
-}
-
-func (m Model) reorder(direction int) tea.Cmd {
-	sess, ok := m.sessionsList.SelectedSession()
-	if !ok || m.sessionsService == nil {
-		return nil
-	}
-	return func() tea.Msg {
-		if _, err := m.sessionsService.Reorder(context.Background(), service.ReorderSessionRequest{ID: sess.ID, Direction: direction}); err != nil {
-			return nil
-		}
-		return m.sessionsList.ReloadPreservingSelection(sess.ID)()
-	}
 }
 
 func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
@@ -166,22 +137,27 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.tooSmall = m.width < 60 || m.height < 15
 
 	leftWidth := m.width * SessionsListWidthPercent / 100
-	_ = m.width - leftWidth // right width
-	bodyHeight := max(m.height-TitleBarHeight, 1)
+	rightWidth := m.width - leftWidth // right width
+	bodyHeight := max(m.height-TitleBarHeight-HelpBarHeight, 1)
 
 	var cmds []tea.Cmd
 	var cmd tea.Cmd
+
+	m.sessionsList.SetSize(leftWidth, bodyHeight)
+	m.previewPanel.SetSize(rightWidth, bodyHeight)
 
 	m.titlebar, cmd = shared.UpdateModel(m.titlebar, tea.WindowSizeMsg{Width: m.width, Height: TitleBarHeight})
 	cmds = append(cmds, cmd)
 	m.sessionsList, cmd = shared.UpdateModel(m.sessionsList, tea.WindowSizeMsg{Width: leftWidth, Height: bodyHeight})
 	cmds = append(cmds, cmd)
-	m.helpBar, cmd = shared.UpdateModel(m.helpBar, tea.WindowSizeMsg{Width: m.width, Height: 1})
+	m.previewPanel, cmd = shared.UpdateModel(m.previewPanel, tea.WindowSizeMsg{Width: rightWidth, Height: bodyHeight})
+	cmds = append(cmds, cmd)
+	m.helpBar, cmd = shared.UpdateModel(m.helpBar, tea.WindowSizeMsg{Width: m.width, Height: HelpBarHeight})
 	cmds = append(cmds, cmd)
 
 	return m, tea.Batch(cmds...)
 }
 
-func fit(s string, width, height int) string {
+func fit(_ *styles.Styles, s string, width, height int) string {
 	return lipgloss.NewStyle().Width(width).Height(height).Render(s)
 }
