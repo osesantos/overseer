@@ -37,6 +37,10 @@ func (m *HelpBarModel) SetSize(width, height int) {
 	m.height = height
 }
 
+func (m *HelpBarModel) SetBindings(bindings []key.Binding) {
+	m.bindings = bindings
+}
+
 // renderHelpBar lays out bindings as a single styled line where every cell —
 // including the gaps between key chips, descriptions, and separators —
 // carries the bar background, so the bar reads as one continuous strip.

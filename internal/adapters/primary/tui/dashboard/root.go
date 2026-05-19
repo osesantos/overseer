@@ -79,9 +79,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.sessionsModel.IsFocused() {
 				m.sessionsModel.SetFocus(false)
 				m.detailsModel.SetFocus(true)
-				m.helpBar = shared.NewHelpBarModel(m.styles, detailsPanelKeyBindings)
+				m.helpBar.SetBindings(detailsPanelKeyBindings)
 			} else {
-				m.helpBar = shared.NewHelpBarModel(m.styles, sessionsListKeyBindings)
+				m.helpBar.SetBindings(sessionsListKeyBindings)
 				m.sessionsModel.SetFocus(true)
 				m.detailsModel.SetFocus(false)
 			}
@@ -144,7 +144,7 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 
 	m.sessionsModel.SetSize(leftWidth, bodyHeight)
 	m.detailsModel.SetSize(rightWidth, bodyHeight)
-	m.helpBar.SetSize(rightWidth, bodyHeight)
+	m.helpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)
 	return m, nil
 }
