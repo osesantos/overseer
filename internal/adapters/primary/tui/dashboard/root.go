@@ -57,6 +57,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		return m.resize(msg)
 	case shared.SessionCreatedMsg:
+		m.focused = true
 		return m, m.sessionsModel.Init()
 	case shared.NewSessionPopupCloseMsg:
 		m.focused = true

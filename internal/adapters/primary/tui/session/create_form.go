@@ -128,7 +128,7 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 	}
 }
 
-func (m CreateFormModel) updateFocusAndBlurs() {
+func (m *CreateFormModel) updateFocusAndBlurs() {
 	switch m.focusIndex.Value() {
 	case FieldNameSelectedIndex:
 		m.nameInput.Focus()
