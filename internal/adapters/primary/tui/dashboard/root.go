@@ -9,6 +9,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
 	projectui "github.com/dnlopes/overseer/internal/adapters/primary/tui/project"
@@ -37,7 +38,7 @@ const (
 type Model struct {
 	titlebar       TitleBarModel
 	leftPane       leftpane.Model
-	detailsModel   DetailsModel
+	inspector      inspector.Model
 	helpBar        shared.HelpBarModel
 	createForm     sessionui.CreateFormModel
 	deleteForm     sessionui.DeleteFormModel
@@ -75,7 +76,7 @@ func New(
 		styles:          styles,
 		titlebar:        newTitlebar(styles, "Overseer"),
 		leftPane:        left,
-		detailsModel:    newDetailsModel(*styles),
+		inspector:       inspector.New(styles, sessionsService),
 		helpBar:         shared.NewHelpBarModel(styles, sessionsTabKeyBindings),
 		scheduler:       scheduler,
 		sessionsService: sessionsService,
@@ -93,7 +94,7 @@ func (m Model) Init() tea.Cmd {
 	return tea.Batch(
 		m.titlebar.Init(),
 		m.leftPane.Init(),
-		m.detailsModel.Init(),
+		m.inspector.Init(),
 		m.helpBar.Init(),
 		m.scheduler.Init(),
 	)
@@ -162,16 +163,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd, handled := m.handleKey(keyMsg); handled {
 			return m, cmd
 		}
-	}
-
-	if m.leftPaneFocused {
+		if m.leftPaneFocused {
+			var cmd tea.Cmd
+			m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+			return m, cmd
+		}
 		var cmd tea.Cmd
-		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		m.inspector, cmd = shared.UpdateModel(m.inspector, msg)
 		return m, cmd
 	}
-	var cmd tea.Cmd
-	m.detailsModel, cmd = shared.UpdateModel(m.detailsModel, msg)
-	return m, cmd
+
+	return m, shared.Broadcast(msg,
+		shared.Forward(&m.leftPane),
+		shared.Forward(&m.inspector),
+	)
 }
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
@@ -186,6 +191,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key.Matches(msg, nextPaneKeyBinding) {
 		m.toggleLeftRightFocus()
 		return nil, true
+	}
+	if m.leftPane.SessionsActive() && (key.Matches(msg, inspector.NextViewKeyBinding) || key.Matches(msg, inspector.PrevViewKeyBinding)) {
+		var cmd tea.Cmd
+		m.inspector, cmd = shared.UpdateModel(m.inspector, msg)
+		return cmd, true
 	}
 	if m.leftPaneFocused {
 		if m.leftPane.SessionsActive() && key.Matches(msg, newSessionKeyBinding) {
@@ -248,13 +258,13 @@ func (m *Model) toggleLeftRightFocus() {
 	if m.leftPaneFocused {
 		m.leftPaneFocused = false
 		m.leftPane.SetFocus(false)
-		m.detailsModel.SetFocus(true)
+		m.inspector.SetFocus(true)
 		m.helpBar.SetBindings(detailsPanelKeyBindings)
 		return
 	}
 	m.leftPaneFocused = true
 	m.leftPane.SetFocus(true)
-	m.detailsModel.SetFocus(false)
+	m.inspector.SetFocus(false)
 	m.helpBar.SetBindings(m.bindingsForActiveTab())
 }
 
@@ -310,7 +320,7 @@ func (m Model) View() tea.View {
 	rightWidth := m.width - leftWidth
 
 	left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
-	right := fit(m.styles, m.detailsModel.View().Content, rightWidth, bodyHeight)
+	right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
 	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
 	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, body, helpView)
 
@@ -339,7 +349,7 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	bodyHeight := max(m.height-TitleBarHeight-HelpBarHeight, 1)
 
 	m.leftPane.SetSize(leftWidth, bodyHeight)
-	m.detailsModel.SetSize(rightWidth, bodyHeight)
+	m.inspector.SetSize(rightWidth, bodyHeight)
 	m.helpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)
 	return m, nil

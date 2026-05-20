@@ -3,6 +3,7 @@ package dashboard
 import (
 	"charm.land/bubbles/v2/key"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
 )
 
@@ -16,7 +17,7 @@ var (
 	attachAgentKeyBinding   = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "attach agent"))
 	deleteSessionKeyBinding = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete session"))
 
-	sessionsTabKeyBindings  = []key.Binding{newSessionKeyBinding, attachShellKeyBinding, attachAgentKeyBinding, deleteSessionKeyBinding, leftpane.SessionsTabBinding(), leftpane.ProjectsTabBinding(), nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}
+	sessionsTabKeyBindings  = []key.Binding{newSessionKeyBinding, attachShellKeyBinding, attachAgentKeyBinding, deleteSessionKeyBinding, inspector.NextViewKeyBinding, inspector.PrevViewKeyBinding, leftpane.SessionsTabBinding(), leftpane.ProjectsTabBinding(), nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}
 	projectsTabKeyBindings  = []key.Binding{newProjectKeyBinding, leftpane.SessionsTabBinding(), leftpane.ProjectsTabBinding(), nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}
-	detailsPanelKeyBindings = []key.Binding{nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}
+	detailsPanelKeyBindings = []key.Binding{inspector.NextViewKeyBinding, inspector.PrevViewKeyBinding, nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}
 )
