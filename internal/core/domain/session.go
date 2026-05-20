@@ -64,11 +64,6 @@ type SessionRepository interface {
 	Delete(ctx context.Context, id uuid.UUID) error
 }
 
-type TmuxAdapter interface {
-	CreateSession(ctx context.Context, name string) (tmuxID string, err error)
-	KillSession(ctx context.Context, tmuxID string) error
-}
-
 type GitAdapter interface {
 	CreateWorktree(ctx context.Context, baseBranch, path string) error
 	RemoveWorktree(ctx context.Context, path string) error

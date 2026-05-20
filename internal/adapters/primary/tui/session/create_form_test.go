@@ -63,7 +63,7 @@ func TestCreateForm_SubmitCreatesSessionWithSelectedProject(t *testing.T) {
 	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
 	svc, repo, tmux, git := newCreateFormSessionServiceWithMocks(t)
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "alpha").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-alpha", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "alpha").Return(nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	form := NewCreateForm(styles.New(), svc, []domain.Project{overseer})
@@ -91,7 +91,7 @@ func TestCreateForm_SubmitCreatesSessionWithSelectedProject(t *testing.T) {
 func TestCreateForm_SubmitWithNoneCreatesProjectlessSession(t *testing.T) {
 	svc, repo, tmux, git := newCreateFormSessionServiceWithMocks(t)
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "orphan").Return("tmux-orphan", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-orphan", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "orphan").Return(nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	form := NewCreateForm(styles.New(), svc, nil)

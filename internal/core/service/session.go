@@ -59,7 +59,7 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 	}
 	sess.Order = nextOrder
 
-	if _, err := s.tmux.CreateSession(ctx, req.Name); err != nil {
+	if _, err := s.tmux.CreateSession(ctx, sess.ID.String(), "", ""); err != nil {
 		return CreateSessionResponse{}, fmt.Errorf("create tmux session: %w", err)
 	}
 	if err := s.git.CreateWorktree(ctx, "main", req.Name); err != nil {

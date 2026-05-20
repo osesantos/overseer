@@ -41,6 +41,8 @@ func newSessionMocks(t *testing.T) (*mocks.MockSessionRepository, *mocks.MockTmu
 		mocks.NewMockGitAdapter(t)
 }
 
+
+
 // --- Create ---
 
 func TestSessionService_Create_HappyPath(t *testing.T) {
@@ -48,7 +50,7 @@ func TestSessionService_Create_HappyPath(t *testing.T) {
 	repo, tmux, git := newSessionMocks(t)
 
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "alpha").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-alpha", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "alpha").Return(nil).Once()
 
 	var savedSession domain.Session
@@ -80,7 +82,7 @@ func TestSessionService_Create_WithoutProjectAllowed(t *testing.T) {
 	repo, tmux, git := newSessionMocks(t)
 
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "orphan").Return("tmux-orphan", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-orphan", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "orphan").Return(nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
@@ -126,7 +128,7 @@ func TestSessionService_Create_DuplicateNameAcrossProjectsAllowed(t *testing.T) 
 	existing := testutil.MakeSession("alpha", otherID)
 	repo, tmux, git := newSessionMocks(t)
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{existing}, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "alpha").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-alpha", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "alpha").Return(nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
@@ -163,7 +165,7 @@ func TestSessionService_Create_OrderIncrement(t *testing.T) {
 	repo, tmux, git := newSessionMocks(t)
 	repo.EXPECT().List(mock.Anything).
 		Return([]domain.Session{first, second, otherProject}, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "gamma").Return("tmux-gamma", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-gamma", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "gamma").Return(nil).Once()
 
 	var savedSession domain.Session
@@ -189,7 +191,7 @@ func TestSessionService_Create_TmuxError(t *testing.T) {
 	tmuxErr := errors.New("tmux unavailable")
 	repo, tmux, git := newSessionMocks(t)
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "alpha").Return("", tmuxErr).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("", tmuxErr).Once()
 
 	svc := NewSessionService(repo, tmux, git, testLogger())
 	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: uuid.New()})
@@ -206,7 +208,7 @@ func TestSessionService_Create_FirstSessionOrder(t *testing.T) {
 	otherProject.Order = 4
 	repo, tmux, git := newSessionMocks(t)
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{otherProject}, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, "alpha").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "", "").Return("tmux-alpha", nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, "main", "alpha").Return(nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 

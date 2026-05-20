@@ -4,6 +4,7 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -15,15 +16,22 @@ var _ domain.TmuxAdapter = (*Stub)(nil)
 
 // Stub is a stub implementation of domain.TmuxAdapter.
 // It satisfies the port interface with canned responses and records call counts for testing.
-// Replace with a real implementation when integrating real tmux.
 type Stub struct {
 	CreateSessionCalls int
 	KillSessionCalls   int
+	GetSessionCalls    int
+	ListSessionsCalls  int
+	AttachSessionCalls int
+
+	LastStartDir     string
+	LastShellCommand string
 }
 
 // CreateSession returns a deterministic canned tmux session ID of the form "tmux-stub-<name>-<uuid8>".
-func (s *Stub) CreateSession(_ context.Context, name string) (string, error) {
+func (s *Stub) CreateSession(_ context.Context, name, startDir, shellCommand string) (string, error) {
 	s.CreateSessionCalls++
+	s.LastStartDir = startDir
+	s.LastShellCommand = shellCommand
 	id := uuid.New().String()[:8]
 	return fmt.Sprintf("tmux-stub-%s-%s", name, id), nil
 }
@@ -31,5 +39,28 @@ func (s *Stub) CreateSession(_ context.Context, name string) (string, error) {
 // KillSession records the call and returns nil without touching any real tmux session.
 func (s *Stub) KillSession(_ context.Context, _ string) error {
 	s.KillSessionCalls++
+	return nil
+}
+
+// GetSession records the call and returns a synthetic session whose ID echoes the requested tmuxID.
+func (s *Stub) GetSession(_ context.Context, tmuxID string) (domain.TmuxSession, error) {
+	s.GetSessionCalls++
+	now := time.Now()
+	return domain.TmuxSession{
+		ID:        tmuxID,
+		CreatedAt: now,
+		UpdatedAt: now,
+	}, nil
+}
+
+// ListSessions records the call and returns an empty slice.
+func (s *Stub) ListSessions(_ context.Context) ([]domain.TmuxSession, error) {
+	s.ListSessionsCalls++
+	return []domain.TmuxSession{}, nil
+}
+
+// AttachSession records the call and returns nil without taking over the terminal.
+func (s *Stub) AttachSession(_ context.Context, _ string) error {
+	s.AttachSessionCalls++
 	return nil
 }

@@ -7,6 +7,7 @@ package mocks
 import (
 	"context"
 
+	"github.com/dnlopes/overseer/internal/core/domain"
 	mock "github.com/stretchr/testify/mock"
 )
 
@@ -37,45 +38,36 @@ func (_m *MockTmuxAdapter) EXPECT() *MockTmuxAdapter_Expecter {
 	return &MockTmuxAdapter_Expecter{mock: &_m.Mock}
 }
 
-// CreateSession provides a mock function for the type MockTmuxAdapter
-func (_mock *MockTmuxAdapter) CreateSession(ctx context.Context, name string) (string, error) {
-	ret := _mock.Called(ctx, name)
+// AttachSession provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) AttachSession(ctx context.Context, tmuxID string) error {
+	ret := _mock.Called(ctx, tmuxID)
 
 	if len(ret) == 0 {
-		panic("no return value specified for CreateSession")
+		panic("no return value specified for AttachSession")
 	}
 
-	var r0 string
-	var r1 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (string, error)); ok {
-		return returnFunc(ctx, name)
-	}
-	if returnFunc, ok := ret.Get(0).(func(context.Context, string) string); ok {
-		r0 = returnFunc(ctx, name)
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, tmuxID)
 	} else {
-		r0 = ret.Get(0).(string)
+		r0 = ret.Error(0)
 	}
-	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
-		r1 = returnFunc(ctx, name)
-	} else {
-		r1 = ret.Error(1)
-	}
-	return r0, r1
+	return r0
 }
 
-// MockTmuxAdapter_CreateSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSession'
-type MockTmuxAdapter_CreateSession_Call struct {
+// MockTmuxAdapter_AttachSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AttachSession'
+type MockTmuxAdapter_AttachSession_Call struct {
 	*mock.Call
 }
 
-// CreateSession is a helper method to define mock.On call
+// AttachSession is a helper method to define mock.On call
 //   - ctx context.Context
-//   - name string
-func (_e *MockTmuxAdapter_Expecter) CreateSession(ctx interface{}, name interface{}) *MockTmuxAdapter_CreateSession_Call {
-	return &MockTmuxAdapter_CreateSession_Call{Call: _e.mock.On("CreateSession", ctx, name)}
+//   - tmuxID string
+func (_e *MockTmuxAdapter_Expecter) AttachSession(ctx interface{}, tmuxID interface{}) *MockTmuxAdapter_AttachSession_Call {
+	return &MockTmuxAdapter_AttachSession_Call{Call: _e.mock.On("AttachSession", ctx, tmuxID)}
 }
 
-func (_c *MockTmuxAdapter_CreateSession_Call) Run(run func(ctx context.Context, name string)) *MockTmuxAdapter_CreateSession_Call {
+func (_c *MockTmuxAdapter_AttachSession_Call) Run(run func(ctx context.Context, tmuxID string)) *MockTmuxAdapter_AttachSession_Call {
 	_c.Call.Run(func(args mock.Arguments) {
 		var arg0 context.Context
 		if args[0] != nil {
@@ -93,12 +85,156 @@ func (_c *MockTmuxAdapter_CreateSession_Call) Run(run func(ctx context.Context, 
 	return _c
 }
 
+func (_c *MockTmuxAdapter_AttachSession_Call) Return(err error) *MockTmuxAdapter_AttachSession_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_AttachSession_Call) RunAndReturn(run func(ctx context.Context, tmuxID string) error) *MockTmuxAdapter_AttachSession_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// CreateSession provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) CreateSession(ctx context.Context, name string, startDir string, shellCommand string) (string, error) {
+	ret := _mock.Called(ctx, name, startDir, shellCommand)
+
+	if len(ret) == 0 {
+		panic("no return value specified for CreateSession")
+	}
+
+	var r0 string
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) (string, error)); ok {
+		return returnFunc(ctx, name, startDir, shellCommand)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string, string) string); ok {
+		r0 = returnFunc(ctx, name, startDir, shellCommand)
+	} else {
+		r0 = ret.Get(0).(string)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, string, string) error); ok {
+		r1 = returnFunc(ctx, name, startDir, shellCommand)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTmuxAdapter_CreateSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'CreateSession'
+type MockTmuxAdapter_CreateSession_Call struct {
+	*mock.Call
+}
+
+// CreateSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - name string
+//   - startDir string
+//   - shellCommand string
+func (_e *MockTmuxAdapter_Expecter) CreateSession(ctx interface{}, name interface{}, startDir interface{}, shellCommand interface{}) *MockTmuxAdapter_CreateSession_Call {
+	return &MockTmuxAdapter_CreateSession_Call{Call: _e.mock.On("CreateSession", ctx, name, startDir, shellCommand)}
+}
+
+func (_c *MockTmuxAdapter_CreateSession_Call) Run(run func(ctx context.Context, name string, startDir string, shellCommand string)) *MockTmuxAdapter_CreateSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		var arg3 string
+		if args[3] != nil {
+			arg3 = args[3].(string)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+			arg3,
+		)
+	})
+	return _c
+}
+
 func (_c *MockTmuxAdapter_CreateSession_Call) Return(tmuxID string, err error) *MockTmuxAdapter_CreateSession_Call {
 	_c.Call.Return(tmuxID, err)
 	return _c
 }
 
-func (_c *MockTmuxAdapter_CreateSession_Call) RunAndReturn(run func(ctx context.Context, name string) (string, error)) *MockTmuxAdapter_CreateSession_Call {
+func (_c *MockTmuxAdapter_CreateSession_Call) RunAndReturn(run func(ctx context.Context, name string, startDir string, shellCommand string) (string, error)) *MockTmuxAdapter_CreateSession_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// GetSession provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) GetSession(ctx context.Context, tmuxID string) (domain.TmuxSession, error) {
+	ret := _mock.Called(ctx, tmuxID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetSession")
+	}
+
+	var r0 domain.TmuxSession
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (domain.TmuxSession, error)); ok {
+		return returnFunc(ctx, tmuxID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) domain.TmuxSession); ok {
+		r0 = returnFunc(ctx, tmuxID)
+	} else {
+		r0 = ret.Get(0).(domain.TmuxSession)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, tmuxID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTmuxAdapter_GetSession_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetSession'
+type MockTmuxAdapter_GetSession_Call struct {
+	*mock.Call
+}
+
+// GetSession is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tmuxID string
+func (_e *MockTmuxAdapter_Expecter) GetSession(ctx interface{}, tmuxID interface{}) *MockTmuxAdapter_GetSession_Call {
+	return &MockTmuxAdapter_GetSession_Call{Call: _e.mock.On("GetSession", ctx, tmuxID)}
+}
+
+func (_c *MockTmuxAdapter_GetSession_Call) Run(run func(ctx context.Context, tmuxID string)) *MockTmuxAdapter_GetSession_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_GetSession_Call) Return(tmuxSession domain.TmuxSession, err error) *MockTmuxAdapter_GetSession_Call {
+	_c.Call.Return(tmuxSession, err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_GetSession_Call) RunAndReturn(run func(ctx context.Context, tmuxID string) (domain.TmuxSession, error)) *MockTmuxAdapter_GetSession_Call {
 	_c.Call.Return(run)
 	return _c
 }
@@ -156,6 +292,68 @@ func (_c *MockTmuxAdapter_KillSession_Call) Return(err error) *MockTmuxAdapter_K
 }
 
 func (_c *MockTmuxAdapter_KillSession_Call) RunAndReturn(run func(ctx context.Context, tmuxID string) error) *MockTmuxAdapter_KillSession_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// ListSessions provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) ListSessions(ctx context.Context) ([]domain.TmuxSession, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListSessions")
+	}
+
+	var r0 []domain.TmuxSession
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) ([]domain.TmuxSession, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) []domain.TmuxSession); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).([]domain.TmuxSession)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTmuxAdapter_ListSessions_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListSessions'
+type MockTmuxAdapter_ListSessions_Call struct {
+	*mock.Call
+}
+
+// ListSessions is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockTmuxAdapter_Expecter) ListSessions(ctx interface{}) *MockTmuxAdapter_ListSessions_Call {
+	return &MockTmuxAdapter_ListSessions_Call{Call: _e.mock.On("ListSessions", ctx)}
+}
+
+func (_c *MockTmuxAdapter_ListSessions_Call) Run(run func(ctx context.Context)) *MockTmuxAdapter_ListSessions_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_ListSessions_Call) Return(tmuxSessions []domain.TmuxSession, err error) *MockTmuxAdapter_ListSessions_Call {
+	_c.Call.Return(tmuxSessions, err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_ListSessions_Call) RunAndReturn(run func(ctx context.Context) ([]domain.TmuxSession, error)) *MockTmuxAdapter_ListSessions_Call {
 	_c.Call.Return(run)
 	return _c
 }

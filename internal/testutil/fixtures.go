@@ -2,6 +2,7 @@ package testutil
 
 import (
 	"github.com/google/uuid"
+	"github.com/stretchr/testify/mock"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
@@ -20,4 +21,13 @@ func MakeProject(path, name string) domain.Project {
 		panic(err)
 	}
 	return p
+}
+
+// UUIDString matches any string that parses as a UUID — used to assert the service
+// passes a Session.ID (rather than a user-typed name) as the tmux session name.
+func UUIDString() interface{} {
+	return mock.MatchedBy(func(s string) bool {
+		_, err := uuid.Parse(s)
+		return err == nil
+	})
 }

@@ -38,12 +38,17 @@ func main() {
 		os.Exit(1)
 	}
 
-	tmuxStub := &tmux.Stub{}
+	tmuxAdapter, err := tmux.New(log)
+	if err != nil {
+		log.Error("initialize tmux", "error", err)
+		os.Exit(1)
+	}
+
 	gitStub := &git.Stub{}
 	agentStub := &agent.Stub{}
 	_ = agentStub
 
-	sessionSvc := service.NewSessionService(store.Sessions(), tmuxStub, gitStub, log)
+	sessionSvc := service.NewSessionService(store.Sessions(), tmuxAdapter, gitStub, log)
 	projectSvc := service.NewProjectService(store.Projects(), gitStub, log)
 
 	s := styles.New()
