@@ -1,0 +1,15 @@
+{
+  "number": 5,
+  "title": "Initial scaffolding",
+  "state": "MERGED",
+  "url": "https://github.com/dnlopes/overseer/pull/5",
+  "headRefName": "scaffold",
+  "author": {
+    "login": "david.lopes"
+  },
+  "additions": 1024,
+  "deletions": 0,
+  "changedFiles": 50,
+  "updatedAt": "2026-05-18T12:00:00Z",
+  "statusCheckRollup": []
+}

@@ -1,0 +1,19 @@
+{
+  "number": 42,
+  "title": "Add background-jobs framework",
+  "state": "OPEN",
+  "url": "https://github.com/dnlopes/overseer/pull/42",
+  "headRefName": "feature/background-jobs",
+  "author": {
+    "login": "david.lopes"
+  },
+  "additions": 320,
+  "deletions": 18,
+  "changedFiles": 12,
+  "updatedAt": "2026-05-20T10:15:30Z",
+  "statusCheckRollup": [
+    {"name": "build",       "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "test",        "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "lint",        "status": "COMPLETED", "conclusion": "SUCCESS"}
+  ]
+}

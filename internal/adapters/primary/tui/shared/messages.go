@@ -3,6 +3,9 @@ package shared
 import (
 	"os/exec"
 
+	tea "charm.land/bubbletea/v2"
+	"github.com/google/uuid"
+
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
@@ -53,3 +56,13 @@ const (
 )
 
 type LeftPaneTabChangedMsg struct{ Tab LeftPaneTab }
+
+type JobsTickMsg struct{ JobID string }
+
+type JobsBatchMsg struct{ Cmds []tea.Cmd }
+
+type PRStatusUpdatedMsg struct {
+	SessionID uuid.UUID
+	PR        domain.PullRequest
+	Err       error
+}

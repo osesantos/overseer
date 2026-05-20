@@ -1,0 +1,19 @@
+{
+  "number": 7,
+  "title": "Fix flaky test",
+  "state": "OPEN",
+  "url": "https://github.com/dnlopes/overseer/pull/7",
+  "headRefName": "fix/flaky",
+  "author": {
+    "login": "david.lopes"
+  },
+  "additions": 12,
+  "deletions": 4,
+  "changedFiles": 2,
+  "updatedAt": "2026-05-19T18:00:00Z",
+  "statusCheckRollup": [
+    {"name": "build",       "status": "COMPLETED", "conclusion": "SUCCESS"},
+    {"name": "test",        "status": "COMPLETED", "conclusion": "FAILURE"},
+    {"name": "lint",        "status": "IN_PROGRESS", "conclusion": ""}
+  ]
+}

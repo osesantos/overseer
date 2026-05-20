@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
 	projectui "github.com/dnlopes/overseer/internal/adapters/primary/tui/project"
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
@@ -38,8 +39,10 @@ type Model struct {
 	helpBar        shared.HelpBarModel
 	createForm     sessionui.CreateFormModel
 	registerForm   projectui.RegisterFormModel
+	scheduler      jobs.Model
 	activePopup    popupKind
 	cachedProjects []domain.Project
+	prStatuses     map[uuid.UUID]shared.PRStatusUpdatedMsg
 
 	width           int
 	height          int
@@ -50,7 +53,7 @@ type Model struct {
 	projectsService service.ProjectService
 }
 
-func New(styles *styles.Styles, sessionsService service.SessionService, projectsService service.ProjectService) Model {
+func New(styles *styles.Styles, sessionsService service.SessionService, projectsService service.ProjectService, scheduler jobs.Model) Model {
 	sessionsModel := sessionui.New(styles, sessionsService)
 	projectsModel := projectui.New(styles, projectsService)
 	left := leftpane.New(styles, sessionsModel, projectsModel)
@@ -61,15 +64,23 @@ func New(styles *styles.Styles, sessionsService service.SessionService, projects
 		leftPane:        left,
 		detailsModel:    newDetailsModel(*styles),
 		helpBar:         shared.NewHelpBarModel(styles, sessionsTabKeyBindings),
+		scheduler:       scheduler,
 		sessionsService: sessionsService,
 		projectsService: projectsService,
 		leftPaneFocused: true,
+		prStatuses:      make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
 	}
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(m.titlebar.Init(), m.leftPane.Init(), m.detailsModel.Init(), m.helpBar.Init())
+	return tea.Batch(
+		m.titlebar.Init(),
+		m.leftPane.Init(),
+		m.detailsModel.Init(),
+		m.helpBar.Init(),
+		m.scheduler.Init(),
+	)
 }
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
@@ -108,6 +119,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return shared.SessionAttachedMsg{Err: err}
 		})
 	case shared.SessionAttachedMsg:
+		return m, nil
+	case shared.JobsTickMsg, shared.JobsBatchMsg:
+		var cmd tea.Cmd
+		m.scheduler, cmd = m.scheduler.Update(msg)
+		return m, cmd
+	case shared.PRStatusUpdatedMsg:
+		m.prStatuses[msg.SessionID] = msg
 		return m, nil
 	}
 
