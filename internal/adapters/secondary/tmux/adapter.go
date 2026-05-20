@@ -126,6 +126,20 @@ func (a *Adapter) AttachSession(_ context.Context, tmuxID string) error {
 	return nil
 }
 
+// AttachCommand builds (but does not run) a `tmux attach-session` command for tmuxID.
+// Stdin/stdout/stderr are pinned to the process's own os.Stdin/Stdout/Stderr so the
+// child tmux client inherits the controlling terminal directly. tea.ExecProcess only
+// fills these in when they are nil, so pre-setting them keeps bubbletea from substituting
+// its own /dev/tty open — which tmux rejects with "can't use /dev/tty" because it isn't
+// the controlling TTY of the spawned process.
+func (a *Adapter) AttachCommand(_ context.Context, tmuxID string) (*exec.Cmd, error) {
+	cmd := exec.Command(a.tmuxBin, "attach-session", "-t", tmuxID)
+	cmd.Stdin = os.Stdin
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+	return cmd, nil
+}
+
 // errTmuxNoServer is returned by run when tmux reports that no server is running.
 var errTmuxNoServer = errors.New("tmux: no server running")
 

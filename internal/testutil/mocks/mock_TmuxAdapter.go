@@ -6,6 +6,7 @@ package mocks
 
 import (
 	"context"
+	"os/exec"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
 	mock "github.com/stretchr/testify/mock"
@@ -36,6 +37,74 @@ type MockTmuxAdapter_Expecter struct {
 
 func (_m *MockTmuxAdapter) EXPECT() *MockTmuxAdapter_Expecter {
 	return &MockTmuxAdapter_Expecter{mock: &_m.Mock}
+}
+
+// AttachCommand provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) AttachCommand(ctx context.Context, tmuxID string) (*exec.Cmd, error) {
+	ret := _mock.Called(ctx, tmuxID)
+
+	if len(ret) == 0 {
+		panic("no return value specified for AttachCommand")
+	}
+
+	var r0 *exec.Cmd
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) (*exec.Cmd, error)); ok {
+		return returnFunc(ctx, tmuxID)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) *exec.Cmd); ok {
+		r0 = returnFunc(ctx, tmuxID)
+	} else {
+		if ret.Get(0) != nil {
+			r0 = ret.Get(0).(*exec.Cmd)
+		}
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string) error); ok {
+		r1 = returnFunc(ctx, tmuxID)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockTmuxAdapter_AttachCommand_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'AttachCommand'
+type MockTmuxAdapter_AttachCommand_Call struct {
+	*mock.Call
+}
+
+// AttachCommand is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tmuxID string
+func (_e *MockTmuxAdapter_Expecter) AttachCommand(ctx interface{}, tmuxID interface{}) *MockTmuxAdapter_AttachCommand_Call {
+	return &MockTmuxAdapter_AttachCommand_Call{Call: _e.mock.On("AttachCommand", ctx, tmuxID)}
+}
+
+func (_c *MockTmuxAdapter_AttachCommand_Call) Run(run func(ctx context.Context, tmuxID string)) *MockTmuxAdapter_AttachCommand_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_AttachCommand_Call) Return(cmd *exec.Cmd, err error) *MockTmuxAdapter_AttachCommand_Call {
+	_c.Call.Return(cmd, err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_AttachCommand_Call) RunAndReturn(run func(ctx context.Context, tmuxID string) (*exec.Cmd, error)) *MockTmuxAdapter_AttachCommand_Call {
+	_c.Call.Return(run)
+	return _c
 }
 
 // AttachSession provides a mock function for the type MockTmuxAdapter

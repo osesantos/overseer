@@ -2,8 +2,10 @@ package service
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
+	"os/exec"
 	"sort"
 
 	"github.com/google/uuid"
@@ -210,4 +212,55 @@ func (s *SessionService) Reorder(ctx context.Context, req ReorderSessionRequest)
 	)
 
 	return ReorderSessionResponse{Sessions: projectSessions}, nil
+}
+
+// --- Attach ---
+
+type AttachSessionRequest struct {
+	ID uuid.UUID
+}
+
+type AttachSessionResponse struct {
+	Command *exec.Cmd
+}
+
+func (s *SessionService) Attach(ctx context.Context, req AttachSessionRequest) (AttachSessionResponse, error) {
+	sess, err := s.repo.Get(ctx, req.ID)
+	if err != nil {
+		return AttachSessionResponse{}, err
+	}
+
+	tmuxID := sess.ID.String()
+	if err := s.ensureTmuxSession(ctx, tmuxID); err != nil {
+		return AttachSessionResponse{}, err
+	}
+
+	cmd, err := s.tmux.AttachCommand(ctx, tmuxID)
+	if err != nil {
+		return AttachSessionResponse{}, fmt.Errorf("attach tmux session: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "session attach prepared",
+		slog.String("id", tmuxID),
+	)
+
+	return AttachSessionResponse{Command: cmd}, nil
+}
+
+func (s *SessionService) ensureTmuxSession(ctx context.Context, tmuxID string) error {
+	_, err := s.tmux.GetSession(ctx, tmuxID)
+	if err == nil {
+		return nil
+	}
+	if !errors.Is(err, domain.ErrTmuxSessionNotFound) {
+		return fmt.Errorf("inspect tmux session: %w", err)
+	}
+
+	if _, err := s.tmux.CreateSession(ctx, tmuxID, "", ""); err != nil {
+		return fmt.Errorf("recreate tmux session: %w", err)
+	}
+	s.logger.InfoContext(ctx, "tmux session recreated",
+		slog.String("id", tmuxID),
+	)
+	return nil
 }

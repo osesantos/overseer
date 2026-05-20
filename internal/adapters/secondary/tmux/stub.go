@@ -4,6 +4,7 @@ package tmux
 import (
 	"context"
 	"fmt"
+	"os/exec"
 	"time"
 
 	"github.com/google/uuid"
@@ -22,6 +23,7 @@ type Stub struct {
 	GetSessionCalls    int
 	ListSessionsCalls  int
 	AttachSessionCalls int
+	AttachCommandCalls int
 
 	LastStartDir     string
 	LastShellCommand string
@@ -63,4 +65,11 @@ func (s *Stub) ListSessions(_ context.Context) ([]domain.TmuxSession, error) {
 func (s *Stub) AttachSession(_ context.Context, _ string) error {
 	s.AttachSessionCalls++
 	return nil
+}
+
+// AttachCommand records the call and returns a no-op /usr/bin/true command so callers
+// can safely invoke Run() during tests without launching tmux.
+func (s *Stub) AttachCommand(_ context.Context, _ string) (*exec.Cmd, error) {
+	s.AttachCommandCalls++
+	return exec.Command("true"), nil
 }

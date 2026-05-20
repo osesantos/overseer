@@ -209,6 +209,14 @@ func (m Model) IsFocused() bool {
 	return m.focused
 }
 
+func (m Model) SelectedSessionID() string {
+	cur, ok := m.tree.Selected()
+	if !ok || cur.kind != sessionNodeSession {
+		return ""
+	}
+	return cur.sessionID
+}
+
 func (m Model) View() tea.View {
 	content := m.tree.View()
 	if m.err != nil {

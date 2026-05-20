@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"context"
+
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -98,6 +100,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.LeftPaneTabChangedMsg:
 		m.helpBar.SetBindings(m.bindingsForActiveTab())
 		return m, nil
+	case shared.SessionAttachReadyMsg:
+		if msg.Err != nil || msg.Command == nil {
+			return m, nil
+		}
+		return m, tea.ExecProcess(msg.Command, func(err error) tea.Msg {
+			return shared.SessionAttachedMsg{Err: err}
+		})
+	case shared.SessionAttachedMsg:
+		return m, nil
 	}
 
 	if m.activePopup != popupNone {
@@ -144,8 +155,29 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.activePopup = popupNewProject
 			return m.registerForm.Init(), true
 		}
+		if m.leftPane.SessionsActive() && key.Matches(msg, attachShellKeyBinding) {
+			if cmd := m.attachSelectedSessionCmd(); cmd != nil {
+				return cmd, true
+			}
+		}
 	}
 	return nil, false
+}
+
+func (m Model) attachSelectedSessionCmd() tea.Cmd {
+	idStr := m.leftPane.SelectedSessionID()
+	if idStr == "" {
+		return nil
+	}
+	sessID, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil
+	}
+	svc := m.sessionsService
+	return func() tea.Msg {
+		resp, err := svc.Attach(context.Background(), service.AttachSessionRequest{ID: sessID})
+		return shared.SessionAttachReadyMsg{Command: resp.Command, Err: err}
+	}
 }
 
 func (m *Model) toggleLeftRightFocus() {

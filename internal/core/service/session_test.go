@@ -5,6 +5,7 @@ import (
 	"errors"
 	"io"
 	"log/slog"
+	"os/exec"
 	"testing"
 	"time"
 
@@ -547,5 +548,115 @@ func TestSessionService_Reorder_NotFound(t *testing.T) {
 
 	if !errors.Is(err, domain.ErrSessionNotFound) {
 		t.Fatalf("Reorder() error = %v, want %v", err, domain.ErrSessionNotFound)
+	}
+}
+
+// --- Attach ---
+
+func TestSessionService_Attach_HappyPath(t *testing.T) {
+	sess := testutil.MakeSession("alpha", uuid.New())
+	repo, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{ID: sess.ID.String()}, nil).Once()
+	wantCmd := exec.Command("tmux", "attach-session", "-t", sess.ID.String())
+	tmux.EXPECT().AttachCommand(mock.Anything, sess.ID.String()).Return(wantCmd, nil).Once()
+
+	svc := NewSessionService(repo, tmux, git, testLogger())
+	resp, err := svc.Attach(context.Background(), AttachSessionRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("Attach() error = %v", err)
+	}
+	if resp.Command != wantCmd {
+		t.Fatalf("Attach() Command = %v, want %v", resp.Command, wantCmd)
+	}
+}
+
+func TestSessionService_Attach_SessionNotFound(t *testing.T) {
+	missingID := uuid.New()
+	repo, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, missingID).
+		Return(domain.Session{}, domain.ErrSessionNotFound).Once()
+
+	svc := NewSessionService(repo, tmux, git, testLogger())
+	_, err := svc.Attach(context.Background(), AttachSessionRequest{ID: missingID})
+
+	if !errors.Is(err, domain.ErrSessionNotFound) {
+		t.Fatalf("Attach() error = %v, want %v", err, domain.ErrSessionNotFound)
+	}
+}
+
+func TestSessionService_Attach_TmuxAdapterErrorWrapped(t *testing.T) {
+	sess := testutil.MakeSession("alpha", uuid.New())
+	repo, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{ID: sess.ID.String()}, nil).Once()
+	adapterErr := errors.New("tmux binary missing")
+	tmux.EXPECT().AttachCommand(mock.Anything, sess.ID.String()).
+		Return(nil, adapterErr).Once()
+
+	svc := NewSessionService(repo, tmux, git, testLogger())
+	_, err := svc.Attach(context.Background(), AttachSessionRequest{ID: sess.ID})
+
+	if err == nil || !errors.Is(err, adapterErr) {
+		t.Fatalf("Attach() error = %v, want wrapped %v", err, adapterErr)
+	}
+}
+
+func TestSessionService_Attach_TmuxSessionMissing_RecreatesThenAttaches(t *testing.T) {
+	sess := testutil.MakeSession("alpha", uuid.New())
+	repo, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, sess.ID.String(), "", "").
+		Return(sess.ID.String(), nil).Once()
+	wantCmd := exec.Command("tmux", "attach-session", "-t", sess.ID.String())
+	tmux.EXPECT().AttachCommand(mock.Anything, sess.ID.String()).Return(wantCmd, nil).Once()
+
+	svc := NewSessionService(repo, tmux, git, testLogger())
+	resp, err := svc.Attach(context.Background(), AttachSessionRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("Attach() error = %v, want nil after recreate", err)
+	}
+	if resp.Command != wantCmd {
+		t.Fatalf("Attach() Command = %v, want %v", resp.Command, wantCmd)
+	}
+}
+
+func TestSessionService_Attach_GetSessionUnexpectedErrorBubblesUp(t *testing.T) {
+	sess := testutil.MakeSession("alpha", uuid.New())
+	repo, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	inspectErr := errors.New("tmux server unreachable")
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, inspectErr).Once()
+
+	svc := NewSessionService(repo, tmux, git, testLogger())
+	_, err := svc.Attach(context.Background(), AttachSessionRequest{ID: sess.ID})
+
+	if err == nil || !errors.Is(err, inspectErr) {
+		t.Fatalf("Attach() error = %v, want wrapped %v", err, inspectErr)
+	}
+}
+
+func TestSessionService_Attach_RecreateErrorBubblesUp(t *testing.T) {
+	sess := testutil.MakeSession("alpha", uuid.New())
+	repo, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	createErr := errors.New("tmux create failed")
+	tmux.EXPECT().CreateSession(mock.Anything, sess.ID.String(), "", "").
+		Return("", createErr).Once()
+
+	svc := NewSessionService(repo, tmux, git, testLogger())
+	_, err := svc.Attach(context.Background(), AttachSessionRequest{ID: sess.ID})
+
+	if err == nil || !errors.Is(err, createErr) {
+		t.Fatalf("Attach() error = %v, want wrapped %v", err, createErr)
 	}
 }

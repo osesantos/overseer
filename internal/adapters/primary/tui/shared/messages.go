@@ -1,6 +1,10 @@
 package shared
 
-import "github.com/dnlopes/overseer/internal/core/domain"
+import (
+	"os/exec"
+
+	"github.com/dnlopes/overseer/internal/core/domain"
+)
 
 type SessionCreatedMsg struct{ Session domain.Session }
 
@@ -20,6 +24,13 @@ type SessionReorderedMsg struct {
 type NewSessionPopupCloseMsg struct{}
 
 type SessionCreateErrMsg struct{ Err error }
+
+type SessionAttachReadyMsg struct {
+	Command *exec.Cmd
+	Err     error
+}
+
+type SessionAttachedMsg struct{ Err error }
 
 type ProjectsLoadedMsg struct {
 	Projects []domain.Project

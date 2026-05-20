@@ -13,7 +13,7 @@ var (
 	helpMenuKeyBinding    = key.NewBinding(key.WithKeys("?"), key.WithHelp("?", "help menu"))
 	quitKeyBinding        = key.NewBinding(key.WithKeys("q", "ctrl+c"), key.WithHelp("q", "quit"), key.WithHelp("ctrl+c", "quit"))
 	attachShellKeyBinding = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "attach shell"))
-	attachAgentKeyBinding = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "attach agent"))
+	attachAgentKeyBinding = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "attach agent"))
 
 	sessionsTabKeyBindings = []key.Binding{newSessionKeyBinding, attachShellKeyBinding, attachAgentKeyBinding, leftpane.SessionsTabBinding(), leftpane.ProjectsTabBinding(), nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}
 	projectsTabKeyBindings = []key.Binding{newProjectKeyBinding, leftpane.SessionsTabBinding(), leftpane.ProjectsTabBinding(), nextPaneKeyBinding, helpMenuKeyBinding, quitKeyBinding}

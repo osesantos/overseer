@@ -135,6 +135,13 @@ func (m Model) ProjectsActive() bool {
 	return m.active == shared.LeftPaneTabProjects
 }
 
+func (m Model) SelectedSessionID() string {
+	if m.active != shared.LeftPaneTabSessions {
+		return ""
+	}
+	return m.sessions.SelectedSessionID()
+}
+
 func (m Model) View() tea.View {
 	tabsRow := m.renderTabs()
 	tabsHeight := lipgloss.Height(tabsRow)
