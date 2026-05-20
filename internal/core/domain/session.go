@@ -25,6 +25,7 @@ type Session struct {
 	WorktreePath  string
 	BaseBranch    string
 	FeatureBranch string
+	AgentCommand  string
 	CreatedAt     time.Time
 	UpdatedAt     time.Time
 }
@@ -94,6 +95,21 @@ func (s *Session) AssignWorktree(worktreePath, baseBranch, featureBranch string)
 	return nil
 }
 
+// AssignAgentCommand sets the raw shell command used to launch this
+// session's agent program (e.g. "opencode", "claude --foo"). The command
+// must be non-empty after trimming; empty values are rejected so the
+// invariant "if AgentCommand is set, it is runnable" holds.
+func (s *Session) AssignAgentCommand(cmd string) error {
+	cmd = strings.TrimSpace(cmd)
+	if cmd == "" {
+		return ErrSessionEmptyAgentCommand
+	}
+
+	s.AgentCommand = cmd
+	s.UpdatedAt = time.Now()
+	return nil
+}
+
 // Session ports.
 
 type SessionRepository interface {
@@ -122,4 +138,5 @@ var (
 	ErrSessionAlreadyExists           = errors.New("session already exists")
 	ErrSessionWorktreeFieldsMismatch  = errors.New("session worktree fields must all be set")
 	ErrSessionWorktreePathNotAbsolute = errors.New("session worktree path must be absolute")
+	ErrSessionEmptyAgentCommand       = errors.New("session agent command cannot be empty")
 )

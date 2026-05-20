@@ -237,6 +237,59 @@ func TestSessionStore_WorktreeFieldsSurviveReload(t *testing.T) {
 	}
 }
 
+func TestSessionStore_AgentCommandSurvivesReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	logger := discardLogger()
+	ctx := context.Background()
+
+	sess := makeSession(t, "with-agent", uuid.New())
+	if err := sess.AssignAgentCommand("opencode --config /tmp/cfg.json"); err != nil {
+		t.Fatalf("AssignAgentCommand() error = %v", err)
+	}
+
+	store1, err := storage.New(path, logger)
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	if err := store1.Sessions().Save(ctx, sess); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	store2, err := storage.New(path, logger)
+	if err != nil {
+		t.Fatalf("New() (reload) error = %v", err)
+	}
+	got, err := store2.Sessions().Get(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Get() after reload error = %v", err)
+	}
+	if got.AgentCommand != "opencode --config /tmp/cfg.json" {
+		t.Errorf("Get() AgentCommand = %q, want %q", got.AgentCommand, "opencode --config /tmp/cfg.json")
+	}
+}
+
+func TestSessionStore_LegacySessionsHaveEmptyAgentCommandAfterReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	logger := discardLogger()
+	ctx := context.Background()
+
+	sess := makeSession(t, "legacy", uuid.New())
+
+	store1, _ := storage.New(path, logger)
+	if err := store1.Sessions().Save(ctx, sess); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	store2, _ := storage.New(path, logger)
+	got, err := store2.Sessions().Get(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.AgentCommand != "" {
+		t.Errorf("Get() AgentCommand = %q, want empty (legacy session)", got.AgentCommand)
+	}
+}
+
 func TestSessionStore_ProjectLessSessionsHaveEmptyWorktreeAfterReload(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.json")
 	logger := discardLogger()

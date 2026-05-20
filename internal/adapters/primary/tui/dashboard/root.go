@@ -174,7 +174,12 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return m.registerForm.Init(), true
 		}
 		if m.leftPane.SessionsActive() && key.Matches(msg, attachShellKeyBinding) {
-			if cmd := m.attachSelectedSessionCmd(); cmd != nil {
+			if cmd := m.attachSelectedSessionShellCmd(); cmd != nil {
+				return cmd, true
+			}
+		}
+		if m.leftPane.SessionsActive() && key.Matches(msg, attachAgentKeyBinding) {
+			if cmd := m.attachSelectedSessionAgentCmd(); cmd != nil {
 				return cmd, true
 			}
 		}
@@ -182,7 +187,7 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	return nil, false
 }
 
-func (m Model) attachSelectedSessionCmd() tea.Cmd {
+func (m Model) attachSelectedSessionShellCmd() tea.Cmd {
 	idStr := m.leftPane.SelectedSessionID()
 	if idStr == "" {
 		return nil
@@ -193,7 +198,23 @@ func (m Model) attachSelectedSessionCmd() tea.Cmd {
 	}
 	svc := m.sessionsService
 	return func() tea.Msg {
-		resp, err := svc.Attach(context.Background(), service.AttachSessionRequest{ID: sessID})
+		resp, err := svc.AttachShell(context.Background(), service.AttachShellRequest{ID: sessID})
+		return shared.SessionAttachReadyMsg{Command: resp.Command, Err: err}
+	}
+}
+
+func (m Model) attachSelectedSessionAgentCmd() tea.Cmd {
+	idStr := m.leftPane.SelectedSessionID()
+	if idStr == "" {
+		return nil
+	}
+	sessID, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil
+	}
+	svc := m.sessionsService
+	return func() tea.Msg {
+		resp, err := svc.AttachAgent(context.Background(), service.AttachAgentRequest{ID: sessID})
 		return shared.SessionAttachReadyMsg{Command: resp.Command, Err: err}
 	}
 }

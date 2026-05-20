@@ -20,12 +20,21 @@ import (
 const (
 	FieldNameSelectedIndex int = iota
 	FieldProjectSelectedIndex
+	FieldLauncherSelectedIndex
 )
+
+const (
+	launcherOpencode = iota
+	launcherClaude
+)
+
+var launcherCommands = []string{"opencode", "claude"}
 
 type CreateFormModel struct {
 	nameInput       textinput.Model
 	projectIdx      int
 	projects        []domain.Project
+	launcherIdx     int
 	focusIndex      shared.CircularInt
 	errMsg          string
 	sessionsService service.SessionService
@@ -44,7 +53,8 @@ func NewCreateForm(s *styles.Styles, sessionsService service.SessionService, pro
 		nameInput:       nameInput,
 		projectIdx:      0,
 		projects:        projects,
-		focusIndex:      shared.NewCircularInt(0, 1),
+		launcherIdx:     launcherOpencode,
+		focusIndex:      shared.NewCircularInt(0, 2),
 		sessionsService: sessionsService,
 		styles:          s,
 	}
@@ -83,6 +93,16 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, nil
 			}
 		}
+		if m.focusIndex.Value() == FieldLauncherSelectedIndex {
+			if key.Matches(msg, popupSelectorNextKeyBinding) {
+				m.cycleLauncher(1)
+				return m, nil
+			}
+			if key.Matches(msg, popupSelectorPrevKeyBinding) {
+				m.cycleLauncher(-1)
+				return m, nil
+			}
+		}
 	}
 
 	if msg, ok := msg.(shared.SessionCreateErrMsg); ok {
@@ -108,7 +128,16 @@ func (m *CreateFormModel) cycleProject(direction int) {
 	if choices <= 0 {
 		return
 	}
-	m.projectIdx = ((m.projectIdx + direction) % choices + choices) % choices
+	m.projectIdx = ((m.projectIdx+direction)%choices + choices) % choices
+}
+
+func (m *CreateFormModel) cycleLauncher(direction int) {
+	choices := len(launcherCommands)
+	m.launcherIdx = ((m.launcherIdx+direction)%choices + choices) % choices
+}
+
+func (m CreateFormModel) resolvedAgentCommand() string {
+	return launcherCommands[m.launcherIdx]
 }
 
 func (m CreateFormModel) selectedProjectID() uuid.UUID {
@@ -133,7 +162,11 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 	}
 
 	m.errMsg = ""
-	req := service.CreateSessionRequest{Name: name, ProjectID: m.selectedProjectID()}
+	req := service.CreateSessionRequest{
+		Name:         name,
+		ProjectID:    m.selectedProjectID(),
+		AgentCommand: m.resolvedAgentCommand(),
+	}
 	return m, func() tea.Msg {
 		resp, err := m.sessionsService.Create(context.Background(), req)
 		if err != nil {
@@ -163,12 +196,16 @@ func (m CreateFormModel) View() tea.View {
 	b.WriteByte('\n')
 	b.WriteString(m.projectSelectorView())
 	b.WriteByte('\n')
+	b.WriteString(m.labelStyle(FieldLauncherSelectedIndex).Render("Launcher"))
+	b.WriteByte('\n')
+	b.WriteString(m.launcherSelectorView())
+	b.WriteByte('\n')
 	b.WriteString(s.Error.Render(m.errMsg))
 	b.WriteByte('\n')
 	if m.errMsg != "" {
 		b.WriteByte('\n')
 	}
-	b.WriteString(m.styles.Help.Description.Render("Tab: next field  ←/→: cycle project  Enter: submit  Esc: cancel"))
+	b.WriteString(m.styles.Help.Description.Render("Tab: next field  ←/→: cycle  Enter: submit  Esc: cancel"))
 	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
 }
 
@@ -185,6 +222,18 @@ func (m CreateFormModel) projectSelectorView() string {
 		return m.styles.ListRow.Selected.Render("< " + label + " >")
 	}
 	return m.styles.ListRow.Normal.Render("  " + label + "  ")
+}
+
+func (m CreateFormModel) launcherSelectorView() string {
+	parts := make([]string, 0, len(launcherCommands))
+	for i, opt := range launcherCommands {
+		if i == m.launcherIdx {
+			parts = append(parts, m.styles.ListRow.Selected.Render("[ "+opt+" ]"))
+			continue
+		}
+		parts = append(parts, m.styles.ListRow.Normal.Render("  "+opt+"  "))
+	}
+	return strings.Join(parts, " ")
 }
 
 func (m CreateFormModel) KeyBindings() []key.Binding {

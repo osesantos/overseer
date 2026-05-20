@@ -1,6 +1,7 @@
 package session
 
 import (
+	"context"
 	"log/slog"
 	"strings"
 	"testing"
@@ -119,6 +120,112 @@ func TestCreateForm_ViewShowsCurrentProjectLabel(t *testing.T) {
 	view := form.View().Content
 	if !strings.Contains(view, "(none)") {
 		t.Fatalf("View() missing default '(none)' label: %q", view)
+	}
+}
+
+func TestCreateForm_DefaultsToOpencodeLauncher(t *testing.T) {
+	form := NewCreateForm(styles.New(), newCreateFormSessionService(t), nil)
+
+	if form.resolvedAgentCommand() != "opencode" {
+		t.Fatalf("default resolved agent command = %q, want %q", form.resolvedAgentCommand(), "opencode")
+	}
+}
+
+func TestCreateForm_LauncherSelectorTogglesBetweenOpencodeAndClaude(t *testing.T) {
+	form := NewCreateForm(styles.New(), newCreateFormSessionService(t), nil)
+
+	updated, _ := form.Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	got := updated.(CreateFormModel)
+	if got.focusIndex.Value() != FieldLauncherSelectedIndex {
+		t.Fatalf("after 2 tabs: focus = %d, want %d (launcher)", got.focusIndex.Value(), FieldLauncherSelectedIndex)
+	}
+	if got.resolvedAgentCommand() != "opencode" {
+		t.Fatalf("initial launcher = %q, want %q", got.resolvedAgentCommand(), "opencode")
+	}
+
+	updated, _ = got.Update(formKeyPress("right"))
+	got = updated.(CreateFormModel)
+	if got.resolvedAgentCommand() != "claude" {
+		t.Fatalf("after right: launcher = %q, want %q", got.resolvedAgentCommand(), "claude")
+	}
+
+	updated, _ = got.Update(formKeyPress("right"))
+	got = updated.(CreateFormModel)
+	if got.resolvedAgentCommand() != "opencode" {
+		t.Fatalf("after 2 rights (wrap): launcher = %q, want %q", got.resolvedAgentCommand(), "opencode")
+	}
+}
+
+func TestCreateForm_TabCyclesThreeFields(t *testing.T) {
+	form := NewCreateForm(styles.New(), newCreateFormSessionService(t), nil)
+
+	updated, _ := form.Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	got := updated.(CreateFormModel)
+	if got.focusIndex.Value() != FieldNameSelectedIndex {
+		t.Fatalf("after 3 tabs (wrap): focus = %d, want %d (name)", got.focusIndex.Value(), FieldNameSelectedIndex)
+	}
+}
+
+func TestCreateForm_SubmitWithDefaultOpencodeSendsOpencodeCommand(t *testing.T) {
+	t.Setenv("HOME", "/tmp/overseer-home")
+	svc, repo, _, tmux, _ := newCreateFormSessionServiceWithMocks(t)
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "/tmp/overseer-home", "").Return("tmux-orphan", nil).Once()
+	var savedSession domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { savedSession = s }).
+		Return(nil).Once()
+	form := NewCreateForm(styles.New(), svc, nil)
+
+	updated, _ := form.Update(formKeyPress("orphan"))
+	_, cmd := updated.(CreateFormModel).Update(formKeyPress("enter"))
+
+	if cmd == nil {
+		t.Fatalf("submit command = nil")
+	}
+	cmd()
+	if savedSession.AgentCommand != "opencode" {
+		t.Fatalf("savedSession.AgentCommand = %q, want %q", savedSession.AgentCommand, "opencode")
+	}
+}
+
+func TestCreateForm_SubmitWithClaudeSendsClaudeCommand(t *testing.T) {
+	t.Setenv("HOME", "/tmp/overseer-home")
+	svc, repo, _, tmux, _ := newCreateFormSessionServiceWithMocks(t)
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), "/tmp/overseer-home", "").Return("tmux-orphan", nil).Once()
+	var savedSession domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { savedSession = s }).
+		Return(nil).Once()
+	form := NewCreateForm(styles.New(), svc, nil)
+
+	updated, _ := form.Update(formKeyPress("orphan"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("right"))
+	_, cmd := updated.(CreateFormModel).Update(formKeyPress("enter"))
+
+	if cmd == nil {
+		t.Fatalf("submit command = nil")
+	}
+	cmd()
+	if savedSession.AgentCommand != "claude" {
+		t.Fatalf("savedSession.AgentCommand = %q, want %q", savedSession.AgentCommand, "claude")
+	}
+}
+
+func TestCreateForm_ViewShowsLauncherOptions(t *testing.T) {
+	form := NewCreateForm(styles.New(), newCreateFormSessionService(t), nil)
+
+	view := form.View().Content
+	for _, want := range []string{"opencode", "claude"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() missing launcher option %q: %q", want, view)
+		}
 	}
 }
 

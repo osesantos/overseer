@@ -98,6 +98,55 @@ func TestNewSession_AcceptsExactlyOneHundredCharacterName(t *testing.T) {
 	}
 }
 
+func TestAssignAgentCommand_StoresAndUpdatesTimestamp(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	originalUpdated := s.UpdatedAt
+	time.Sleep(time.Millisecond)
+
+	if err := s.AssignAgentCommand("opencode"); err != nil {
+		t.Fatalf("AssignAgentCommand() error = %v", err)
+	}
+	if s.AgentCommand != "opencode" {
+		t.Fatalf("AgentCommand = %q, want %q", s.AgentCommand, "opencode")
+	}
+	if !s.UpdatedAt.After(originalUpdated) {
+		t.Fatalf("UpdatedAt = %v, want after %v", s.UpdatedAt, originalUpdated)
+	}
+}
+
+func TestAssignAgentCommand_TrimsCommand(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	if err := s.AssignAgentCommand("  opencode --config foo  "); err != nil {
+		t.Fatalf("AssignAgentCommand() error = %v", err)
+	}
+	if s.AgentCommand != "opencode --config foo" {
+		t.Fatalf("AgentCommand = %q, want %q", s.AgentCommand, "opencode --config foo")
+	}
+}
+
+func TestAssignAgentCommand_RejectsEmpty(t *testing.T) {
+	tests := []struct {
+		name string
+		cmd  string
+	}{
+		{name: "empty", cmd: ""},
+		{name: "blank", cmd: "   "},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := NewSession("alpha", uuid.New())
+			err := s.AssignAgentCommand(tt.cmd)
+			if !errors.Is(err, ErrSessionEmptyAgentCommand) {
+				t.Fatalf("AssignAgentCommand(%q) error = %v, want %v", tt.cmd, err, ErrSessionEmptyAgentCommand)
+			}
+			if s.AgentCommand != "" {
+				t.Fatalf("AgentCommand = %q, want empty after rejected assignment", s.AgentCommand)
+			}
+		})
+	}
+}
+
 func TestAssignWorktree_PopulatesEnsemble(t *testing.T) {
 	s, _ := NewSession("alpha", uuid.New())
 	originalUpdated := s.UpdatedAt

@@ -20,6 +20,11 @@ import (
 // not specify one. Surfacing this as a request field is follow-up work.
 const defaultBaseBranch = "main"
 
+// defaultAgentCommand is the launcher used by AttachAgent when the session
+// has no AgentCommand assigned (i.e. it was created before agent attach
+// landed). Keeps pre-existing sessions usable without a forced migration.
+const defaultAgentCommand = "opencode"
+
 type SessionService struct {
 	repo     domain.SessionRepository
 	projects domain.ProjectRepository
@@ -35,8 +40,9 @@ func NewSessionService(repo domain.SessionRepository, projects domain.ProjectRep
 // --- Create ---
 
 type CreateSessionRequest struct {
-	Name      string
-	ProjectID uuid.UUID
+	Name         string
+	ProjectID    uuid.UUID
+	AgentCommand string
 }
 
 type CreateSessionResponse struct {
@@ -47,6 +53,12 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 	sess, err := domain.NewSession(req.Name, req.ProjectID)
 	if err != nil {
 		return CreateSessionResponse{}, err
+	}
+
+	if req.AgentCommand != "" {
+		if err := sess.AssignAgentCommand(req.AgentCommand); err != nil {
+			return CreateSessionResponse{}, err
+		}
 	}
 
 	var repoPath string
@@ -245,44 +257,86 @@ func (s *SessionService) Reorder(ctx context.Context, req ReorderSessionRequest)
 	return ReorderSessionResponse{Sessions: projectSessions}, nil
 }
 
-// --- Attach ---
+// --- AttachShell ---
 
-type AttachSessionRequest struct {
+type AttachShellRequest struct {
 	ID uuid.UUID
 }
 
-type AttachSessionResponse struct {
+type AttachShellResponse struct {
 	Command *exec.Cmd
 }
 
-func (s *SessionService) Attach(ctx context.Context, req AttachSessionRequest) (AttachSessionResponse, error) {
+func (s *SessionService) AttachShell(ctx context.Context, req AttachShellRequest) (AttachShellResponse, error) {
 	sess, err := s.repo.Get(ctx, req.ID)
 	if err != nil {
-		return AttachSessionResponse{}, err
+		return AttachShellResponse{}, err
 	}
 
 	tmuxID := sess.ID.String()
 	startDir, err := sessionStartDir(sess)
 	if err != nil {
-		return AttachSessionResponse{}, err
+		return AttachShellResponse{}, err
 	}
-	if err := s.ensureTmuxSession(ctx, tmuxID, startDir); err != nil {
-		return AttachSessionResponse{}, err
+	if err := s.ensureTmuxSession(ctx, tmuxID, startDir, ""); err != nil {
+		return AttachShellResponse{}, err
 	}
 
 	cmd, err := s.tmux.AttachCommand(ctx, tmuxID)
 	if err != nil {
-		return AttachSessionResponse{}, fmt.Errorf("attach tmux session: %w", err)
+		return AttachShellResponse{}, fmt.Errorf("attach tmux session: %w", err)
 	}
 
-	s.logger.InfoContext(ctx, "session attach prepared",
+	s.logger.InfoContext(ctx, "shell attach prepared",
 		slog.String("id", tmuxID),
 	)
 
-	return AttachSessionResponse{Command: cmd}, nil
+	return AttachShellResponse{Command: cmd}, nil
 }
 
-func (s *SessionService) ensureTmuxSession(ctx context.Context, tmuxID, startDir string) error {
+// --- AttachAgent ---
+
+type AttachAgentRequest struct {
+	ID uuid.UUID
+}
+
+type AttachAgentResponse struct {
+	Command *exec.Cmd
+}
+
+func (s *SessionService) AttachAgent(ctx context.Context, req AttachAgentRequest) (AttachAgentResponse, error) {
+	sess, err := s.repo.Get(ctx, req.ID)
+	if err != nil {
+		return AttachAgentResponse{}, err
+	}
+
+	agentTmuxID := sess.ID.String() + "-agent"
+	startDir, err := sessionStartDir(sess)
+	if err != nil {
+		return AttachAgentResponse{}, err
+	}
+	agentCmd := sess.AgentCommand
+	if agentCmd == "" {
+		agentCmd = defaultAgentCommand
+	}
+	if err := s.ensureTmuxSession(ctx, agentTmuxID, startDir, agentCmd); err != nil {
+		return AttachAgentResponse{}, err
+	}
+
+	cmd, err := s.tmux.AttachCommand(ctx, agentTmuxID)
+	if err != nil {
+		return AttachAgentResponse{}, fmt.Errorf("attach tmux session: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "agent attach prepared",
+		slog.String("id", agentTmuxID),
+		slog.String("agent_command", agentCmd),
+	)
+
+	return AttachAgentResponse{Command: cmd}, nil
+}
+
+func (s *SessionService) ensureTmuxSession(ctx context.Context, tmuxID, startDir, shellCommand string) error {
 	_, err := s.tmux.GetSession(ctx, tmuxID)
 	if err == nil {
 		return nil
@@ -291,7 +345,7 @@ func (s *SessionService) ensureTmuxSession(ctx context.Context, tmuxID, startDir
 		return fmt.Errorf("inspect tmux session: %w", err)
 	}
 
-	if _, err := s.tmux.CreateSession(ctx, tmuxID, startDir, ""); err != nil {
+	if _, err := s.tmux.CreateSession(ctx, tmuxID, startDir, shellCommand); err != nil {
 		return fmt.Errorf("recreate tmux session: %w", err)
 	}
 	s.logger.InfoContext(ctx, "tmux session recreated",
