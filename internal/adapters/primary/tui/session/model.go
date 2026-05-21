@@ -4,9 +4,11 @@ import (
 	"context"
 	"sort"
 	"strings"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
@@ -36,6 +38,7 @@ type sessionNode struct {
 	kind      sessionNodeKind
 	sessionID string
 	label     string
+	updatedAt time.Time
 }
 
 type Model struct {
@@ -344,12 +347,13 @@ func sessionTreeNode(sess domain.Session) components.TreeNode[sessionNode] {
 			kind:      sessionNodeSession,
 			sessionID: sess.ID.String(),
 			label:     label,
+			updatedAt: sess.UpdatedAt,
 		},
 	}
 }
 
 func renderSessionNode(s *styles.Styles) components.TreeRenderFunc[sessionNode] {
-	return func(item sessionNode, _, depth int, hasKids, expanded, focused bool) string {
+	return func(item sessionNode, _, depth, width int, hasKids, expanded, focused bool) string {
 		prefix := components.TreePrefix(depth, hasKids, expanded)
 		if item.kind == sessionNodeGroup {
 			style := s.Group.Header
@@ -358,9 +362,19 @@ func renderSessionNode(s *styles.Styles) components.TreeRenderFunc[sessionNode] 
 			}
 			return style.Render(prefix + item.label)
 		}
-		if focused {
-			return s.ListRow.Selected.Render(prefix + item.label)
+		labelText := prefix + item.label
+		aux := shared.FormatRelativeDuration(time.Since(item.updatedAt))
+		gap := width - lipgloss.Width(labelText) - lipgloss.Width(aux)
+		if gap < 1 {
+			if focused {
+				return s.ListRow.Selected.Render(labelText)
+			}
+			return s.ListRow.Normal.Render(labelText)
 		}
-		return s.ListRow.Normal.Render(prefix + item.label)
+		spaces := strings.Repeat(" ", gap)
+		if focused {
+			return s.ListRow.Selected.Render(labelText+spaces) + s.ListRow.AuxSelected.Render(aux)
+		}
+		return s.ListRow.Normal.Render(labelText) + spaces + s.ListRow.Aux.Render(aux)
 	}
 }

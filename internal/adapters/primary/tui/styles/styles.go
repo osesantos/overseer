@@ -119,11 +119,18 @@ type Styles struct {
 	// Number / NumberSelected style the leading "NN. " prefix used by
 	// digit-jump lists; they share the selection background of their
 	// matching label state so the row reads as a single highlight.
+	//
+	// Aux / AuxSelected style right-aligned auxiliary text (e.g. a
+	// relative timestamp) appended to a row; like Number/NumberSelected
+	// they share the selection background of their matching label state
+	// so a selected row reads as a single highlight strip.
 	ListRow struct {
 		Normal         lipgloss.Style
 		Selected       lipgloss.Style
 		Number         lipgloss.Style
 		NumberSelected lipgloss.Style
+		Aux            lipgloss.Style
+		AuxSelected    lipgloss.Style
 	}
 	Group         GroupStyles
 	Status        StatusStyles
@@ -200,11 +207,15 @@ func NewWithTheme(themeName string) *Styles {
 			Selected       lipgloss.Style
 			Number         lipgloss.Style
 			NumberSelected lipgloss.Style
+			Aux            lipgloss.Style
+			AuxSelected    lipgloss.Style
 		}{
 			Normal:         lipgloss.NewStyle().Foreground(theme.Text),
 			Selected:       lipgloss.NewStyle().Foreground(theme.Text).Bold(true).Background(theme.SelectionBg),
 			Number:         lipgloss.NewStyle().Foreground(theme.Subtext),
 			NumberSelected: lipgloss.NewStyle().Foreground(theme.Subtext).Bold(true).Background(theme.SelectionBg),
+			Aux:            lipgloss.NewStyle().Foreground(theme.Muted),
+			AuxSelected:    lipgloss.NewStyle().Foreground(theme.Subtext).Background(theme.SelectionBg),
 		},
 		Group: GroupStyles{
 			Header:         lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),

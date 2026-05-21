@@ -4,8 +4,10 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
@@ -403,4 +405,71 @@ func newSessionServiceWithRepo(t *testing.T) (service.SessionService, *mocks.Moc
 
 func keyPress(value string) tea.KeyPressMsg {
 	return tea.KeyPressMsg{Text: value, Code: []rune(value)[0]}
+}
+
+func TestModel_View_RendersUpdatedAtDurationRightAlignedOnEachSessionRow(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(t))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha.UpdatedAt = time.Now().Add(-3 * time.Hour)
+	beta := testutil.MakeSession("beta", overseerID)
+	beta.UpdatedAt = time.Now().Add(-2 * 24 * time.Hour)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
+
+	view := ansi.Strip(updated.(Model).View().Content)
+	alphaRow := findRow(t, view, "alpha")
+	betaRow := findRow(t, view, "beta")
+
+	if !strings.Contains(alphaRow, "3h") {
+		t.Errorf("alpha row missing '3h' duration: %q", alphaRow)
+	}
+	if !strings.Contains(betaRow, "2d") {
+		t.Errorf("beta row missing '2d' duration: %q", betaRow)
+	}
+
+	if !rowSuffixIs(alphaRow, "3h") {
+		t.Errorf("alpha row does not end with '3h' (not right-aligned): %q", alphaRow)
+	}
+	if !rowSuffixIs(betaRow, "2d") {
+		t.Errorf("beta row does not end with '2d' (not right-aligned): %q", betaRow)
+	}
+}
+
+func TestModel_View_DoesNotRenderDurationOnGroupRows(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(t))
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha.UpdatedAt = time.Now().Add(-3 * time.Hour)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
+
+	view := ansi.Strip(updated.(Model).View().Content)
+	groupRow := findRow(t, view, "overseer")
+
+	if strings.Contains(groupRow, "3h") {
+		t.Errorf("group row should not carry a per-session duration label, got: %q", groupRow)
+	}
+}
+
+func findRow(t *testing.T, view, marker string) string {
+	t.Helper()
+	for _, line := range strings.Split(view, "\n") {
+		if strings.Contains(line, marker) {
+			return line
+		}
+	}
+	t.Fatalf("no row contains %q in view:\n%s", marker, view)
+	return ""
+}
+
+func rowSuffixIs(row, suffix string) bool {
+	trimmed := strings.TrimRight(row, " │")
+	return strings.HasSuffix(trimmed, suffix)
 }

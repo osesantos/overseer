@@ -139,7 +139,7 @@ func TestTreeModel_MoveToPrevFindsMatchingItem(t *testing.T) {
 }
 
 func newTreeWithTwoGroups() components.TreeModel[string] {
-	tree := components.NewTree(func(item string, _, depth int, _, _, _ bool) string {
+	tree := components.NewTree(func(item string, _, _, _ int, _, _, _ bool) string {
 		return item
 	})
 	return tree.SetNodes([]components.TreeNode[string]{
@@ -161,7 +161,7 @@ func newTreeWithTwoGroups() components.TreeModel[string] {
 }
 
 func newTestTree() components.TreeModel[string] {
-	tree := components.NewTree(func(item string, _, depth int, hasKids, expanded, _ bool) string {
+	tree := components.NewTree(func(item string, _, depth, _ int, hasKids, expanded, _ bool) string {
 		prefix := "· "
 		if hasKids && expanded {
 			prefix = "▾ "
