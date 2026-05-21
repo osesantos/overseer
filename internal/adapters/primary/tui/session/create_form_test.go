@@ -25,10 +25,10 @@ func TestCreateForm_DefaultFocusIsName(t *testing.T) {
 	}
 }
 
-func TestCreateForm_TabCyclesFiveFields(t *testing.T) {
+func TestCreateForm_TabCyclesSixFields(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
-	for i, want := range []int{fieldRepository, fieldBaseBranch, fieldLauncher, fieldEditor, fieldName} {
+	for i, want := range []int{fieldRepository, fieldBaseBranch, fieldFeatureBranch, fieldLauncher, fieldEditor, fieldName} {
 		updated, _ := tea.Model(form).Update(formKeyPress("tab"))
 		form = updated.(CreateFormModel)
 		if form.focusIndex.Value() != want {
@@ -136,11 +136,89 @@ func TestCreateForm_SubmitWithExistingProjectCallsServiceCreate(t *testing.T) {
 	}
 }
 
+func TestCreateForm_FeatureBranchDefaultsToEmpty(t *testing.T) {
+	form := newCreateFormForTest(t, nil)
+
+	if got := form.featureBranchInput.Value(); got != "" {
+		t.Fatalf("default feature branch input = %q, want empty (auto-generate signal)", got)
+	}
+}
+
+func TestCreateForm_BaseBranchDefaultsToEmpty(t *testing.T) {
+	form := newCreateFormForTest(t, nil)
+
+	if got := form.baseBranchInput.Value(); got != "" {
+		t.Fatalf("default base branch input = %q, want empty (repo-default signal)", got)
+	}
+}
+
+func TestCreateForm_SubmitWithEmptyBaseBranchResolvesRepoDefault(t *testing.T) {
+	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
+	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().GetDefaultBranch(mock.Anything, overseer.Path).Return("trunk", nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "trunk", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projectsSvc, _ := newProjectsServiceWithMocks(t)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t))
+
+	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
+	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
+
+	if cmd == nil {
+		t.Fatalf("submit cmd = nil")
+	}
+	msg, ok := cmd().(shared.SessionCreatedMsg)
+	if !ok {
+		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
+	}
+	if msg.Session.BaseBranch != "trunk" {
+		t.Fatalf("created session BaseBranch = %q, want resolved default %q", msg.Session.BaseBranch, "trunk")
+	}
+}
+
+func TestCreateForm_SubmitForwardsUserProvidedFeatureBranch(t *testing.T) {
+	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
+	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "develop", "my-feature", mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projectsSvc, _ := newProjectsServiceWithMocks(t)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t))
+
+	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	form = updated.(CreateFormModel)
+	form.baseBranchInput.SetValue("develop")
+	form.featureBranchInput.SetValue("my-feature")
+	_, cmd := tea.Model(form).Update(formKeyPress("enter"))
+
+	if cmd == nil {
+		t.Fatalf("submit cmd = nil")
+	}
+	msg, ok := cmd().(shared.SessionCreatedMsg)
+	if !ok {
+		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
+	}
+	if msg.Session.FeatureBranch != "my-feature" {
+		t.Fatalf("created session FeatureBranch = %q, want %q", msg.Session.FeatureBranch, "my-feature")
+	}
+}
+
 func TestCreateForm_ViewShowsAllFieldLabels(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
 	view := form.View().Content
-	for _, want := range []string{"Name", "Repository", "Base branch", "Launcher", "Editor"} {
+	for _, want := range []string{"Name", "Repository", "Base branch", "Feature branch", "Launcher", "Editor"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() missing %q label: %q", want, view)
 		}
@@ -188,14 +266,15 @@ func TestCreateForm_DefaultsToVSCodeEditor(t *testing.T) {
 func TestCreateForm_EditorSelectorTogglesBetweenEntries(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
-	// Tab past Name, Repository, Base branch, Launcher to reach Editor.
+	// Tab past Name, Repository, Base branch, Feature branch, Launcher to reach Editor.
 	updated, _ := tea.Model(form).Update(formKeyPress("tab"))
+	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
 	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
 	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
 	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
 	got := updated.(CreateFormModel)
 	if got.focusIndex.Value() != fieldEditor {
-		t.Fatalf("after 4 tabs: focus = %d, want %d (editor)", got.focusIndex.Value(), fieldEditor)
+		t.Fatalf("after 5 tabs: focus = %d, want %d (editor)", got.focusIndex.Value(), fieldEditor)
 	}
 	if got.resolvedEditorCommand() != "code" {
 		t.Fatalf("initial editor = %q, want %q", got.resolvedEditorCommand(), "code")

@@ -240,7 +240,6 @@ var (
 	ErrSessionEmptyName                = errors.New("session name cannot be empty")
 	ErrSessionNameTooLong              = errors.New("session name exceeds 100 characters")
 	ErrSessionEmptyProjectID           = errors.New("session project id cannot be empty")
-	ErrSessionEmptyBaseBranch          = errors.New("session base branch cannot be empty")
 	ErrSessionNotFound                 = errors.New("session not found")
 	ErrSessionAlreadyExists            = errors.New("session already exists")
 	ErrSessionWorktreeFieldsMismatch   = errors.New("session worktree fields must all be set")

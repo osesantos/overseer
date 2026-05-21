@@ -58,6 +58,7 @@ type CreateSessionRequest struct {
 	Name          string
 	ProjectID     uuid.UUID
 	BaseBranch    string
+	FeatureBranch string
 	AgentCommand  string
 	EditorCommand string
 }
@@ -66,11 +67,19 @@ type CreateSessionResponse struct {
 	Session domain.Session
 }
 
+// Create wires up a new session: forks BaseBranch into a worktree on a new
+// branch, then registers tmux sessions for the shell and the agent.
+//
+// BaseBranch policy: when req.BaseBranch is empty (or whitespace-only) the
+// service resolves the project's default branch via git.GetDefaultBranch and
+// uses that. When non-empty, the trimmed user-supplied value is used verbatim.
+//
+// FeatureBranch policy: when req.FeatureBranch is empty (or whitespace-only)
+// the service generates a default via paths.SessionFeatureBranch — namely
+// "overseer/<session-id>" — which guarantees uniqueness inside the repo. When
+// non-empty, the trimmed user-supplied value is used verbatim; git rejects
+// invalid names downstream and that error is surfaced as-is.
 func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (CreateSessionResponse, error) {
-	if req.BaseBranch == "" {
-		return CreateSessionResponse{}, domain.ErrSessionEmptyBaseBranch
-	}
-
 	sess, err := domain.NewSession(req.Name, req.ProjectID)
 	if err != nil {
 		return CreateSessionResponse{}, err
@@ -92,10 +101,23 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 	if err != nil {
 		return CreateSessionResponse{}, fmt.Errorf("lookup project: %w", err)
 	}
+
+	baseBranch := strings.TrimSpace(req.BaseBranch)
+	if baseBranch == "" {
+		baseBranch, err = s.git.GetDefaultBranch(ctx, project.Path)
+		if err != nil {
+			return CreateSessionResponse{}, fmt.Errorf("resolve default branch: %w", err)
+		}
+	}
+
+	featureBranch := strings.TrimSpace(req.FeatureBranch)
+	if featureBranch == "" {
+		featureBranch = paths.SessionFeatureBranch(sess.ID)
+	}
 	if err := sess.AssignWorktree(
 		s.pathsResolver.SessionWorktreePath(sess.ID),
-		req.BaseBranch,
-		paths.SessionFeatureBranch(sess.ID),
+		baseBranch,
+		featureBranch,
 	); err != nil {
 		return CreateSessionResponse{}, fmt.Errorf("assign worktree: %w", err)
 	}
@@ -166,10 +188,6 @@ type CheckoutBranchResponse struct {
 }
 
 func (s *SessionService) CheckoutBranch(ctx context.Context, req CheckoutBranchRequest) (CheckoutBranchResponse, error) {
-	if req.Branch == "" {
-		return CheckoutBranchResponse{}, domain.ErrSessionEmptyBaseBranch
-	}
-
 	sess, err := domain.NewCheckoutSession(req.Name, req.ProjectID)
 	if err != nil {
 		return CheckoutBranchResponse{}, err
@@ -191,9 +209,17 @@ func (s *SessionService) CheckoutBranch(ctx context.Context, req CheckoutBranchR
 	if err != nil {
 		return CheckoutBranchResponse{}, fmt.Errorf("lookup project: %w", err)
 	}
+
+	branch := strings.TrimSpace(req.Branch)
+	if branch == "" {
+		branch, err = s.git.GetDefaultBranch(ctx, project.Path)
+		if err != nil {
+			return CheckoutBranchResponse{}, fmt.Errorf("resolve default branch: %w", err)
+		}
+	}
 	if err := sess.AssignWorktree(
 		s.pathsResolver.SessionWorktreePath(sess.ID),
-		req.Branch,
+		branch,
 		paths.SessionTrackingBranch(sess.ID),
 	); err != nil {
 		return CheckoutBranchResponse{}, fmt.Errorf("assign worktree: %w", err)

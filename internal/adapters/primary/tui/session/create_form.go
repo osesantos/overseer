@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -21,25 +20,27 @@ const (
 	fieldName int = iota
 	fieldRepository
 	fieldBaseBranch
+	fieldFeatureBranch
 	fieldLauncher
 	fieldEditor
 )
 
-const totalCreateFields = 5
+const totalCreateFields = 6
 
 type CreateFormModel struct {
-	nameInput       textinput.Model
-	repoPicker      repoPicker
-	baseBranchInput textinput.Model
-	launchers       []domain.Launcher
-	launcherIdx     int
-	editors         []domain.Editor
-	editorIdx       int
-	focusIndex      shared.CircularInt
-	errMsg          string
-	sessionsService service.SessionService
-	projectsService service.ProjectService
-	styles          *styles.Styles
+	nameInput          textinput.Model
+	repoPicker         repoPicker
+	baseBranchInput    textinput.Model
+	featureBranchInput textinput.Model
+	launchers          []domain.Launcher
+	launcherIdx        int
+	editors            []domain.Editor
+	editorIdx          int
+	focusIndex         shared.CircularInt
+	errMsg             string
+	sessionsService    service.SessionService
+	projectsService    service.ProjectService
+	styles             *styles.Styles
 }
 
 // NewCreateForm builds the session-create form. The supplied projects seed
@@ -60,23 +61,30 @@ func NewCreateForm(
 	nameInput.Focus()
 
 	baseBranchInput := textinput.New()
-	baseBranchInput.Placeholder = "main"
+	baseBranchInput.Placeholder = "(repo default)"
 	baseBranchInput.CharLimit = 200
 	baseBranchInput.SetWidth(36)
 	baseBranchInput.SetStyles(s.Form.Input)
 
+	featureBranchInput := textinput.New()
+	featureBranchInput.Placeholder = "(auto-generated if empty)"
+	featureBranchInput.CharLimit = 200
+	featureBranchInput.SetWidth(36)
+	featureBranchInput.SetStyles(s.Form.Input)
+
 	return CreateFormModel{
-		nameInput:       nameInput,
-		repoPicker:      newRepoPicker(s, projects),
-		baseBranchInput: baseBranchInput,
-		launchers:       launchers,
-		launcherIdx:     0,
-		editors:         editors,
-		editorIdx:       0,
-		focusIndex:      shared.NewCircularInt(0, totalCreateFields-1),
-		sessionsService: sessionsService,
-		projectsService: projectsService,
-		styles:          s,
+		nameInput:          nameInput,
+		repoPicker:         newRepoPicker(s, projects),
+		baseBranchInput:    baseBranchInput,
+		featureBranchInput: featureBranchInput,
+		launchers:          launchers,
+		launcherIdx:        0,
+		editors:            editors,
+		editorIdx:          0,
+		focusIndex:         shared.NewCircularInt(0, totalCreateFields-1),
+		sessionsService:    sessionsService,
+		projectsService:    projectsService,
+		styles:             s,
 	}
 }
 
@@ -145,16 +153,10 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.ProjectRegisteredMsg:
 		m.repoPicker.adoptRegisteredProject(msg.Project)
 		m.errMsg = ""
-		return m, m.detectDefaultBranchCmd(msg.Project.ID)
+		return m, nil
 
 	case shared.ProjectRegisterErrMsg:
 		m.errMsg = msg.Err.Error()
-		return m, nil
-
-	case defaultBranchDetectedMsg:
-		if msg.Err == nil && strings.TrimSpace(m.baseBranchInput.Value()) == "" {
-			m.baseBranchInput.SetValue(msg.Branch)
-		}
 		return m, nil
 	}
 
@@ -167,6 +169,10 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.baseBranchInput, cmd = m.baseBranchInput.Update(msg)
 		return m, cmd
+	case fieldFeatureBranch:
+		var cmd tea.Cmd
+		m.featureBranchInput, cmd = m.featureBranchInput.Update(msg)
+		return m, cmd
 	case fieldRepository:
 		var cmd tea.Cmd
 		m.repoPicker, cmd = m.repoPicker.update(msg)
@@ -176,25 +182,6 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// defaultBranchDetectedMsg carries the result of an async
-// ProjectService.DetectDefaultBranch call so the form can populate (or leave
-// empty) the base-branch field.
-type defaultBranchDetectedMsg struct {
-	Branch string
-	Err    error
-}
-
-func (m CreateFormModel) detectDefaultBranchCmd(projectID uuid.UUID) tea.Cmd {
-	svc := m.projectsService
-	return func() tea.Msg {
-		resp, err := svc.DetectDefaultBranch(context.Background(), service.DetectDefaultBranchRequest{ProjectID: projectID})
-		return defaultBranchDetectedMsg{Branch: resp.Branch, Err: err}
-	}
-}
-
-// moveFocus shifts focus by direction (+1 next, -1 previous) and triggers a
-// default-branch auto-detect when the user enters an empty BaseBranch field
-// with a known project selected.
 func (m CreateFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
 	if direction > 0 {
 		m.focusIndex.Increment()
@@ -202,18 +189,13 @@ func (m CreateFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
 		m.focusIndex.Decrement()
 	}
 	m.updateFocusAndBlurs()
-
-	if m.focusIndex.Value() == fieldBaseBranch && strings.TrimSpace(m.baseBranchInput.Value()) == "" {
-		if proj := m.repoPicker.selectedProject(); proj != nil {
-			return m, m.detectDefaultBranchCmd(proj.ID)
-		}
-	}
 	return m, nil
 }
 
 func (m *CreateFormModel) updateFocusAndBlurs() {
 	m.nameInput.Blur()
 	m.baseBranchInput.Blur()
+	m.featureBranchInput.Blur()
 	m.repoPicker.blur()
 
 	switch m.focusIndex.Value() {
@@ -221,6 +203,8 @@ func (m *CreateFormModel) updateFocusAndBlurs() {
 		m.nameInput.Focus()
 	case fieldBaseBranch:
 		m.baseBranchInput.Focus()
+	case fieldFeatureBranch:
+		m.featureBranchInput.Focus()
 	case fieldRepository:
 		m.repoPicker.focus()
 	}
@@ -296,17 +280,12 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 
-	baseBranch := strings.TrimSpace(m.baseBranchInput.Value())
-	if baseBranch == "" {
-		m.errMsg = "base branch is required"
-		return m, nil
-	}
-
 	m.errMsg = ""
 	req := service.CreateSessionRequest{
 		Name:          name,
 		ProjectID:     selection.Project.ID,
-		BaseBranch:    baseBranch,
+		BaseBranch:    strings.TrimSpace(m.baseBranchInput.Value()),
+		FeatureBranch: strings.TrimSpace(m.featureBranchInput.Value()),
 		AgentCommand:  m.resolvedAgentCommand(),
 		EditorCommand: m.resolvedEditorCommand(),
 	}
@@ -339,6 +318,10 @@ func (m CreateFormModel) View() tea.View {
 	b.WriteString(m.labelStyle(fieldBaseBranch).Render("Base branch"))
 	b.WriteByte('\n')
 	b.WriteString(m.baseBranchInput.View())
+	b.WriteByte('\n')
+	b.WriteString(m.labelStyle(fieldFeatureBranch).Render("Feature branch"))
+	b.WriteByte('\n')
+	b.WriteString(m.featureBranchInput.View())
 	b.WriteByte('\n')
 	b.WriteString(m.labelStyle(fieldLauncher).Render("Launcher"))
 	b.WriteByte('\n')

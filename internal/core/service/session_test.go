@@ -131,14 +131,71 @@ func TestSessionService_Create_EmptyName(t *testing.T) {
 	}
 }
 
-func TestSessionService_Create_EmptyBaseBranch(t *testing.T) {
+func TestSessionService_Create_EmptyBaseBranch_ResolvesProjectDefault(t *testing.T) {
+	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("trunk", nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "trunk", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+
+	var savedSession domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { savedSession = s }).
+		Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: projID})
 
-	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: uuid.New()})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if resp.Session.BaseBranch != "trunk" {
+		t.Fatalf("Create() Session.BaseBranch = %q, want resolved default %q", resp.Session.BaseBranch, "trunk")
+	}
+	if savedSession.BaseBranch != "trunk" {
+		t.Fatalf("SessionRepository.Save BaseBranch = %q, want %q", savedSession.BaseBranch, "trunk")
+	}
+}
 
-	if !errors.Is(err, domain.ErrSessionEmptyBaseBranch) {
-		t.Fatalf("Create() error = %v, want %v", err, domain.ErrSessionEmptyBaseBranch)
+func TestSessionService_Create_EmptyBaseBranch_DefaultBranchResolveError(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	gitErr := errors.New("no remote configured")
+	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("", gitErr).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	_, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: projID})
+
+	if !errors.Is(err, gitErr) {
+		t.Fatalf("Create() error = %v, want wrapped %v", err, gitErr)
+	}
+}
+
+func TestSessionService_Create_TrimsBlankBaseBranch_ResolvesProjectDefault(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("trunk", nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "trunk", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{Name: "alpha", ProjectID: projID, BaseBranch: "   "})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if resp.Session.BaseBranch != "trunk" {
+		t.Fatalf("Create() Session.BaseBranch = %q, want resolved default %q", resp.Session.BaseBranch, "trunk")
 	}
 }
 
@@ -179,6 +236,95 @@ func TestSessionService_Create_UsesRequestBaseBranch(t *testing.T) {
 	}
 	if savedSession.BaseBranch != "develop" {
 		t.Fatalf("SessionRepository.Save BaseBranch = %q, want %q", savedSession.BaseBranch, "develop")
+	}
+}
+
+func TestSessionService_Create_UsesUserProvidedFeatureBranch(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", "my-feature", mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+
+	var savedSession domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { savedSession = s }).
+		Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:          "alpha",
+		ProjectID:     projID,
+		BaseBranch:    "main",
+		FeatureBranch: "my-feature",
+	})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if resp.Session.FeatureBranch != "my-feature" {
+		t.Fatalf("Create() Session.FeatureBranch = %q, want %q", resp.Session.FeatureBranch, "my-feature")
+	}
+	if savedSession.FeatureBranch != "my-feature" {
+		t.Fatalf("SessionRepository.Save FeatureBranch = %q, want %q", savedSession.FeatureBranch, "my-feature")
+	}
+}
+
+func TestSessionService_Create_TrimsUserProvidedFeatureBranch(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", "my-feature", mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:          "alpha",
+		ProjectID:     projID,
+		BaseBranch:    "main",
+		FeatureBranch: "  my-feature  ",
+	})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if resp.Session.FeatureBranch != "my-feature" {
+		t.Fatalf("Create() Session.FeatureBranch = %q, want trimmed %q", resp.Session.FeatureBranch, "my-feature")
+	}
+}
+
+func TestSessionService_Create_BlankFeatureBranchGeneratesDefault(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:          "alpha",
+		ProjectID:     projID,
+		BaseBranch:    "main",
+		FeatureBranch: "   ",
+	})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	want := paths.SessionFeatureBranch(resp.Session.ID)
+	if resp.Session.FeatureBranch != want {
+		t.Fatalf("Create() Session.FeatureBranch = %q, want generated default %q", resp.Session.FeatureBranch, want)
 	}
 }
 
@@ -1631,14 +1777,48 @@ func TestSessionService_CheckoutBranch_HappyPath(t *testing.T) {
 	}
 }
 
-func TestSessionService_CheckoutBranch_EmptyBranch(t *testing.T) {
+func TestSessionService_CheckoutBranch_EmptyBranch_ResolvesProjectDefault(t *testing.T) {
+	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("trunk", nil).Once()
+	git.EXPECT().CreateTrackingWorktree(mock.Anything, repoPath, "trunk", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+
+	var savedSession domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { savedSession = s }).
+		Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.CheckoutBranch(context.Background(), CheckoutBranchRequest{Name: "alpha", ProjectID: projID})
 
-	_, err := svc.CheckoutBranch(context.Background(), CheckoutBranchRequest{Name: "main", ProjectID: uuid.New()})
+	if err != nil {
+		t.Fatalf("CheckoutBranch() error = %v", err)
+	}
+	if resp.Session.BaseBranch != "trunk" {
+		t.Fatalf("CheckoutBranch() Session.BaseBranch = %q, want resolved default %q", resp.Session.BaseBranch, "trunk")
+	}
+	if savedSession.BaseBranch != "trunk" {
+		t.Fatalf("SessionRepository.Save BaseBranch = %q, want %q", savedSession.BaseBranch, "trunk")
+	}
+}
 
-	if !errors.Is(err, domain.ErrSessionEmptyBaseBranch) {
-		t.Fatalf("CheckoutBranch() error = %v, want %v", err, domain.ErrSessionEmptyBaseBranch)
+func TestSessionService_CheckoutBranch_EmptyBranch_DefaultBranchResolveError(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	gitErr := errors.New("no remote configured")
+	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("", gitErr).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	_, err := svc.CheckoutBranch(context.Background(), CheckoutBranchRequest{Name: "alpha", ProjectID: projID})
+
+	if !errors.Is(err, gitErr) {
+		t.Fatalf("CheckoutBranch() error = %v, want wrapped %v", err, gitErr)
 	}
 }
 

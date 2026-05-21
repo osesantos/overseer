@@ -8,7 +8,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
-	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -58,7 +57,7 @@ func NewCheckoutBranchForm(
 	nameInput.Focus()
 
 	branchInput := textinput.New()
-	branchInput.Placeholder = "main"
+	branchInput.Placeholder = "(repo default)"
 	branchInput.CharLimit = 200
 	branchInput.SetWidth(36)
 	branchInput.SetStyles(s.Form.Input)
@@ -141,16 +140,10 @@ func (m CheckoutBranchFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.ProjectRegisteredMsg:
 		m.repoPicker.adoptRegisteredProject(msg.Project)
 		m.errMsg = ""
-		return m, m.detectDefaultBranchCmd(msg.Project.ID)
+		return m, nil
 
 	case shared.ProjectRegisterErrMsg:
 		m.errMsg = msg.Err.Error()
-		return m, nil
-
-	case checkoutBranchDefaultDetectedMsg:
-		if msg.Err == nil && strings.TrimSpace(m.branchInput.Value()) == "" {
-			m.branchInput.SetValue(msg.Branch)
-		}
 		return m, nil
 	}
 
@@ -172,19 +165,6 @@ func (m CheckoutBranchFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-type checkoutBranchDefaultDetectedMsg struct {
-	Branch string
-	Err    error
-}
-
-func (m CheckoutBranchFormModel) detectDefaultBranchCmd(projectID uuid.UUID) tea.Cmd {
-	svc := m.projectsService
-	return func() tea.Msg {
-		resp, err := svc.DetectDefaultBranch(context.Background(), service.DetectDefaultBranchRequest{ProjectID: projectID})
-		return checkoutBranchDefaultDetectedMsg{Branch: resp.Branch, Err: err}
-	}
-}
-
 func (m CheckoutBranchFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
 	if direction > 0 {
 		m.focusIndex.Increment()
@@ -192,12 +172,6 @@ func (m CheckoutBranchFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
 		m.focusIndex.Decrement()
 	}
 	m.updateFocusAndBlurs()
-
-	if m.focusIndex.Value() == checkoutFieldBranch && strings.TrimSpace(m.branchInput.Value()) == "" {
-		if proj := m.repoPicker.selectedProject(); proj != nil {
-			return m, m.detectDefaultBranchCmd(proj.ID)
-		}
-	}
 	return m, nil
 }
 
@@ -275,10 +249,6 @@ func (m CheckoutBranchFormModel) submit() (tea.Model, tea.Cmd) {
 	}
 
 	branch := strings.TrimSpace(m.branchInput.Value())
-	if branch == "" {
-		m.errMsg = "branch is required"
-		return m, nil
-	}
 
 	name := strings.TrimSpace(m.nameInput.Value())
 	if name == "" {
