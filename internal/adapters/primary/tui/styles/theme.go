@@ -44,6 +44,12 @@ func LoadTheme(name string) Theme {
 		return NordTheme()
 	case "catppuccin-mocha":
 		return CatppuccinMochaTheme()
+	case "porcelain":
+		return PorcelainTheme()
+	case "deep-sea":
+		return DeepSeaTheme()
+	case "sunset":
+		return SunsetTheme()
 	default:
 		return DarkTheme()
 	}

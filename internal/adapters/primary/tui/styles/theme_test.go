@@ -21,6 +21,9 @@ func TestThemes_NoZeroColors(t *testing.T) {
 		{"SolarizedDarkTheme", styles.SolarizedDarkTheme()},
 		{"NordTheme", styles.NordTheme()},
 		{"CatppuccinMochaTheme", styles.CatppuccinMochaTheme()},
+		{"PorcelainTheme", styles.PorcelainTheme()},
+		{"DeepSeaTheme", styles.DeepSeaTheme()},
+		{"SunsetTheme", styles.SunsetTheme()},
 	}
 	for _, tt := range themes {
 		t.Run(tt.name, func(t *testing.T) {
@@ -51,6 +54,9 @@ func TestLoadTheme_KnownTheme_ReturnsRegisteredTheme(t *testing.T) {
 		{"solarized-dark", styles.SolarizedDarkTheme()},
 		{"nord", styles.NordTheme()},
 		{"catppuccin-mocha", styles.CatppuccinMochaTheme()},
+		{"porcelain", styles.PorcelainTheme()},
+		{"deep-sea", styles.DeepSeaTheme()},
+		{"sunset", styles.SunsetTheme()},
 	}
 	for _, tt := range tests {
 		t.Run(tt.key, func(t *testing.T) {
