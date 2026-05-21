@@ -28,6 +28,22 @@ func LoadTheme(name string) Theme {
 	switch name {
 	case "dark":
 		return DarkTheme()
+	case "dracula":
+		return DraculaTheme()
+	case "github-dark":
+		return GitHubDarkTheme()
+	case "tokyo-night":
+		return TokyoNightTheme()
+	case "monokai":
+		return MonokaiTheme()
+	case "one-dark":
+		return OneDarkTheme()
+	case "solarized-dark":
+		return SolarizedDarkTheme()
+	case "nord":
+		return NordTheme()
+	case "catppuccin-mocha":
+		return CatppuccinMochaTheme()
 	default:
 		return DarkTheme()
 	}
