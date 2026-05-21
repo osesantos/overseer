@@ -113,3 +113,37 @@ func TestInspector_PreviewCapturedMsg_OnlyActiveViewProcesses(t *testing.T) {
 		t.Errorf("shell received agent-kind message: content = %q, want empty", shell.content)
 	}
 }
+
+func TestInspector_SessionSelectionClearedMsg_ResetsAllViews(t *testing.T) {
+	m := newTestModel(t)
+	id := uuid.New()
+	updated, _ := m.Update(shared.SessionSelectedMsg{Session: domain.Session{ID: id}})
+	m = updated.(Model)
+	for i := range m.views {
+		sv := m.views[i].(*streamView)
+		sv.content = "stale-content"
+		sv.ready = true
+	}
+
+	updated, cmd := m.Update(shared.SessionSelectionClearedMsg{})
+	m = updated.(Model)
+
+	if cmd != nil {
+		t.Errorf("Update(SessionSelectionClearedMsg) cmd = %#v, want nil (no further polling)", cmd)
+	}
+	if m.sessionID != uuid.Nil {
+		t.Errorf("model sessionID = %v, want uuid.Nil", m.sessionID)
+	}
+	for i, v := range m.views {
+		sv := v.(*streamView)
+		if sv.sessionID != uuid.Nil {
+			t.Errorf("view[%d] sessionID = %v, want uuid.Nil", i, sv.sessionID)
+		}
+		if sv.content != "" {
+			t.Errorf("view[%d] content = %q, want empty after clear", i, sv.content)
+		}
+		if sv.ready {
+			t.Errorf("view[%d] ready = true, want false after clear", i)
+		}
+	}
+}

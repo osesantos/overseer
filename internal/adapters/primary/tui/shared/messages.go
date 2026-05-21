@@ -13,6 +13,8 @@ type SessionCreatedMsg struct{ Session domain.Session }
 
 type SessionSelectedMsg struct{ Session domain.Session }
 
+type SessionSelectionClearedMsg struct{}
+
 type SessionsLoadedMsg struct {
 	Sessions []domain.Session
 	Err      error

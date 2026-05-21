@@ -113,7 +113,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, shared.Emit(shared.SessionSelectedMsg{Session: sess})
 			}
 		}
-		return m, nil
+		return m, shared.Emit(shared.SessionSelectionClearedMsg{})
 	case tea.KeyPressMsg:
 		if m.focused {
 			if cmd, handled := m.handleNavigationKey(msg); handled {
@@ -211,14 +211,12 @@ func (m Model) translateTreeSelection(cmd tea.Cmd) tea.Cmd {
 		return nil
 	}
 	cur, ok := m.tree.Selected()
-	if !ok || cur.kind != sessionNodeSession {
-		return nil
+	if ok && cur.kind == sessionNodeSession {
+		if sess, ok := m.findSession(cur.sessionID); ok {
+			return shared.Emit(shared.SessionSelectedMsg{Session: sess})
+		}
 	}
-	sess, ok := m.findSession(cur.sessionID)
-	if !ok {
-		return nil
-	}
-	return shared.Emit(shared.SessionSelectedMsg{Session: sess})
+	return shared.Emit(shared.SessionSelectionClearedMsg{})
 }
 
 func (m Model) findSession(id string) (domain.Session, bool) {

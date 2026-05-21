@@ -48,7 +48,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			shared.Forward(&m.sessions),
 			shared.Forward(&m.sessionDetails),
 		)
-	case shared.SessionSelectedMsg, shared.PRStatusUpdatedMsg:
+	case shared.SessionSelectedMsg, shared.SessionSelectionClearedMsg, shared.PRStatusUpdatedMsg:
 		var cmd tea.Cmd
 		m.sessionDetails, cmd = shared.UpdateModel(m.sessionDetails, typed)
 		return m, cmd

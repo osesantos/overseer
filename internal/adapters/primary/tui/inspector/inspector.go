@@ -59,6 +59,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, m.views[m.activeIx].Init()
 
+	case shared.SessionSelectionClearedMsg:
+		m.sessionID = uuid.Nil
+		for i := range m.views {
+			m.views[i].SetSession(uuid.Nil)
+		}
+		return m, nil
+
 	case tea.KeyPressMsg:
 		switch {
 		case key.Matches(msg, NextViewKeyBinding):

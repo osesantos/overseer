@@ -11,10 +11,10 @@ import (
 )
 
 // Model renders a read-only details card for the currently selected session.
-// It listens for SessionSelectedMsg to track the selection, for
-// PRStatusUpdatedMsg to populate its own PR cache (independent of the
-// dashboard's cache), and for SessionsLoadedMsg to reconcile when the
-// selected session is renamed or removed.
+// It listens for SessionSelectedMsg and SessionSelectionClearedMsg to track
+// the selection, for PRStatusUpdatedMsg to populate its own PR cache
+// (independent of the dashboard's cache), and for SessionsLoadedMsg to
+// reconcile when the selected session is renamed or removed.
 type Model struct {
 	styles *styles.Styles
 	width  int
@@ -40,6 +40,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.SessionSelectedMsg:
 		sess := msg.Session
 		m.session = &sess
+	case shared.SessionSelectionClearedMsg:
+		m.session = nil
 	case shared.PRStatusUpdatedMsg:
 		m.prCache[msg.SessionID] = msg
 	case shared.SessionsLoadedMsg:

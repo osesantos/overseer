@@ -70,7 +70,7 @@ func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
 	}
 }
 
-func TestModel_SelectionOnlyEmitsForSessionNodes(t *testing.T) {
+func TestModel_SelectionEmitsClearedWhenCursorLandsOnGroup(t *testing.T) {
 	overseerID := uuid.New()
 	model := New(styles.New(), newSessionService(t))
 	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
@@ -79,8 +79,11 @@ func TestModel_SelectionOnlyEmitsForSessionNodes(t *testing.T) {
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 
 	updated, cmd := updated.(Model).Update(keyPress("k"))
-	if cmd != nil {
-		t.Fatalf("Update(k) command = %#v, want nil at top boundary", cmd)
+	if cmd == nil {
+		t.Fatalf("Update(k) command = nil, want SessionSelectionClearedMsg when cursor lands on group")
+	}
+	if _, ok := cmd().(shared.SessionSelectionClearedMsg); !ok {
+		t.Fatalf("selection msg type = %T, want shared.SessionSelectionClearedMsg", cmd())
 	}
 
 	updated, cmd = updated.(Model).Update(keyPress("j"))
@@ -94,7 +97,6 @@ func TestModel_SelectionOnlyEmitsForSessionNodes(t *testing.T) {
 	if msg.Session.ID != alpha.ID {
 		t.Fatalf("SessionSelectedMsg.Session.ID = %v, want %v", msg.Session.ID, alpha.ID)
 	}
-
 }
 
 func TestModel_LoadSessionsUsesRawSessions(t *testing.T) {
