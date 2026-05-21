@@ -13,27 +13,52 @@ import (
 const (
 	glyphFeatureBranch = "⎇"
 	glyphBaseBranch    = "↳"
-	glyphWorktree      = "~"
+	glyphRepo          = "⊞"
+	glyphPRLink        = "⎘"
 	glyphPRStateDot    = "●"
+	glyphAdded         = "⊕"
+	glyphRemoved       = "⊖"
+	glyphFiles         = "▤"
 	glyphCheckPass     = "✓"
 	glyphCheckFail     = "✗"
 	glyphCheckPending  = "◷"
+
+	titlePullRequest = "Pull Request"
+
+	labelRepository    = "Repository"
+	labelFeatureBranch = "Feature Branch"
+	labelBaseBranch    = "Base Branch"
+	labelStatus        = "Status"
+	labelLink          = "Link"
+	labelChanges       = "Changes"
+	labelChecks        = "Checks"
+
+	// labelColumnWidth fixes the width of the left ("label") column so
+	// every row in both sections lines up at the same value start column.
+	// 14 = lipgloss.Width("Feature Branch"), the widest label in the panel.
+	labelColumnWidth = 14
+	columnGap        = 2
 )
 
 func (m Model) renderContent(width int) string {
 	if m.session == nil {
 		return m.styles.SessionDetails.Hint.Render("Select a session")
 	}
-
-	var sections [][]string
-	if m.session.HasWorktree() {
-		sections = append(sections, m.renderPRSection(width))
-		sections = append(sections, m.renderWorktreeSection(width))
+	if !m.session.HasWorktree() {
+		return ""
 	}
 
-	return joinSections(sections)
+	sections := [][]string{m.renderRepositorySection(width)}
+	if pr := m.renderPRSection(width); pr != nil {
+		sections = append(sections, pr)
+	}
+	return "\n" + joinSections(sections)
 }
 
+// joinSections concatenates the section blocks with ONE blank line between
+// them. Each block already ends with its own trailing blank (from the last
+// field group), so the gap between two sections ends up as two blank lines
+// — slightly more breathing room between sections than within them.
 func joinSections(sections [][]string) string {
 	parts := make([]string, 0, len(sections)*2)
 	for i, sec := range sections {
@@ -48,27 +73,77 @@ func joinSections(sections [][]string) string {
 	return strings.Join(parts, "\n")
 }
 
+func sectionHeader(s *styles.SessionDetailsStyles, title string, width int) []string {
+	if width <= 0 {
+		return nil
+	}
+	header := s.SectionTitle.Render(truncate(title, width))
+	divider := s.SectionDivider.Render(strings.Repeat("─", width))
+	return []string{header, divider, ""}
+}
+
+// twoColumnRow renders `label  value` with the label padded to a fixed
+// column width so every row in the panel lines up at the same value
+// start column. Value is expected to already contain its own glyph and
+// styling (from glyphLine / pathLine / compound builders).
+func twoColumnRow(s *styles.SessionDetailsStyles, label, value string) string {
+	padded := s.FieldLabel.Width(labelColumnWidth).Render(truncate(label, labelColumnWidth))
+	return padded + strings.Repeat(" ", columnGap) + value
+}
+
+func twoColumnValueWidth(totalW int) int {
+	return max(totalW-labelColumnWidth-columnGap, 0)
+}
+
+func (m Model) renderRepositorySection(width int) []string {
+	s := &m.styles.SessionDetails
+	valueW := twoColumnValueWidth(width)
+	rows := []string{}
+
+	if repo := repoSlugFromPR(m.prCache[m.session.ID].PR.URL); repo != "" {
+		rows = append(rows, twoColumnRow(s, labelRepository, glyphLine(s, glyphRepo, repo, valueW)))
+	}
+
+	if m.session.IsCheckout() {
+		rows = append(rows, twoColumnRow(s, labelBaseBranch, glyphLine(s, glyphBaseBranch, m.session.BaseBranch+"  (tracking)", valueW)))
+		return append(rows, "")
+	}
+	rows = append(rows, twoColumnRow(s, labelFeatureBranch, glyphLine(s, glyphFeatureBranch, m.session.FeatureBranch, valueW)))
+	rows = append(rows, twoColumnRow(s, labelBaseBranch, glyphLine(s, glyphBaseBranch, m.session.BaseBranch, valueW)))
+	return append(rows, "")
+}
+
+// renderPRSection returns nil when no PR exists (still fetching or
+// confirmed-none), so the caller can omit the entire section — no
+// header, no divider, no placeholder. The panel only grows once a PR
+// is actually available.
 func (m Model) renderPRSection(width int) []string {
 	pr, ok := m.prCache[m.session.ID]
-	if !ok {
-		return []string{m.styles.SessionDetails.Hint.Render("◌ fetching PR…")}
+	if !ok || pr.PR.Number == 0 {
+		return nil
 	}
-	if pr.PR.Number == 0 {
-		return []string{m.styles.SessionDetails.Hint.Render("● no PR yet")}
-	}
+
 	s := &m.styles.SessionDetails
-	header := prStateStyle(s, pr.PR.State).Render(glyphPRStateDot+" "+string(pr.PR.State)) +
+	valueW := twoColumnValueWidth(width)
+	rows := sectionHeader(s, titlePullRequest, width)
+
+	statusValue := prStateStyle(s, pr.PR.State).Render(glyphPRStateDot+" "+formatPRState(pr.PR.State)) +
 		"  " + s.Glyph.Render(fmt.Sprintf("#%d", pr.PR.Number))
+	rows = append(rows, twoColumnRow(s, labelStatus, statusValue))
 
-	stats := s.Good.Render(fmt.Sprintf("+%d", pr.PR.Stats.Additions)) +
-		"  " + s.Bad.Render(fmt.Sprintf("-%d", pr.PR.Stats.Deletions)) +
-		"  " + s.Glyph.Render(fmt.Sprintf("%d files", pr.PR.Stats.ChangedFiles))
-
-	lines := []string{truncate(header, width), truncate(stats, width)}
-	if checks := renderChecksLine(s, pr.PR.Checks); checks != "" {
-		lines = append(lines, truncate(checks, width))
+	if pr.PR.URL != "" {
+		rows = append(rows, twoColumnRow(s, labelLink, pathLine(s, glyphPRLink, pr.PR.URL, valueW)))
 	}
-	return lines
+
+	changesValue := s.Good.Render(fmt.Sprintf("%s +%d", glyphAdded, pr.PR.Stats.Additions)) +
+		"   " + s.Bad.Render(fmt.Sprintf("%s -%d", glyphRemoved, pr.PR.Stats.Deletions)) +
+		"   " + s.Glyph.Render(fmt.Sprintf("%s %d files", glyphFiles, pr.PR.Stats.ChangedFiles))
+	rows = append(rows, twoColumnRow(s, labelChanges, changesValue))
+
+	if checksValue := renderChecksLine(s, pr.PR.Checks); checksValue != "" {
+		rows = append(rows, twoColumnRow(s, labelChecks, checksValue))
+	}
+	return append(rows, "")
 }
 
 func renderChecksLine(s *styles.SessionDetailsStyles, c domain.PRChecks) string {
@@ -96,23 +171,41 @@ func prStateStyle(s *styles.SessionDetailsStyles, state domain.PRState) lipgloss
 		return s.Special
 	case domain.PRStateClosed:
 		return s.Bad
+	case domain.PRStateDraft:
+		return s.Warn
 	}
 	return s.Glyph
 }
 
-func (m Model) renderWorktreeSection(width int) []string {
-	s := &m.styles.SessionDetails
-	if m.session.IsCheckout() {
-		rows := make([]string, 0, 2)
-		rows = append(rows, glyphLine(s, glyphBaseBranch, m.session.BaseBranch+"  (tracking)", width))
-		rows = append(rows, pathLine(s, glyphWorktree, m.session.WorktreePath, width))
-		return rows
+// formatPRState turns the uppercase domain enum value ("OPEN", "DRAFT", …)
+// into a title-cased display label ("Open", "Draft", …). Keeps the
+// underlying enum stable for storage / comparison while making the UI
+// read naturally.
+func formatPRState(state domain.PRState) string {
+	str := string(state)
+	if str == "" {
+		return ""
 	}
-	rows := make([]string, 0, 3)
-	rows = append(rows, glyphLine(s, glyphFeatureBranch, m.session.FeatureBranch, width))
-	rows = append(rows, glyphLine(s, glyphBaseBranch, m.session.BaseBranch, width))
-	rows = append(rows, pathLine(s, glyphWorktree, m.session.WorktreePath, width))
-	return rows
+	return strings.ToUpper(str[:1]) + strings.ToLower(str[1:])
+}
+
+// repoSlugFromPR extracts the "owner/repo" slug from a GitHub-style PR URL
+// like "https://github.com/owner/repo/pull/123". Returns "" if the URL is
+// empty or does not contain "/pull/" — the local domain has no other
+// source for the remote URL, so callers omit the line in that case.
+func repoSlugFromPR(prURL string) string {
+	if prURL == "" {
+		return ""
+	}
+	idx := strings.Index(prURL, "/pull/")
+	if idx <= 0 {
+		return ""
+	}
+	parts := strings.Split(prURL[:idx], "/")
+	if len(parts) < 2 {
+		return ""
+	}
+	return parts[len(parts)-2] + "/" + parts[len(parts)-1]
 }
 
 func glyphLine(s *styles.SessionDetailsStyles, glyph, value string, width int) string {
@@ -147,8 +240,8 @@ func truncate(s string, maxWidth int) string {
 }
 
 // truncatePath clips path from the LEFT (keeping the deepest component
-// visible), prefixing with "…" when truncation occurs. Useful for
-// long worktree paths where the trailing directory is the meaningful part.
+// visible), prefixing with "…" when truncation occurs. Useful for long
+// URLs and worktree paths where the trailing segment is the meaningful part.
 func truncatePath(path string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""

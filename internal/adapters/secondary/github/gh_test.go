@@ -177,12 +177,25 @@ func TestAdapter_GetForBranch_MalformedJSON_ReturnsError(t *testing.T) {
 }
 
 func TestAdapter_GetForBranch_UnknownState_ReturnsError(t *testing.T) {
-	cmd := &fakeCommander{stdout: []byte(`{"number":1,"title":"t","state":"DRAFT","headRefName":"b","statusCheckRollup":[]}`)}
+	cmd := &fakeCommander{stdout: []byte(`{"number":1,"title":"t","state":"QUEUED","headRefName":"b","statusCheckRollup":[]}`)}
 	adapter := NewWithCommander(cmd, testLogger())
 
 	_, err := adapter.GetForBranch(context.Background(), "/repo", "b")
 	if err == nil {
 		t.Fatal("error = nil, want unknown state error")
+	}
+}
+
+func TestAdapter_GetForBranch_DraftPR_StateMappedToDraft(t *testing.T) {
+	cmd := &fakeCommander{stdout: readFixture(t, "pr_open_draft.json")}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	pr, err := adapter.GetForBranch(context.Background(), "/repo", "feature/draft-panel")
+	if err != nil {
+		t.Fatalf("GetForBranch() error = %v", err)
+	}
+	if pr.State != domain.PRStateDraft {
+		t.Fatalf("State = %q, want DRAFT", pr.State)
 	}
 }
 

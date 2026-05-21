@@ -17,7 +17,7 @@ import (
 
 var _ domain.PullRequestPort = (*Adapter)(nil)
 
-const prJSONFields = "number,title,state,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt"
+const prJSONFields = "number,title,state,isDraft,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt"
 
 type Commander interface {
 	Run(ctx context.Context, dir string, args ...string) (stdout []byte, stderr []byte, err error)
@@ -55,6 +55,7 @@ type ghPRJSON struct {
 	Number      int    `json:"number"`
 	Title       string `json:"title"`
 	State       string `json:"state"`
+	IsDraft     bool   `json:"isDraft"`
 	URL         string `json:"url"`
 	HeadRefName string `json:"headRefName"`
 	Author      struct {
@@ -82,6 +83,12 @@ func parseGHJSON(data []byte) (domain.PullRequest, error) {
 	state, err := mapState(raw.State)
 	if err != nil {
 		return domain.PullRequest{}, err
+	}
+	// GitHub models draft as state=OPEN + isDraft=true; collapse to a
+	// dedicated PRStateDraft so the rest of the system (view, styling)
+	// only deals with a single state value.
+	if raw.IsDraft && state == domain.PRStateOpen {
+		state = domain.PRStateDraft
 	}
 	pr, err := domain.NewPullRequest(raw.Number, raw.Title, raw.HeadRefName, state)
 	if err != nil {
@@ -111,6 +118,8 @@ func mapState(state string) (domain.PRState, error) {
 		return domain.PRStateClosed, nil
 	case "MERGED":
 		return domain.PRStateMerged, nil
+	case "DRAFT":
+		return domain.PRStateDraft, nil
 	default:
 		return "", fmt.Errorf("unknown pull request state %q from gh", state)
 	}

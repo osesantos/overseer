@@ -1,0 +1,16 @@
+{
+  "number": 99,
+  "title": "WIP: Refactor session details panel",
+  "state": "OPEN",
+  "isDraft": true,
+  "url": "https://github.com/dnlopes/overseer/pull/99",
+  "headRefName": "feature/draft-panel",
+  "author": {
+    "login": "david.lopes"
+  },
+  "additions": 42,
+  "deletions": 7,
+  "changedFiles": 3,
+  "updatedAt": "2026-05-21T14:00:00Z",
+  "statusCheckRollup": []
+}

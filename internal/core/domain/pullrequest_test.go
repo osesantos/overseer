@@ -88,7 +88,7 @@ func TestNewPullRequest_Validation(t *testing.T) {
 }
 
 func TestNewPullRequest_AcceptsAllValidStates(t *testing.T) {
-	states := []PRState{PRStateOpen, PRStateClosed, PRStateMerged}
+	states := []PRState{PRStateOpen, PRStateClosed, PRStateMerged, PRStateDraft}
 	for _, st := range states {
 		t.Run(string(st), func(t *testing.T) {
 			pr, err := NewPullRequest(1, "t", "b", st)

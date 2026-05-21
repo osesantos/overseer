@@ -93,13 +93,27 @@ type TabStyles struct {
 }
 
 type SessionDetailsStyles struct {
-	Glyph   lipgloss.Style
-	Value   lipgloss.Style
-	Good    lipgloss.Style
-	Bad     lipgloss.Style
-	Warn    lipgloss.Style
-	Special lipgloss.Style
-	Hint    lipgloss.Style
+	// SectionTitle styles the heading rendered above each grouped block
+	// ("Pull Request", "Repository"). Bold in the theme's subtext colour
+	// so it reads as a secondary heading beneath the panel's border title.
+	SectionTitle lipgloss.Style
+	// SectionDivider styles the horizontal rule rendered under each
+	// SectionTitle; uses the theme border colour to nest inside the panel.
+	SectionDivider lipgloss.Style
+	// FieldLabel styles the caption rendered in the left column of every
+	// row ("Base Branch", "Changes", …). Subtext colour without bold, so
+	// it shares the section title's colour family for legibility but
+	// stays visually subordinate via weight. Muted has too little
+	// contrast against the panel's dark background on themes like
+	// Dracula where Muted resolves to a slate-blue.
+	FieldLabel lipgloss.Style
+	Glyph      lipgloss.Style
+	Value      lipgloss.Style
+	Good       lipgloss.Style
+	Bad        lipgloss.Style
+	Warn       lipgloss.Style
+	Special    lipgloss.Style
+	Hint       lipgloss.Style
 }
 
 type Styles struct {
@@ -324,13 +338,16 @@ func NewWithTheme(themeName string) *Styles {
 		},
 		SessionLabel: lipgloss.NewStyle().Bold(true),
 		SessionDetails: SessionDetailsStyles{
-			Glyph:   lipgloss.NewStyle().Foreground(theme.Muted),
-			Value:   lipgloss.NewStyle().Foreground(theme.Text),
-			Good:    lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
-			Bad:     lipgloss.NewStyle().Foreground(theme.Danger).Bold(true),
-			Warn:    lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
-			Special: lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
-			Hint:    lipgloss.NewStyle().Foreground(theme.Subtext).Italic(true),
+			SectionTitle:   lipgloss.NewStyle().Foreground(theme.Subtext).Bold(true),
+			SectionDivider: lipgloss.NewStyle().Foreground(theme.Border),
+			FieldLabel:     lipgloss.NewStyle().Foreground(theme.Subtext),
+			Glyph:          lipgloss.NewStyle().Foreground(theme.Subtext),
+			Value:          lipgloss.NewStyle().Foreground(theme.Text),
+			Good:           lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
+			Bad:            lipgloss.NewStyle().Foreground(theme.Danger).Bold(true),
+			Warn:           lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
+			Special:        lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
+			Hint:           lipgloss.NewStyle().Foreground(theme.Subtext).Italic(true),
 		},
 	}
 }

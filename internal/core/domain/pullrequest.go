@@ -13,6 +13,7 @@ const (
 	PRStateOpen   PRState = "OPEN"
 	PRStateClosed PRState = "CLOSED"
 	PRStateMerged PRState = "MERGED"
+	PRStateDraft  PRState = "DRAFT"
 )
 
 type CheckConclusion string
@@ -78,7 +79,7 @@ func NewPullRequest(number int, title, branch string, state PRState) (PullReques
 		return PullRequest{}, ErrPullRequestEmptyBranch
 	}
 	switch state {
-	case PRStateOpen, PRStateClosed, PRStateMerged:
+	case PRStateOpen, PRStateClosed, PRStateMerged, PRStateDraft:
 	default:
 		return PullRequest{}, ErrPullRequestInvalidState
 	}
@@ -99,5 +100,5 @@ var (
 	ErrPullRequestNotFound      = errors.New("pull request not found")
 	ErrPullRequestInvalidNumber = errors.New("pull request number must be positive")
 	ErrPullRequestEmptyBranch   = errors.New("pull request branch cannot be empty")
-	ErrPullRequestInvalidState  = errors.New("pull request state must be OPEN, CLOSED, or MERGED")
+	ErrPullRequestInvalidState  = errors.New("pull request state must be OPEN, CLOSED, MERGED, or DRAFT")
 )
