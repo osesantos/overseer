@@ -32,7 +32,7 @@ type repoPicker struct {
 	styles     *styles.Styles
 }
 
-func newRepoPicker(s *styles.Styles, projects []domain.Project) repoPicker {
+func newRepoPicker(s *styles.Styles, projects []domain.Project, inputWidth int) repoPicker {
 	sorted := append([]domain.Project(nil), projects...)
 	sort.SliceStable(sorted, func(i, j int) bool {
 		return sorted[i].UpdatedAt.After(sorted[j].UpdatedAt)
@@ -41,7 +41,7 @@ func newRepoPicker(s *styles.Styles, projects []domain.Project) repoPicker {
 	pasteInput := textinput.New()
 	pasteInput.Placeholder = "/absolute/path/to/repo"
 	pasteInput.CharLimit = 500
-	pasteInput.SetWidth(50)
+	pasteInput.SetWidth(inputWidth)
 	pasteInput.SetStyles(s.Form.Input)
 
 	return repoPicker{

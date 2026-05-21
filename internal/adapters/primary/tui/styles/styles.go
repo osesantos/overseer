@@ -60,6 +60,11 @@ type FormStyles struct {
 	// (e.g. "New Session", "Open Branch"). Forms compose the title above
 	// the field stack so users can tell the popups apart at a glance.
 	Title lipgloss.Style
+	// Hint styles the dim per-field hints ("←/→ cycle · ...") and the bottom
+	// help line ("Tab next · Enter submit · Esc cancel") rendered inside
+	// modal forms. Carries NO background — using Help.Description here would
+	// leak the help-bar's distinct bg into the modal as visible stripes.
+	Hint lipgloss.Style
 	// Input holds the bubbles textinput.Styles shared by every form field
 	// (placeholder appearance, focused/blurred prompt color, cursor blink).
 	// Configured once at theme load — see [New].
@@ -258,6 +263,7 @@ func NewWithTheme(themeName string) *Styles {
 				BorderForeground(theme.BorderFocus).
 				Padding(1, 2),
 			Title: lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).MarginBottom(1),
+			Hint:  lipgloss.NewStyle().Foreground(theme.Subtext),
 			Field: FormFieldStyles{
 				Label:        lipgloss.NewStyle().Foreground(theme.Subtext),
 				LabelFocused: lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),

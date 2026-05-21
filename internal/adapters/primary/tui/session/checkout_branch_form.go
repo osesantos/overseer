@@ -39,6 +39,7 @@ type CheckoutBranchFormModel struct {
 	sessionsService service.SessionService
 	projectsService service.ProjectService
 	styles          *styles.Styles
+	contentWidth    int
 }
 
 func NewCheckoutBranchForm(
@@ -48,23 +49,27 @@ func NewCheckoutBranchForm(
 	projects []domain.Project,
 	launchers []domain.Launcher,
 	editors []domain.Editor,
+	terminalWidth int,
 ) CheckoutBranchFormModel {
+	contentWidth := formContentWidth(terminalWidth)
+	inputWidth := formInputWidth(contentWidth)
+
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Session name"
 	nameInput.CharLimit = 100
-	nameInput.SetWidth(36)
+	nameInput.SetWidth(inputWidth)
 	nameInput.SetStyles(s.Form.Input)
 	nameInput.Focus()
 
 	branchInput := textinput.New()
 	branchInput.Placeholder = "(repo default)"
 	branchInput.CharLimit = 200
-	branchInput.SetWidth(36)
+	branchInput.SetWidth(inputWidth)
 	branchInput.SetStyles(s.Form.Input)
 
 	return CheckoutBranchFormModel{
 		nameInput:       nameInput,
-		repoPicker:      newRepoPicker(s, projects),
+		repoPicker:      newRepoPicker(s, projects, inputWidth),
 		branchInput:     branchInput,
 		launchers:       launchers,
 		launcherIdx:     0,
@@ -74,6 +79,7 @@ func NewCheckoutBranchForm(
 		sessionsService: sessionsService,
 		projectsService: projectsService,
 		styles:          s,
+		contentWidth:    contentWidth,
 	}
 }
 
@@ -275,40 +281,30 @@ func (m CheckoutBranchFormModel) submit() (tea.Model, tea.Cmd) {
 }
 
 func (m CheckoutBranchFormModel) View() tea.View {
-	s := m.styles.Form.Field
+	parts := []string{
+		m.styles.Form.Title.Render("Checkout Branch"),
 
-	var b strings.Builder
-	b.WriteString(m.styles.Form.Title.Render("Checkout Branch"))
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(checkoutFieldName).Render("Name"))
-	b.WriteByte('\n')
-	b.WriteString(m.nameInput.View())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(checkoutFieldRepository).Render("Repository"))
-	b.WriteByte('\n')
-	b.WriteString(m.repoPicker.view())
-	b.WriteByte('\n')
-	b.WriteString(m.styles.Help.Description.Render(m.repoPickerHint()))
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(checkoutFieldBranch).Render("Branch"))
-	b.WriteByte('\n')
-	b.WriteString(m.branchInput.View())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(checkoutFieldLauncher).Render("Launcher"))
-	b.WriteByte('\n')
-	b.WriteString(m.launcherSelectorView())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(checkoutFieldEditor).Render("Editor"))
-	b.WriteByte('\n')
-	b.WriteString(m.editorSelectorView())
-	b.WriteByte('\n')
-	b.WriteString(s.Error.Render(m.errMsg))
-	if m.errMsg != "" {
-		b.WriteByte('\n')
+		renderField(m.labelStyle(checkoutFieldName), "Name", m.nameInput.View()),
+		"",
+		renderField(m.labelStyle(checkoutFieldRepository), "Repository", m.repoPicker.view()),
+		renderFieldHint(m.styles, m.repoPickerHint()),
+		"",
+		renderField(m.labelStyle(checkoutFieldBranch), "Branch", m.branchInput.View()),
+		"",
+		renderField(m.labelStyle(checkoutFieldLauncher), "Launcher", m.launcherSelectorView()),
+		renderFieldHint(m.styles, "←/→ cycle launchers"),
+		"",
+		renderField(m.labelStyle(checkoutFieldEditor), "Editor", m.editorSelectorView()),
+		renderFieldHint(m.styles, "←/→ cycle editors"),
 	}
-	b.WriteByte('\n')
-	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: checkout  Esc: cancel"))
-	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
+
+	if m.errMsg != "" {
+		parts = append(parts, "", m.styles.Form.Field.Error.Render(m.errMsg))
+	}
+	parts = append(parts, "", m.styles.Form.Hint.Render("Tab: next field  Enter: checkout  Esc: cancel"))
+
+	body := padBodyLines(m.styles, strings.Join(parts, "\n"), m.contentWidth)
+	return tea.NewView(components.Modal(m.styles, body, m.contentWidth, 0))
 }
 
 func (m CheckoutBranchFormModel) labelStyle(field int) lipgloss.Style {
@@ -322,35 +318,27 @@ func (m CheckoutBranchFormModel) launcherSelectorView() string {
 	if len(m.launchers) == 0 {
 		return m.styles.ListRow.Normal.Render("  (no launchers configured)  ")
 	}
-	parts := make([]string, 0, len(m.launchers))
-	for i, l := range m.launchers {
-		if i == m.launcherIdx {
-			parts = append(parts, m.styles.ListRow.Selected.Render("[ "+l.DisplayName+" ]"))
-			continue
-		}
-		parts = append(parts, m.styles.ListRow.Normal.Render("  "+l.DisplayName+"  "))
+	name := m.launchers[m.launcherIdx].DisplayName
+	if m.focusIndex.Value() == checkoutFieldLauncher {
+		return m.styles.ListRow.Selected.Render("< " + name + " >")
 	}
-	return strings.Join(parts, " ")
+	return m.styles.ListRow.Normal.Render("  " + name + "  ")
 }
 
 func (m CheckoutBranchFormModel) editorSelectorView() string {
 	if len(m.editors) == 0 {
 		return m.styles.ListRow.Normal.Render("  (no editors configured)  ")
 	}
-	parts := make([]string, 0, len(m.editors))
-	for i, e := range m.editors {
-		if i == m.editorIdx {
-			parts = append(parts, m.styles.ListRow.Selected.Render("[ "+e.DisplayName+" ]"))
-			continue
-		}
-		parts = append(parts, m.styles.ListRow.Normal.Render("  "+e.DisplayName+"  "))
+	name := m.editors[m.editorIdx].DisplayName
+	if m.focusIndex.Value() == checkoutFieldEditor {
+		return m.styles.ListRow.Selected.Render("< " + name + " >")
 	}
-	return strings.Join(parts, " ")
+	return m.styles.ListRow.Normal.Render("  " + name + "  ")
 }
 
 func (m CheckoutBranchFormModel) repoPickerHint() string {
 	if m.repoPicker.isPasteMode() {
-		return "Enter: confirm path  Ctrl+L: back to list"
+		return "Enter confirm · Ctrl+L back"
 	}
-	return "←/→: cycle repos  Ctrl+P: paste new path"
+	return "←/→ cycle · Ctrl+P paste path"
 }

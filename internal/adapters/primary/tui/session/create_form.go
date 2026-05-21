@@ -41,10 +41,13 @@ type CreateFormModel struct {
 	sessionsService    service.SessionService
 	projectsService    service.ProjectService
 	styles             *styles.Styles
+	contentWidth       int
 }
 
 // NewCreateForm builds the session-create form. The supplied projects seed
 // the repo picker's "recent" list (ordered by UpdatedAt server-side).
+// terminalWidth is the current terminal column count; the form clamps its
+// modal box to [formMinBoxWidth, formMaxBoxWidth] and sizes inputs to fit.
 func NewCreateForm(
 	s *styles.Styles,
 	sessionsService service.SessionService,
@@ -52,29 +55,33 @@ func NewCreateForm(
 	projects []domain.Project,
 	launchers []domain.Launcher,
 	editors []domain.Editor,
+	terminalWidth int,
 ) CreateFormModel {
+	contentWidth := formContentWidth(terminalWidth)
+	inputWidth := formInputWidth(contentWidth)
+
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Session name"
 	nameInput.CharLimit = 100
-	nameInput.SetWidth(36)
+	nameInput.SetWidth(inputWidth)
 	nameInput.SetStyles(s.Form.Input)
 	nameInput.Focus()
 
 	baseBranchInput := textinput.New()
 	baseBranchInput.Placeholder = "(repo default)"
 	baseBranchInput.CharLimit = 200
-	baseBranchInput.SetWidth(36)
+	baseBranchInput.SetWidth(inputWidth)
 	baseBranchInput.SetStyles(s.Form.Input)
 
 	featureBranchInput := textinput.New()
 	featureBranchInput.Placeholder = "(auto-generated if empty)"
 	featureBranchInput.CharLimit = 200
-	featureBranchInput.SetWidth(36)
+	featureBranchInput.SetWidth(inputWidth)
 	featureBranchInput.SetStyles(s.Form.Input)
 
 	return CreateFormModel{
 		nameInput:          nameInput,
-		repoPicker:         newRepoPicker(s, projects),
+		repoPicker:         newRepoPicker(s, projects, inputWidth),
 		baseBranchInput:    baseBranchInput,
 		featureBranchInput: featureBranchInput,
 		launchers:          launchers,
@@ -85,6 +92,7 @@ func NewCreateForm(
 		sessionsService:    sessionsService,
 		projectsService:    projectsService,
 		styles:             s,
+		contentWidth:       contentWidth,
 	}
 }
 
@@ -300,44 +308,32 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 }
 
 func (m CreateFormModel) View() tea.View {
-	s := m.styles.Form.Field
+	parts := []string{
+		m.styles.Form.Title.Render("New Session"),
 
-	var b strings.Builder
-	b.WriteString(m.styles.Form.Title.Render("New Session"))
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(fieldName).Render("Name"))
-	b.WriteByte('\n')
-	b.WriteString(m.nameInput.View())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(fieldRepository).Render("Repository"))
-	b.WriteByte('\n')
-	b.WriteString(m.repoPicker.view())
-	b.WriteByte('\n')
-	b.WriteString(m.styles.Help.Description.Render(m.repoPickerHint()))
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(fieldBaseBranch).Render("Base branch"))
-	b.WriteByte('\n')
-	b.WriteString(m.baseBranchInput.View())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(fieldFeatureBranch).Render("Feature branch"))
-	b.WriteByte('\n')
-	b.WriteString(m.featureBranchInput.View())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(fieldLauncher).Render("Launcher"))
-	b.WriteByte('\n')
-	b.WriteString(m.launcherSelectorView())
-	b.WriteByte('\n')
-	b.WriteString(m.labelStyle(fieldEditor).Render("Editor"))
-	b.WriteByte('\n')
-	b.WriteString(m.editorSelectorView())
-	b.WriteByte('\n')
-	b.WriteString(s.Error.Render(m.errMsg))
-	if m.errMsg != "" {
-		b.WriteByte('\n')
+		renderField(m.labelStyle(fieldName), "Name", m.nameInput.View()),
+		"",
+		renderField(m.labelStyle(fieldRepository), "Repository", m.repoPicker.view()),
+		renderFieldHint(m.styles, m.repoPickerHint()),
+		"",
+		renderField(m.labelStyle(fieldBaseBranch), "Base branch", m.baseBranchInput.View()),
+		"",
+		renderField(m.labelStyle(fieldFeatureBranch), "Feature branch", m.featureBranchInput.View()),
+		"",
+		renderField(m.labelStyle(fieldLauncher), "Launcher", m.launcherSelectorView()),
+		renderFieldHint(m.styles, "←/→ cycle launchers"),
+		"",
+		renderField(m.labelStyle(fieldEditor), "Editor", m.editorSelectorView()),
+		renderFieldHint(m.styles, "←/→ cycle editors"),
 	}
-	b.WriteByte('\n')
-	b.WriteString(m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
-	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
+
+	if m.errMsg != "" {
+		parts = append(parts, "", m.styles.Form.Field.Error.Render(m.errMsg))
+	}
+	parts = append(parts, "", m.styles.Form.Hint.Render("Tab: next field  Enter: submit  Esc: cancel"))
+
+	body := padBodyLines(m.styles, strings.Join(parts, "\n"), m.contentWidth)
+	return tea.NewView(components.Modal(m.styles, body, m.contentWidth, 0))
 }
 
 func (m CreateFormModel) labelStyle(field int) lipgloss.Style {
@@ -351,37 +347,29 @@ func (m CreateFormModel) launcherSelectorView() string {
 	if len(m.launchers) == 0 {
 		return m.styles.ListRow.Normal.Render("  (no launchers configured)  ")
 	}
-	parts := make([]string, 0, len(m.launchers))
-	for i, l := range m.launchers {
-		if i == m.launcherIdx {
-			parts = append(parts, m.styles.ListRow.Selected.Render("[ "+l.DisplayName+" ]"))
-			continue
-		}
-		parts = append(parts, m.styles.ListRow.Normal.Render("  "+l.DisplayName+"  "))
+	name := m.launchers[m.launcherIdx].DisplayName
+	if m.focusIndex.Value() == fieldLauncher {
+		return m.styles.ListRow.Selected.Render("< " + name + " >")
 	}
-	return strings.Join(parts, " ")
+	return m.styles.ListRow.Normal.Render("  " + name + "  ")
 }
 
 func (m CreateFormModel) editorSelectorView() string {
 	if len(m.editors) == 0 {
 		return m.styles.ListRow.Normal.Render("  (no editors configured)  ")
 	}
-	parts := make([]string, 0, len(m.editors))
-	for i, e := range m.editors {
-		if i == m.editorIdx {
-			parts = append(parts, m.styles.ListRow.Selected.Render("[ "+e.DisplayName+" ]"))
-			continue
-		}
-		parts = append(parts, m.styles.ListRow.Normal.Render("  "+e.DisplayName+"  "))
+	name := m.editors[m.editorIdx].DisplayName
+	if m.focusIndex.Value() == fieldEditor {
+		return m.styles.ListRow.Selected.Render("< " + name + " >")
 	}
-	return strings.Join(parts, " ")
+	return m.styles.ListRow.Normal.Render("  " + name + "  ")
 }
 
 func (m CreateFormModel) repoPickerHint() string {
 	if m.repoPicker.isPasteMode() {
-		return "Enter: confirm path  Ctrl+L: back to list"
+		return "Enter confirm · Ctrl+L back"
 	}
-	return "←/→: cycle repos  Ctrl+P: paste new path"
+	return "←/→ cycle · Ctrl+P paste path"
 }
 
 func (m CreateFormModel) KeyBindings() []key.Binding {

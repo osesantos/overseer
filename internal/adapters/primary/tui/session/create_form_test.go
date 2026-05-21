@@ -109,7 +109,7 @@ func TestCreateForm_SubmitWithExistingProjectCallsServiceCreate(t *testing.T) {
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t))
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t), 100)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
@@ -164,7 +164,7 @@ func TestCreateForm_SubmitWithEmptyBaseBranchResolvesRepoDefault(t *testing.T) {
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t))
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t), 100)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
@@ -192,7 +192,7 @@ func TestCreateForm_SubmitForwardsUserProvidedFeatureBranch(t *testing.T) {
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t))
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, testLaunchers(t), testEditors(t), 100)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
@@ -225,25 +225,27 @@ func TestCreateForm_ViewShowsAllFieldLabels(t *testing.T) {
 	}
 }
 
-func TestCreateForm_ViewShowsLauncherOptions(t *testing.T) {
+func TestCreateForm_ViewShowsSelectedLauncher(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
 	view := form.View().Content
-	for _, want := range []string{"OpenCode", "Claude Code"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() missing launcher display name %q: %q", want, view)
-		}
+	if !strings.Contains(view, "OpenCode") {
+		t.Fatalf("View() missing selected launcher %q: %q", "OpenCode", view)
+	}
+	if strings.Contains(view, "Claude Code") {
+		t.Fatalf("View() unexpectedly shows non-selected launcher %q (picker should show only current): %q", "Claude Code", view)
 	}
 }
 
-func TestCreateForm_ViewShowsEditorOptions(t *testing.T) {
+func TestCreateForm_ViewShowsSelectedEditor(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
 	view := form.View().Content
-	for _, want := range []string{"VSCode", "Cursor"} {
-		if !strings.Contains(view, want) {
-			t.Fatalf("View() missing editor display name %q: %q", want, view)
-		}
+	if !strings.Contains(view, "VSCode") {
+		t.Fatalf("View() missing selected editor %q: %q", "VSCode", view)
+	}
+	if strings.Contains(view, "Cursor") {
+		t.Fatalf("View() unexpectedly shows non-selected editor %q (picker should show only current): %q", "Cursor", view)
 	}
 }
 
@@ -312,7 +314,7 @@ func newCreateFormForTest(t *testing.T, projects []domain.Project) CreateFormMod
 	t.Helper()
 	svc, _, _, _, _ := newCreateFormSessionServiceWithMocks(t)
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	return NewCreateForm(styles.New(), svc, projectsSvc, projects, testLaunchers(t), testEditors(t))
+	return NewCreateForm(styles.New(), svc, projectsSvc, projects, testLaunchers(t), testEditors(t), 100)
 }
 
 func newCreateFormSessionService(t *testing.T) service.SessionService {
