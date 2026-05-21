@@ -59,6 +59,8 @@ type SessionDeleteErrMsg struct{ Err error }
 
 type NewSessionDeletePopupCloseMsg struct{}
 
+type HelpPopupCloseMsg struct{}
+
 type ProjectsLoadedMsg struct {
 	Projects []domain.Project
 	Err      error

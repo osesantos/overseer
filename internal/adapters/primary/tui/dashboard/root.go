@@ -35,6 +35,7 @@ const (
 	popupNewSession
 	popupCheckoutBranch
 	popupDeleteSession
+	popupHelp
 )
 
 type Model struct {
@@ -45,6 +46,7 @@ type Model struct {
 	createForm         sessionui.CreateFormModel
 	checkoutBranchForm sessionui.CheckoutBranchFormModel
 	deleteForm         sessionui.DeleteFormModel
+	helpPopup          shared.HelpPopupModel
 	scheduler          jobs.Model
 	activePopup        popupKind
 	cachedProjects     []domain.Project
@@ -152,7 +154,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
-	case shared.NewSessionPopupCloseMsg, shared.CheckoutBranchPopupCloseMsg, shared.NewSessionDeletePopupCloseMsg:
+	case shared.NewSessionPopupCloseMsg, shared.CheckoutBranchPopupCloseMsg, shared.NewSessionDeletePopupCloseMsg, shared.HelpPopupCloseMsg:
 		m.activePopup = popupNone
 		return m, nil
 	case shared.SessionAttachReadyMsg:
@@ -201,9 +203,9 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return tea.Quit, true
 	}
 	if key.Matches(msg, helpMenuKeyBinding) {
-		var cmd tea.Cmd
-		m.helpBar, cmd = shared.UpdateModel(m.helpBar, msg)
-		return cmd, true
+		m.helpPopup = shared.NewHelpPopupModel(m.styles, sessionsHelpGroups, m.width)
+		m.activePopup = popupHelp
+		return m.helpPopup.Init(), true
 	}
 	if key.Matches(msg, inspector.ToggleViewKeyBinding) {
 		var cmd tea.Cmd
@@ -302,6 +304,10 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.deleteForm, cmd = shared.UpdateModel(m.deleteForm, msg)
 		return m, cmd
+	case popupHelp:
+		var cmd tea.Cmd
+		m.helpPopup, cmd = shared.UpdateModel(m.helpPopup, msg)
+		return m, cmd
 	}
 	return m, nil
 }
@@ -355,6 +361,8 @@ func (m Model) popupView() string {
 		return m.checkoutBranchForm.View().Content
 	case popupDeleteSession:
 		return m.deleteForm.View().Content
+	case popupHelp:
+		return m.helpPopup.View().Content
 	}
 	return ""
 }
