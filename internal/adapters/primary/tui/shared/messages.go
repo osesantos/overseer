@@ -59,6 +59,23 @@ type SessionDeleteErrMsg struct{ Err error }
 
 type NewSessionDeletePopupCloseMsg struct{}
 
+type SessionRenameRequestedMsg struct{ Session domain.Session }
+
+type ProjectRenameRequestedMsg struct {
+	ProjectID   uuid.UUID
+	CurrentName string
+}
+
+type SessionRenamedMsg struct{ Session domain.Session }
+
+type SessionRenameErrMsg struct{ Err error }
+
+type ProjectRenamedMsg struct{ Project domain.Project }
+
+type ProjectRenameErrMsg struct{ Err error }
+
+type RenamePopupCloseMsg struct{}
+
 type HelpPopupCloseMsg struct{}
 
 type ProjectsLoadedMsg struct {

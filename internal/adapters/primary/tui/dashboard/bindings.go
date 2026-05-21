@@ -17,7 +17,7 @@ var (
 	attachAgentKeyBinding    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "attach agent"))
 	openEditorKeyBinding     = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "open editor"))
 
-	sessionsKeyBindings  = []key.Binding{newSessionKeyBinding, checkoutBranchKeyBinding, attachAgentKeyBinding, attachShellKeyBinding, openEditorKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.CycleLabelKeyBinding}
+	sessionsKeyBindings  = []key.Binding{newSessionKeyBinding, checkoutBranchKeyBinding, attachAgentKeyBinding, attachShellKeyBinding, openEditorKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
 	inspectorKeyBindings = []key.Binding{inspector.ToggleViewKeyBinding}
 	generalKeyBindings   = []key.Binding{helpMenuKeyBinding, quitKeyBinding}
 

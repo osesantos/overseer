@@ -101,3 +101,76 @@ func TestNewProject_AcceptsExactlyOneHundredCharacterName(t *testing.T) {
 		t.Fatalf("NewProject() Name length = %d, want 100", len(p.Name))
 	}
 }
+
+func TestProject_Rename_UpdatesNameAndUpdatedAt(t *testing.T) {
+	p, err := NewProject("/repo/overseer", "old")
+	if err != nil {
+		t.Fatalf("NewProject() error = %v", err)
+	}
+	p.UpdatedAt = time.Now().Add(-time.Minute)
+	beforeRename := p.UpdatedAt
+
+	if err := p.Rename("new"); err != nil {
+		t.Fatalf("Rename() error = %v", err)
+	}
+	if p.Name != "new" {
+		t.Fatalf("Rename() Name = %q, want %q", p.Name, "new")
+	}
+	if !p.UpdatedAt.After(beforeRename) {
+		t.Fatalf("Rename() UpdatedAt = %v, want after %v", p.UpdatedAt, beforeRename)
+	}
+}
+
+func TestProject_Rename_TrimsName(t *testing.T) {
+	p, err := NewProject("/repo/overseer", "old")
+	if err != nil {
+		t.Fatalf("NewProject() error = %v", err)
+	}
+
+	if err := p.Rename("  new  "); err != nil {
+		t.Fatalf("Rename() error = %v", err)
+	}
+	if p.Name != "new" {
+		t.Fatalf("Rename() Name = %q, want trimmed %q", p.Name, "new")
+	}
+}
+
+func TestProject_Rename_RejectsEmptyName(t *testing.T) {
+	p, err := NewProject("/repo/overseer", "old")
+	if err != nil {
+		t.Fatalf("NewProject() error = %v", err)
+	}
+
+	if err := p.Rename("   "); !errors.Is(err, ErrProjectEmptyName) {
+		t.Fatalf("Rename() error = %v, want %v", err, ErrProjectEmptyName)
+	}
+	if p.Name != "old" {
+		t.Fatalf("Rename() left Name = %q, want %q (unchanged on validation failure)", p.Name, "old")
+	}
+}
+
+func TestProject_Rename_RejectsNameTooLong(t *testing.T) {
+	p, err := NewProject("/repo/overseer", "old")
+	if err != nil {
+		t.Fatalf("NewProject() error = %v", err)
+	}
+
+	if err := p.Rename(strings.Repeat("a", 101)); !errors.Is(err, ErrProjectNameTooLong) {
+		t.Fatalf("Rename() error = %v, want %v", err, ErrProjectNameTooLong)
+	}
+}
+
+func TestProject_Rename_AcceptsExactlyOneHundredCharacterName(t *testing.T) {
+	p, err := NewProject("/repo/overseer", "old")
+	if err != nil {
+		t.Fatalf("NewProject() error = %v", err)
+	}
+	exactly100 := strings.Repeat("a", 100)
+
+	if err := p.Rename(exactly100); err != nil {
+		t.Fatalf("Rename() error = %v, want nil for 100-char name", err)
+	}
+	if p.Name != exactly100 {
+		t.Fatalf("Rename() Name length = %d, want 100", len(p.Name))
+	}
+}

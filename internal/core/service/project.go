@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"sort"
 
+	"github.com/google/uuid"
+
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
@@ -81,4 +83,36 @@ func (s *ProjectService) List(ctx context.Context, _ ListProjectsRequest) (ListP
 	})
 
 	return ListProjectsResponse{Projects: projects}, nil
+}
+
+// --- Rename ---
+
+type RenameProjectRequest struct {
+	ID      uuid.UUID
+	NewName string
+}
+
+type RenameProjectResponse struct {
+	Project domain.Project
+}
+
+func (s *ProjectService) Rename(ctx context.Context, req RenameProjectRequest) (RenameProjectResponse, error) {
+	project, err := s.repo.Get(ctx, req.ID)
+	if err != nil {
+		return RenameProjectResponse{}, err
+	}
+
+	if err := project.Rename(req.NewName); err != nil {
+		return RenameProjectResponse{}, err
+	}
+
+	if err := s.repo.Save(ctx, project); err != nil {
+		return RenameProjectResponse{}, fmt.Errorf("save project: %w", err)
+	}
+
+	s.logger.InfoContext(ctx, "project renamed",
+		slog.String("id", project.ID.String()),
+		slog.String("name", project.Name),
+	)
+	return RenameProjectResponse{Project: project}, nil
 }

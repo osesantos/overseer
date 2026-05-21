@@ -4,7 +4,9 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
@@ -168,5 +170,88 @@ func TestProjectService_List_SortsByName(t *testing.T) {
 		if resp.Projects[i].Name != want {
 			t.Fatalf("Projects[%d].Name = %q, want %q", i, resp.Projects[i].Name, want)
 		}
+	}
+}
+
+// --- Rename ---
+
+func TestProjectService_Rename_HappyPath(t *testing.T) {
+	original := testutil.MakeProject("/repo/overseer", "old")
+	repo, git := newProjectMocks(t)
+	repo.EXPECT().Get(mock.Anything, original.ID).Return(original, nil).Once()
+
+	var savedProject domain.Project
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, p domain.Project) { savedProject = p }).
+		Return(nil).Once()
+
+	svc := NewProjectService(repo, git, testLogger())
+	resp, err := svc.Rename(context.Background(), RenameProjectRequest{ID: original.ID, NewName: "new"})
+
+	if err != nil {
+		t.Fatalf("Rename() error = %v", err)
+	}
+	if resp.Project.Name != "new" {
+		t.Fatalf("Rename() Project.Name = %q, want %q", resp.Project.Name, "new")
+	}
+	if savedProject.Name != "new" {
+		t.Fatalf("ProjectRepository.Save Project.Name = %q, want %q", savedProject.Name, "new")
+	}
+	if savedProject.ID != original.ID {
+		t.Fatalf("ProjectRepository.Save Project.ID = %v, want %v", savedProject.ID, original.ID)
+	}
+	if savedProject.Path != original.Path {
+		t.Fatalf("ProjectRepository.Save Project.Path = %q, want %q (path must not change)", savedProject.Path, original.Path)
+	}
+}
+
+func TestProjectService_Rename_EmptyName(t *testing.T) {
+	original := testutil.MakeProject("/repo/overseer", "old")
+	repo, git := newProjectMocks(t)
+	repo.EXPECT().Get(mock.Anything, original.ID).Return(original, nil).Once()
+
+	svc := NewProjectService(repo, git, testLogger())
+	_, err := svc.Rename(context.Background(), RenameProjectRequest{ID: original.ID, NewName: ""})
+
+	if !errors.Is(err, domain.ErrProjectEmptyName) {
+		t.Fatalf("Rename() error = %v, want %v", err, domain.ErrProjectEmptyName)
+	}
+}
+
+func TestProjectService_Rename_NotFound(t *testing.T) {
+	repo, git := newProjectMocks(t)
+	missingID := uuid.New()
+	repo.EXPECT().Get(mock.Anything, missingID).
+		Return(domain.Project{}, domain.ErrProjectNotFound).Once()
+
+	svc := NewProjectService(repo, git, testLogger())
+	_, err := svc.Rename(context.Background(), RenameProjectRequest{ID: missingID, NewName: "new"})
+
+	if !errors.Is(err, domain.ErrProjectNotFound) {
+		t.Fatalf("Rename() error = %v, want %v", err, domain.ErrProjectNotFound)
+	}
+}
+
+func TestProjectService_Rename_UpdatedAtChanges(t *testing.T) {
+	original := testutil.MakeProject("/repo/overseer", "old")
+	original.UpdatedAt = time.Now().Add(-time.Minute)
+	beforeRename := original.UpdatedAt
+
+	repo, git := newProjectMocks(t)
+	repo.EXPECT().Get(mock.Anything, original.ID).Return(original, nil).Once()
+
+	var savedProject domain.Project
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, p domain.Project) { savedProject = p }).
+		Return(nil).Once()
+
+	svc := NewProjectService(repo, git, testLogger())
+	_, err := svc.Rename(context.Background(), RenameProjectRequest{ID: original.ID, NewName: "new"})
+
+	if err != nil {
+		t.Fatalf("Rename() error = %v", err)
+	}
+	if !savedProject.UpdatedAt.After(beforeRename) {
+		t.Fatalf("SavedProject.UpdatedAt = %v, want after %v", savedProject.UpdatedAt, beforeRename)
 	}
 }

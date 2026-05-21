@@ -20,6 +20,7 @@ var (
 	GoToNextGroupKeyBinding        = key.NewBinding(key.WithKeys("g"), key.WithHelp("g", "go to next group"))
 	GoToPrevGroupKeyBinding        = key.NewBinding(key.WithKeys("G"), key.WithHelp("G", "go to previous group"))
 	CycleLabelKeyBinding           = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "cycle labels"))
+	RenameKeyBinding               = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename"))
 	DeleteSessionKeyBinding        = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete session"))
 	deleteConfirmKeyBinding        = key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm delete"))
 	deleteCancelKeyBinding         = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "cancel"))

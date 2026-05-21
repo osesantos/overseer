@@ -46,6 +46,24 @@ func NewProject(path, name string) (Project, error) {
 	}, nil
 }
 
+// Rename replaces the project's display name. Unlike NewProject — which
+// falls back to the path basename when the supplied name is empty —
+// Rename rejects empty/whitespace names with ErrProjectEmptyName so the
+// caller's intent isn't silently overridden.
+func (p *Project) Rename(newName string) error {
+	newName = strings.TrimSpace(newName)
+	if newName == "" {
+		return ErrProjectEmptyName
+	}
+	if len(newName) > 100 {
+		return ErrProjectNameTooLong
+	}
+
+	p.Name = newName
+	p.UpdatedAt = time.Now()
+	return nil
+}
+
 // Project ports.
 
 type ProjectRepository interface {
@@ -60,6 +78,7 @@ type ProjectRepository interface {
 var (
 	ErrProjectEmptyPath       = errors.New("project path cannot be empty")
 	ErrProjectPathNotAbsolute = errors.New("project path must be absolute")
+	ErrProjectEmptyName       = errors.New("project name cannot be empty")
 	ErrProjectNameTooLong     = errors.New("project name exceeds 100 characters")
 	ErrProjectNotFound        = errors.New("project not found")
 	ErrProjectAlreadyExists   = errors.New("project already exists")

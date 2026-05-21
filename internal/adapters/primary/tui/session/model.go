@@ -37,6 +37,7 @@ const (
 type sessionNode struct {
 	kind       sessionNodeKind
 	sessionID  string
+	projectID  uuid.UUID
 	label      string
 	statusCode string
 	updatedAt  time.Time
@@ -126,6 +127,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadSessions()
 	case shared.SessionDeletedMsg:
 		return m, m.loadSessions()
+	case shared.SessionRenamedMsg:
+		return m, m.loadSessions()
 	case components.TreeSelectMsg[sessionNode]:
 		if msg.Item.kind == sessionNodeSession {
 			if sess, ok := m.findSession(msg.Item.sessionID); ok {
@@ -173,6 +176,11 @@ func (m *Model) handleNavigationKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 		return nil, true
+	case key.Matches(msg, RenameKeyBinding):
+		if cmd := m.requestRenameSelected(); cmd != nil {
+			return cmd, true
+		}
+		return nil, true
 	case key.Matches(msg, CycleLabelKeyBinding):
 		if cmd := m.cycleLabelSelected(); cmd != nil {
 			return cmd, true
@@ -195,6 +203,30 @@ func (m Model) requestDeleteSelected() tea.Cmd {
 		if sess.ID == id {
 			return shared.Emit(shared.SessionDeleteRequestedMsg{Session: sess})
 		}
+	}
+	return nil
+}
+
+func (m Model) requestRenameSelected() tea.Cmd {
+	cur, ok := m.tree.Selected()
+	if !ok {
+		return nil
+	}
+	switch cur.kind {
+	case sessionNodeSession:
+		sess, ok := m.findSession(cur.sessionID)
+		if !ok {
+			return nil
+		}
+		return shared.Emit(shared.SessionRenameRequestedMsg{Session: sess})
+	case sessionNodeGroup:
+		if cur.projectID == uuid.Nil {
+			return nil
+		}
+		return shared.Emit(shared.ProjectRenameRequestedMsg{
+			ProjectID:   cur.projectID,
+			CurrentName: cur.label,
+		})
 	}
 	return nil
 }
@@ -376,7 +408,7 @@ func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]s
 		label := projectLabel(id, projectNames)
 		nodes[i] = components.TreeNode[sessionNode]{
 			ID:       "project:" + id.String(),
-			Item:     sessionNode{kind: sessionNodeGroup, label: label},
+			Item:     sessionNode{kind: sessionNodeGroup, projectID: id, label: label},
 			Children: children,
 		}
 	}

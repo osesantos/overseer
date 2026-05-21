@@ -36,6 +36,7 @@ const (
 	popupNewSession
 	popupCheckoutBranch
 	popupDeleteSession
+	popupRename
 	popupHelp
 )
 
@@ -47,6 +48,7 @@ type Model struct {
 	createForm         sessionui.CreateFormModel
 	checkoutBranchForm sessionui.CheckoutBranchFormModel
 	deleteForm         sessionui.DeleteFormModel
+	renameForm         sessionui.RenameFormModel
 	helpPopup          shared.HelpPopupModel
 	scheduler          jobs.Model
 	activePopup        popupKind
@@ -155,7 +157,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
-	case shared.NewSessionPopupCloseMsg, shared.CheckoutBranchPopupCloseMsg, shared.NewSessionDeletePopupCloseMsg, shared.HelpPopupCloseMsg:
+	case shared.SessionRenameRequestedMsg:
+		m.renameForm = sessionui.NewRenameSessionForm(m.styles, m.sessionsService, msg.Session, m.width)
+		m.activePopup = popupRename
+		return m, m.renameForm.Init()
+	case shared.ProjectRenameRequestedMsg:
+		m.renameForm = sessionui.NewRenameProjectForm(m.styles, m.projectsService, msg.ProjectID, msg.CurrentName, m.width)
+		m.activePopup = popupRename
+		return m, m.renameForm.Init()
+	case shared.SessionRenamedMsg:
+		m.activePopup = popupNone
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.ProjectRenamedMsg:
+		m.activePopup = popupNone
+		m.applyRenamedProject(msg.Project)
+		return m, nil
+	case shared.NewSessionPopupCloseMsg, shared.CheckoutBranchPopupCloseMsg, shared.NewSessionDeletePopupCloseMsg, shared.RenamePopupCloseMsg, shared.HelpPopupCloseMsg:
 		m.activePopup = popupNone
 		return m, nil
 	case shared.SessionAttachReadyMsg:
@@ -305,12 +324,26 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.deleteForm, cmd = shared.UpdateModel(m.deleteForm, msg)
 		return m, cmd
+	case popupRename:
+		var cmd tea.Cmd
+		m.renameForm, cmd = shared.UpdateModel(m.renameForm, msg)
+		return m, cmd
 	case popupHelp:
 		var cmd tea.Cmd
 		m.helpPopup, cmd = shared.UpdateModel(m.helpPopup, msg)
 		return m, cmd
 	}
 	return m, nil
+}
+
+func (m *Model) applyRenamedProject(p domain.Project) {
+	for i := range m.cachedProjects {
+		if m.cachedProjects[i].ID == p.ID {
+			m.cachedProjects[i] = p
+			break
+		}
+	}
+	m.refreshProjectNameLookup()
 }
 
 func (m Model) cursorProjectID() uuid.UUID {
@@ -362,6 +395,8 @@ func (m Model) popupView() string {
 		return m.checkoutBranchForm.View().Content
 	case popupDeleteSession:
 		return m.deleteForm.View().Content
+	case popupRename:
+		return m.renameForm.View().Content
 	case popupHelp:
 		return m.helpPopup.View().Content
 	}

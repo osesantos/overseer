@@ -386,6 +386,75 @@ func TestModel_SessionDeletedMsg_TriggersReload(t *testing.T) {
 	}
 }
 
+func TestModel_RKeyEmitsSessionRenameRequestedForSelectedSession(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
+	_, cmd := updated.(Model).Update(keyPress("r"))
+
+	if cmd == nil {
+		t.Fatalf("Update(R) command = nil, want rename-requested emit")
+	}
+	msg, ok := cmd().(shared.SessionRenameRequestedMsg)
+	if !ok {
+		t.Fatalf("Update(R) msg type = %T, want shared.SessionRenameRequestedMsg", cmd())
+	}
+	if msg.Session.ID != alpha.ID {
+		t.Fatalf("SessionRenameRequestedMsg.Session.ID = %v, want %v", msg.Session.ID, alpha.ID)
+	}
+	if msg.Session.Name != "alpha" {
+		t.Fatalf("SessionRenameRequestedMsg.Session.Name = %q, want %q", msg.Session.Name, "alpha")
+	}
+}
+
+func TestModel_RKeyEmitsProjectRenameRequestedForSelectedGroup(t *testing.T) {
+	overseerID := uuid.New()
+	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
+	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetSize(80, 20)
+	model.SetFocus(true)
+	alpha := testutil.MakeSession("alpha", overseerID)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
+	updated, _ = updated.(Model).Update(keyPress("k"))
+	_, cmd := updated.(Model).Update(keyPress("r"))
+
+	if cmd == nil {
+		t.Fatalf("Update(R) command = nil, want project-rename-requested emit")
+	}
+	msg, ok := cmd().(shared.ProjectRenameRequestedMsg)
+	if !ok {
+		t.Fatalf("Update(R) msg type = %T, want shared.ProjectRenameRequestedMsg", cmd())
+	}
+	if msg.ProjectID != overseerID {
+		t.Fatalf("ProjectRenameRequestedMsg.ProjectID = %v, want %v", msg.ProjectID, overseerID)
+	}
+	if msg.CurrentName != "overseer" {
+		t.Fatalf("ProjectRenameRequestedMsg.CurrentName = %q, want %q", msg.CurrentName, "overseer")
+	}
+}
+
+func TestModel_SessionRenamedMsg_TriggersReload(t *testing.T) {
+	alpha := testutil.MakeSession("alpha", uuid.New())
+	svc, repo := newSessionServiceWithRepo(t)
+	repo.EXPECT().List(mock.Anything).Return([]domain.Session{alpha}, nil).Once()
+	model := New(styles.New(), svc, domain.DefaultLabels)
+
+	_, cmd := model.Update(shared.SessionRenamedMsg{Session: alpha})
+
+	if cmd == nil {
+		t.Fatalf("Update(SessionRenamedMsg) command = nil, want reload command")
+	}
+	if _, ok := cmd().(shared.SessionsLoadedMsg); !ok {
+		t.Fatalf("Reload msg type = %T, want shared.SessionsLoadedMsg", cmd())
+	}
+}
+
 func newSessionService(t *testing.T) service.SessionService {
 	t.Helper()
 	svc, _ := newSessionServiceWithRepo(t)
