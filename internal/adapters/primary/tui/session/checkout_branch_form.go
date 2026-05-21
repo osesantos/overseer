@@ -50,7 +50,7 @@ func NewCheckoutBranchForm(
 	editors []domain.Editor,
 ) CheckoutBranchFormModel {
 	nameInput := textinput.New()
-	nameInput.Placeholder = "(defaults to branch)"
+	nameInput.Placeholder = "Session name"
 	nameInput.CharLimit = 100
 	nameInput.SetWidth(36)
 	nameInput.SetStyles(s.Form.Input)
@@ -238,6 +238,12 @@ func (m CheckoutBranchFormModel) confirmPastedPath() (tea.Model, tea.Cmd) {
 }
 
 func (m CheckoutBranchFormModel) submit() (tea.Model, tea.Cmd) {
+	name := strings.TrimSpace(m.nameInput.Value())
+	if name == "" {
+		m.errMsg = "session name is required"
+		return m, nil
+	}
+
 	selection := m.repoPicker.resolve()
 	if selection.IsZero() {
 		m.errMsg = "select a repository"
@@ -249,11 +255,6 @@ func (m CheckoutBranchFormModel) submit() (tea.Model, tea.Cmd) {
 	}
 
 	branch := strings.TrimSpace(m.branchInput.Value())
-
-	name := strings.TrimSpace(m.nameInput.Value())
-	if name == "" {
-		name = branch
-	}
 
 	m.errMsg = ""
 	req := service.CheckoutBranchRequest{
@@ -351,5 +352,5 @@ func (m CheckoutBranchFormModel) repoPickerHint() string {
 	if m.repoPicker.isPasteMode() {
 		return "Enter: confirm path  Ctrl+L: back to list"
 	}
-	return "↑/↓: cycle repos  Ctrl+P: paste a new path"
+	return "←/→: cycle repos  Ctrl+P: paste new path"
 }
