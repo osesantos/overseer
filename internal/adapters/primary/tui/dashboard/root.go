@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
@@ -70,6 +71,7 @@ func New(
 	editors []domain.Editor,
 	labels []domain.Label,
 	minWidth, minHeight int,
+	previewRefreshInterval time.Duration,
 ) Model {
 	sessionsModel := sessionui.New(styles, sessionsService, labels)
 	detailsModel := sessiondetails.New(styles)
@@ -79,7 +81,7 @@ func New(
 		styles:          styles,
 		titlebar:        newTitlebar(styles, "Overseer"),
 		leftPane:        left,
-		inspector:       inspector.New(styles, sessionsService),
+		inspector:       inspector.New(styles, sessionsService, previewRefreshInterval),
 		helpBar:         shared.NewHelpBarModel(styles, sessionsKeyBindings),
 		scheduler:       scheduler,
 		sessionsService: sessionsService,

@@ -95,8 +95,14 @@ func main() {
 	prJob := buildPullRequestJob(sessionSvc, projectSvc, prSvc)
 	scheduler := jobs.New(prJob)
 
+	previewRefresh, err := cfg.PreviewRefreshDuration()
+	if err != nil {
+		log.Error("resolve preview refresh interval", "error", err)
+		os.Exit(1)
+	}
+
 	s := styles.NewWithTheme(cfg.Theme)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {

@@ -3,6 +3,7 @@ package inspector
 import (
 	"strings"
 	"testing"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -16,7 +17,7 @@ import (
 
 func newTestModel(t *testing.T) Model {
 	t.Helper()
-	return New(styles.New(), service.SessionService{})
+	return New(styles.New(), service.SessionService{}, 500*time.Millisecond)
 }
 
 func keyPress(value string) tea.KeyPressMsg {
