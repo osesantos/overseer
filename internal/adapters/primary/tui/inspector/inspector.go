@@ -82,13 +82,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m Model) View() tea.View {
-	tabsRow := m.renderTabStrip(m.width)
-	bodyHeight := max(m.height-tabStripHeight, 1)
-
+	innerW, _ := components.TitledPanelInnerSize(m.styles, m.focused, m.width, m.height)
+	tabsRow := m.renderTabStrip(innerW)
 	body := m.views[m.activeIx].Body()
-	panel := components.PanelWithSize(m.styles, body, m.focused, m.width, bodyHeight).Content
-
-	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, tabsRow, panel))
+	content := lipgloss.JoinVertical(lipgloss.Left, tabsRow, body)
+	return components.PanelWithTitle(m.styles, content, "Preview", m.focused, m.width, m.height)
 }
 
 func (m Model) renderTabStrip(width int) string {
@@ -110,10 +108,10 @@ func (m Model) renderTabStrip(width int) string {
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	bodyHeight := max(height-tabStripHeight, 1)
-	innerW, innerH := components.PanelInnerSize(m.styles, m.focused, width, bodyHeight)
+	innerW, innerH := components.TitledPanelInnerSize(m.styles, m.focused, width, height)
+	bodyH := max(innerH-tabStripHeight, 1)
 	for i := range m.views {
-		m.views[i].SetSize(innerW, innerH)
+		m.views[i].SetSize(innerW, bodyH)
 	}
 }
 

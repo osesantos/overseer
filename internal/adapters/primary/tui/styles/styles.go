@@ -217,7 +217,7 @@ func NewWithTheme(themeName string) *Styles {
 			Subtext  lipgloss.Style
 		}{
 			Base:     lipgloss.NewStyle().Background(theme.Primary).Foreground(theme.TitleText),
-			Branding: lipgloss.NewStyle().Background(theme.Primary).Foreground(theme.TitleText).Bold(true).Padding(0, 1),
+			Branding: lipgloss.NewStyle().Background(theme.Primary).Foreground(theme.TitleText).Bold(true).Padding(0, 1).AlignHorizontal(lipgloss.Center),
 			Subtext:  lipgloss.NewStyle().Background(theme.Primary).Foreground(theme.TitleSubtext).Padding(0, 1),
 		},
 		Pane: PaneStyles{
