@@ -15,6 +15,10 @@ import (
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
+const (
+	deletePopupWidth = 80
+)
+
 type DeleteFormModel struct {
 	sessionID       uuid.UUID
 	sessionName     string
@@ -83,7 +87,7 @@ func (m DeleteFormModel) View() tea.View {
 		b.WriteByte('\n')
 	}
 	b.WriteString(m.styles.Help.Description.Render("y/enter: confirm delete  n/esc: cancel"))
-	return tea.NewView(components.Modal(m.styles, b.String(), 0, 0))
+	return tea.NewView(components.Modal(m.styles, b.String(), deletePopupWidth, 0))
 }
 
 func (m DeleteFormModel) consequencesHint() string {

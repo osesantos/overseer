@@ -334,7 +334,7 @@ func (m CreateFormModel) View() tea.View {
 	if m.errMsg != "" {
 		parts = append(parts, "", m.styles.Form.Field.Error.Render(m.errMsg))
 	}
-	parts = append(parts, "", m.styles.Form.Hint.Render("Tab: next field  Enter: submit  Esc: cancel"))
+	parts = append(parts, "", m.styles.Help.Description.Render("Tab: next field  Enter: submit  Esc: cancel"))
 
 	body := padBodyLines(m.styles, strings.Join(parts, "\n"), m.contentWidth)
 	return tea.NewView(components.Modal(m.styles, body, m.contentWidth, 0))

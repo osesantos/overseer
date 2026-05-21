@@ -144,7 +144,7 @@ func (m RenameFormModel) View() tea.View {
 	parts := []string{
 		m.styles.Form.Title.Render(m.title()),
 		"",
-		field.Label.Render(m.entityLabel() + ": ") + field.LabelFocused.Render(m.originalName),
+		field.Label.Render(m.entityLabel()+": ") + field.LabelFocused.Render(m.originalName),
 		"",
 		field.LabelFocused.Render("New name"),
 		m.input.View(),
@@ -153,7 +153,7 @@ func (m RenameFormModel) View() tea.View {
 	if m.errMsg != "" {
 		parts = append(parts, "", field.Error.Render(m.errMsg))
 	}
-	parts = append(parts, "", m.styles.Form.Hint.Render("Enter: confirm  Esc: cancel"))
+	parts = append(parts, "", m.styles.Help.Description.Render("Enter: confirm  Esc: cancel"))
 
 	body := padBodyLines(m.styles, strings.Join(parts, "\n"), m.contentWidth)
 	return tea.NewView(components.Modal(m.styles, body, m.contentWidth, 0))

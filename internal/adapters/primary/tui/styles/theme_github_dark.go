@@ -11,7 +11,7 @@ func GitHubDarkTheme() Theme {
 		Muted:        lipgloss.Color("#6E7681"),
 		Text:         lipgloss.Color("#C9D1D9"),
 		Subtext:      lipgloss.Color("#8B949E"),
-		Border:       lipgloss.Color("#30363D"),
+		Border:       lipgloss.Color("#58A6FF"),
 		BorderFocus:  lipgloss.Color("#58A6FF"),
 		SelectionBg:  lipgloss.Color("#1F2D3D"),
 		TitleText:    lipgloss.Color("#FFFFFF"),
