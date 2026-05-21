@@ -4,6 +4,7 @@ import (
 	"charm.land/bubbles/v2/key"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 )
 
@@ -15,36 +16,23 @@ var (
 	attachShellKeyBinding    = key.NewBinding(key.WithKeys("s"), key.WithHelp("s", "attach shell"))
 	attachAgentKeyBinding    = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "attach agent"))
 	openEditorKeyBinding     = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "open editor"))
-	deleteSessionKeyBinding  = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete session"))
-	cycleLabelKeyBinding     = key.NewBinding(key.WithKeys("l"), key.WithHelp("l", "cycle label"))
 
-	sessionsKeyBindings = []key.Binding{newSessionKeyBinding, checkoutBranchKeyBinding, attachShellKeyBinding, attachAgentKeyBinding, openEditorKeyBinding, deleteSessionKeyBinding, cycleLabelKeyBinding, inspector.ToggleViewKeyBinding, helpMenuKeyBinding, quitKeyBinding}
+	sessionsKeyBindings  = []key.Binding{newSessionKeyBinding, checkoutBranchKeyBinding, attachAgentKeyBinding, attachShellKeyBinding, openEditorKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.CycleLabelKeyBinding}
+	inspectorKeyBindings = []key.Binding{inspector.ToggleViewKeyBinding}
+	generalKeyBindings   = []key.Binding{helpMenuKeyBinding, quitKeyBinding}
 
 	sessionsHelpGroups = []shared.HelpPopupGroup{
 		{
-			Title: "Sessions",
-			Bindings: []key.Binding{
-				newSessionKeyBinding,
-				checkoutBranchKeyBinding,
-				attachAgentKeyBinding,
-				attachShellKeyBinding,
-				openEditorKeyBinding,
-				deleteSessionKeyBinding,
-				cycleLabelKeyBinding,
-			},
+			Title:    "Sessions",
+			Bindings: sessionsKeyBindings,
 		},
 		{
-			Title: "Inspector",
-			Bindings: []key.Binding{
-				inspector.ToggleViewKeyBinding,
-			},
+			Title:    "Inspector",
+			Bindings: inspectorKeyBindings,
 		},
 		{
-			Title: "General",
-			Bindings: []key.Binding{
-				helpMenuKeyBinding,
-				quitKeyBinding,
-			},
+			Title:    "General",
+			Bindings: generalKeyBindings,
 		},
 	}
 )

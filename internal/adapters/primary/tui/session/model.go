@@ -156,24 +156,24 @@ func (m *Model) handleNavigationKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		var cmd tea.Cmd
 		m.tree, cmd = m.tree.MoveCursor(jumpRowDelta)
 		return m.translateTreeSelection(cmd), true
-	case key.Matches(msg, nextGroupKeyBinding):
+	case key.Matches(msg, GoToNextGroupKeyBinding):
 		var cmd tea.Cmd
 		m.tree, cmd = m.tree.MoveToNext(isGroupNode)
 		return m.translateTreeSelection(cmd), true
-	case key.Matches(msg, prevGroupKeyBinding):
+	case key.Matches(msg, GoToPrevGroupKeyBinding):
 		var cmd tea.Cmd
 		m.tree, cmd = m.tree.MoveToPrev(isGroupNode)
 		return m.translateTreeSelection(cmd), true
-	case key.Matches(msg, reorderUpKeyBinding):
+	case key.Matches(msg, ReorderSessionUpKeyBinding):
 		return m.reorderSelected(-1), true
-	case key.Matches(msg, reorderDownKeyBinding):
+	case key.Matches(msg, ReorderSessionDownKeyBinding):
 		return m.reorderSelected(1), true
-	case key.Matches(msg, deleteSessionKeyBinding):
+	case key.Matches(msg, DeleteSessionKeyBinding):
 		if cmd := m.requestDeleteSelected(); cmd != nil {
 			return cmd, true
 		}
 		return nil, true
-	case key.Matches(msg, cycleLabelKeyBinding):
+	case key.Matches(msg, CycleLabelKeyBinding):
 		if cmd := m.cycleLabelSelected(); cmd != nil {
 			return cmd, true
 		}

@@ -3,6 +3,7 @@ package dashboard
 import (
 	"context"
 	"fmt"
+	"slices"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -85,7 +86,7 @@ func New(
 		titlebar:        newTitlebar(styles, "Overseer"),
 		leftPane:        left,
 		inspector:       inspector.New(styles, sessionsService, previewRefreshInterval),
-		helpBar:         shared.NewHelpBarModel(styles, sessionsKeyBindings),
+		helpBar:         shared.NewHelpBarModel(styles, slices.Concat(sessionsKeyBindings, inspectorKeyBindings, generalKeyBindings)),
 		scheduler:       scheduler,
 		sessionsService: sessionsService,
 		projectsService: projectsService,
