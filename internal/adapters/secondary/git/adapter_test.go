@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"slices"
 	"testing"
 
 	"github.com/dnlopes/overseer/internal/adapters/secondary/git"
@@ -18,8 +19,6 @@ func discardLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
 }
 
-// seedRepo initialises a fresh git repository inside dir with a single commit
-// on the "main" branch. It returns the absolute repository path.
 func seedRepo(t *testing.T) string {
 	t.Helper()
 	dir := t.TempDir()
@@ -212,10 +211,6 @@ func TestAdapter_GetDefaultBranchReturnsSentinelWhenNothingResolves(t *testing.T
 	}
 }
 
-// seedRepoWithRemote builds a local repo whose "origin" remote is a bare
-// repository on disk, with main already pushed to origin so
-// refs/remotes/origin/main exists locally — the precondition exercised by
-// CreateTrackingWorktree's `--track` path.
 func seedRepoWithRemote(t *testing.T) string {
 	t.Helper()
 	upstream := t.TempDir()
@@ -241,76 +236,98 @@ func seedRepoWithRemote(t *testing.T) string {
 	return repo
 }
 
-func TestAdapter_CreateTrackingWorktree_SetsUpstreamWhenOriginExists(t *testing.T) {
+func TestAdapter_ListBranches_LocalRepo_ReturnsHEADBranchAsLocal(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	repo := seedRepo(t)
+
+	branches, err := a.ListBranches(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("ListBranches() error = %v", err)
+	}
+	if len(branches) != 1 {
+		t.Fatalf("ListBranches() len = %d, want 1 (only main)", len(branches))
+	}
+	if branches[0].Name != "main" {
+		t.Fatalf("ListBranches()[0].Name = %q, want %q", branches[0].Name, "main")
+	}
+	if branches[0].Scope != domain.BranchScopeLocal {
+		t.Fatalf("ListBranches()[0].Scope = %v, want local", branches[0].Scope)
+	}
+	if branches[0].CommitterDate.IsZero() {
+		t.Fatal("ListBranches()[0].CommitterDate is zero, want non-zero")
+	}
+}
+
+func TestAdapter_ListBranches_RepoWithRemote_ReturnsLocalAndRemote(t *testing.T) {
 	a, err := git.New(discardLogger())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
 	repo := seedRepoWithRemote(t)
-	worktree := filepath.Join(t.TempDir(), "wt-track-main")
 
-	if err := a.CreateTrackingWorktree(context.Background(), repo, "main", "overseer/check/abc", worktree); err != nil {
-		t.Fatalf("CreateTrackingWorktree() error = %v", err)
-	}
-
-	if info, err := os.Stat(worktree); err != nil {
-		t.Fatalf("worktree path missing: %v", err)
-	} else if !info.IsDir() {
-		t.Fatalf("worktree path is not a directory: %v", info.Mode())
-	}
-
-	head, err := exec.Command("git", "-C", worktree, "rev-parse", "--abbrev-ref", "HEAD").Output()
+	branches, err := a.ListBranches(context.Background(), repo)
 	if err != nil {
-		t.Fatalf("git rev-parse HEAD: %v", err)
-	}
-	if got, want := string(head), "overseer/check/abc\n"; got != want {
-		t.Fatalf("worktree HEAD = %q, want %q", got, want)
+		t.Fatalf("ListBranches() error = %v", err)
 	}
 
-	upstream, err := exec.Command("git", "-C", worktree, "rev-parse", "--abbrev-ref", "@{u}").Output()
-	if err != nil {
-		t.Fatalf("git rev-parse @{u}: %v", err)
+	hasLocal := slices.ContainsFunc(branches, func(b domain.BranchInfo) bool {
+		return b.Name == "main" && b.Scope == domain.BranchScopeLocal
+	})
+	hasRemote := slices.ContainsFunc(branches, func(b domain.BranchInfo) bool {
+		return b.Name == "origin/main" && b.Scope == domain.BranchScopeRemote
+	})
+	if !hasLocal {
+		t.Errorf("ListBranches() missing local main branch: %+v", branches)
 	}
-	if got, want := string(upstream), "origin/main\n"; got != want {
-		t.Fatalf("worktree upstream = %q, want %q", got, want)
+	if !hasRemote {
+		t.Errorf("ListBranches() missing remote origin/main: %+v", branches)
+	}
+
+	hasHEAD := slices.ContainsFunc(branches, func(b domain.BranchInfo) bool {
+		return b.Name == "origin/HEAD"
+	})
+	if hasHEAD {
+		t.Errorf("ListBranches() unexpectedly included origin/HEAD symbolic ref: %+v", branches)
 	}
 }
 
-func TestAdapter_CreateTrackingWorktree_FallsBackWhenNoOriginRef(t *testing.T) {
+func TestAdapter_ListBranches_NotARepo_ReturnsError(t *testing.T) {
 	a, err := git.New(discardLogger())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	repo := seedRepo(t)
-	worktree := filepath.Join(t.TempDir(), "wt-no-origin")
-
-	if err := a.CreateTrackingWorktree(context.Background(), repo, "main", "overseer/check/abc", worktree); err != nil {
-		t.Fatalf("CreateTrackingWorktree() error = %v", err)
-	}
-
-	head, err := exec.Command("git", "-C", worktree, "rev-parse", "--abbrev-ref", "HEAD").Output()
-	if err != nil {
-		t.Fatalf("git rev-parse HEAD: %v", err)
-	}
-	if got, want := string(head), "overseer/check/abc\n"; got != want {
-		t.Fatalf("worktree HEAD = %q, want %q", got, want)
-	}
-
-	if _, err := exec.Command("git", "-C", worktree, "rev-parse", "--abbrev-ref", "@{u}").Output(); err == nil {
-		t.Fatal("fallback worktree should have no upstream, got one")
-	}
-}
-
-func TestAdapter_CreateTrackingWorktree_FailsForMissingBranch(t *testing.T) {
-	a, err := git.New(discardLogger())
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	repo := seedRepo(t)
-	worktree := filepath.Join(t.TempDir(), "wt-missing")
-
-	err = a.CreateTrackingWorktree(context.Background(), repo, "no-such-branch", "overseer/check/abc", worktree)
+	_, err = a.ListBranches(context.Background(), t.TempDir())
 	if err == nil {
-		t.Fatal("CreateTrackingWorktree() error = nil, want non-nil for missing branch")
+		t.Fatal("ListBranches() error = nil, want non-nil for non-repo")
+	}
+}
+
+func TestAdapter_CurrentBranch_ReturnsHEADName(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	repo := seedRepo(t)
+
+	branch, err := a.CurrentBranch(context.Background(), repo)
+	if err != nil {
+		t.Fatalf("CurrentBranch() error = %v", err)
+	}
+	if branch != "main" {
+		t.Fatalf("CurrentBranch() = %q, want %q", branch, "main")
+	}
+}
+
+func TestAdapter_CurrentBranch_NotARepo_ReturnsError(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	_, err = a.CurrentBranch(context.Background(), t.TempDir())
+	if err == nil {
+		t.Fatal("CurrentBranch() error = nil, want non-nil for non-repo")
 	}
 }

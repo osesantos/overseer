@@ -34,26 +34,31 @@ type popupKind int
 const (
 	popupNone popupKind = iota
 	popupNewSession
-	popupCheckoutBranch
 	popupDeleteSession
 	popupRename
 	popupHelp
 )
 
+type projectBranchCache struct {
+	branches      []domain.BranchInfo
+	defaultBranch string
+	loadedAt      time.Time
+}
+
 type Model struct {
-	titlebar           TitleBarModel
-	leftPane           leftpane.Model
-	inspector          inspector.Model
-	helpBar            shared.HelpBarModel
-	createForm         sessionui.CreateFormModel
-	checkoutBranchForm sessionui.CheckoutBranchFormModel
-	deleteForm         sessionui.DeleteFormModel
-	renameForm         sessionui.RenameFormModel
-	helpPopup          shared.HelpPopupModel
-	scheduler          jobs.Model
-	activePopup        popupKind
-	cachedProjects     []domain.Project
-	prStatuses         map[uuid.UUID]shared.PRStatusUpdatedMsg
+	titlebar                TitleBarModel
+	leftPane                leftpane.Model
+	inspector               inspector.Model
+	helpBar                 shared.HelpBarModel
+	createForm              sessionui.CreateFormModel
+	deleteForm              sessionui.DeleteFormModel
+	renameForm              sessionui.RenameFormModel
+	helpPopup               shared.HelpPopupModel
+	scheduler               jobs.Model
+	activePopup             popupKind
+	cachedProjects          []domain.Project
+	cachedBranchesByProject map[uuid.UUID]projectBranchCache
+	prStatuses              map[uuid.UUID]shared.PRStatusUpdatedMsg
 
 	width           int
 	height          int
@@ -84,20 +89,21 @@ func New(
 	left := leftpane.New(styles, sessionsModel, detailsModel)
 	left.SetFocus(true)
 	m := Model{
-		styles:          styles,
-		titlebar:        newTitlebar(styles, "Overseer"),
-		leftPane:        left,
-		inspector:       inspector.New(styles, sessionsService, previewRefreshInterval),
-		helpBar:         shared.NewHelpBarModel(styles, slices.Concat(sessionsKeyBindings, inspectorKeyBindings, generalKeyBindings)),
-		scheduler:       scheduler,
-		sessionsService: sessionsService,
-		projectsService: projectsService,
-		labels:          labels,
-		launchers:       launchers,
-		editors:         editors,
-		minWidth:        minWidth,
-		minHeight:       minHeight,
-		prStatuses:      make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
+		styles:                  styles,
+		titlebar:                newTitlebar(styles, "Overseer"),
+		leftPane:                left,
+		inspector:               inspector.New(styles, sessionsService, previewRefreshInterval),
+		helpBar:                 shared.NewHelpBarModel(styles, slices.Concat(sessionsKeyBindings, inspectorKeyBindings, generalKeyBindings)),
+		scheduler:               scheduler,
+		sessionsService:         sessionsService,
+		projectsService:         projectsService,
+		labels:                  labels,
+		launchers:               launchers,
+		editors:                 editors,
+		minWidth:                minWidth,
+		minHeight:               minHeight,
+		prStatuses:              make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
+		cachedBranchesByProject: make(map[uuid.UUID]projectBranchCache),
 	}
 	return m
 }
@@ -110,6 +116,7 @@ func (m Model) Init() tea.Cmd {
 		m.helpBar.Init(),
 		m.scheduler.Init(),
 		m.loadProjects(),
+		m.scheduleBranchTick(),
 	)
 }
 
@@ -121,6 +128,63 @@ func (m Model) loadProjects() tea.Cmd {
 	}
 }
 
+func (m Model) scheduleBranchTick() tea.Cmd {
+	return tea.Tick(BranchCacheRefreshInterval, func(time.Time) tea.Msg {
+		return shared.BranchCacheTickMsg{}
+	})
+}
+
+func (m Model) loadBranchesForProjectCmd(projectID uuid.UUID) tea.Cmd {
+	svc := m.sessionsService
+	return func() tea.Msg {
+		resp, err := svc.ListBranches(context.Background(), service.ListBranchesRequest{ProjectID: projectID})
+		return shared.BranchesLoadedMsg{
+			ProjectID:     projectID,
+			Branches:      resp.Branches,
+			DefaultBranch: resp.DefaultBranch,
+			LoadedAt:      time.Now(),
+			Err:           err,
+		}
+	}
+}
+
+func (m Model) loadCurrentBranchCmd(projectID uuid.UUID) tea.Cmd {
+	svc := m.sessionsService
+	return func() tea.Msg {
+		resp, err := svc.ProjectCurrentBranch(context.Background(), service.ProjectCurrentBranchRequest{ProjectID: projectID})
+		return shared.ProjectCurrentBranchLoadedMsg{ProjectID: projectID, Branch: resp.Branch, Err: err}
+	}
+}
+
+func (m Model) fanOutBranchRefresh() tea.Cmd {
+	cmds := make([]tea.Cmd, 0, len(m.cachedProjects))
+	for _, p := range m.cachedProjects {
+		cmds = append(cmds, m.loadBranchesForProjectCmd(p.ID))
+	}
+	if len(cmds) == 0 {
+		return nil
+	}
+	return tea.Batch(cmds...)
+}
+
+func (m Model) branchesByProjectFlat() map[uuid.UUID][]domain.BranchInfo {
+	out := make(map[uuid.UUID][]domain.BranchInfo, len(m.cachedBranchesByProject))
+	for k, v := range m.cachedBranchesByProject {
+		out[k] = v.branches
+	}
+	return out
+}
+
+func (m Model) defaultBranchesByProject() map[uuid.UUID]string {
+	out := make(map[uuid.UUID]string, len(m.cachedBranchesByProject))
+	for k, v := range m.cachedBranchesByProject {
+		if v.defaultBranch != "" {
+			out[k] = v.defaultBranch
+		}
+	}
+	return out
+}
+
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.WindowSizeMsg:
@@ -129,24 +193,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.cachedProjects = msg.Projects
 			m.refreshProjectNameLookup()
+			return m, m.fanOutBranchRefresh()
 		}
 		return m, nil
-	case shared.ProjectRegisteredMsg:
-		m.cachedProjects = append(m.cachedProjects, msg.Project)
-		m.refreshProjectNameLookup()
-		if m.activePopup != popupNone {
+	case shared.BranchesLoadedMsg:
+		if msg.Err == nil {
+			m.cachedBranchesByProject[msg.ProjectID] = projectBranchCache{
+				branches:      msg.Branches,
+				defaultBranch: msg.DefaultBranch,
+				loadedAt:      msg.LoadedAt,
+			}
+		}
+		if m.activePopup == popupNewSession {
 			return m.routeToPopup(msg)
 		}
 		return m, nil
+	case shared.BranchCacheTickMsg:
+		return m, tea.Batch(m.fanOutBranchRefresh(), m.scheduleBranchTick())
+	case shared.ProjectCurrentBranchLoadedMsg:
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.ProjectRegisteredMsg:
+		m.cachedProjects = append(m.cachedProjects, msg.Project)
+		m.refreshProjectNameLookup()
+		cmds := []tea.Cmd{m.loadBranchesForProjectCmd(msg.Project.ID)}
+		if m.activePopup != popupNone {
+			updated, popupCmd := m.routeToPopup(msg)
+			m = updated.(Model)
+			cmds = append(cmds, popupCmd)
+		}
+		return m, tea.Batch(cmds...)
 	case shared.SessionCreatedMsg:
 		m.activePopup = popupNone
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
-		return m, cmd
-	case shared.SessionCheckedOutMsg:
-		m.activePopup = popupNone
-		var cmd tea.Cmd
-		m.leftPane, cmd = shared.UpdateModel(m.leftPane, shared.SessionCreatedMsg{Session: msg.Session})
 		return m, cmd
 	case shared.SessionDeleteRequestedMsg:
 		m.deleteForm = sessionui.NewDeleteForm(m.styles, m.sessionsService, msg.Session)
@@ -174,7 +255,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activePopup = popupNone
 		m.applyRenamedProject(msg.Project)
 		return m, nil
-	case shared.NewSessionPopupCloseMsg, shared.CheckoutBranchPopupCloseMsg, shared.NewSessionDeletePopupCloseMsg, shared.RenamePopupCloseMsg, shared.HelpPopupCloseMsg:
+	case shared.SessionSelectedMsg:
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		if !msg.Session.HasWorktree() {
+			return m, tea.Batch(cmd, m.loadCurrentBranchCmd(msg.Session.ProjectID))
+		}
+		return m, cmd
+	case shared.NewSessionPopupCloseMsg, shared.NewSessionDeletePopupCloseMsg, shared.RenamePopupCloseMsg, shared.HelpPopupCloseMsg:
 		m.activePopup = popupNone
 		return m, nil
 	case shared.SessionAttachReadyMsg:
@@ -234,15 +322,24 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	}
 	if key.Matches(msg, newSessionKeyBinding) {
 		initialProjectID := m.cursorProjectID()
-		m.createForm = sessionui.NewCreateForm(m.styles, m.sessionsService, m.projectsService, m.cachedProjects, initialProjectID, m.launchers, m.editors, m.width)
+		m.createForm = sessionui.NewCreateForm(
+			m.styles,
+			m.sessionsService,
+			m.projectsService,
+			m.cachedProjects,
+			initialProjectID,
+			m.branchesByProjectFlat(),
+			m.defaultBranchesByProject(),
+			m.launchers,
+			m.editors,
+			m.width,
+		)
 		m.activePopup = popupNewSession
-		return m.createForm.Init(), true
-	}
-	if key.Matches(msg, checkoutBranchKeyBinding) {
-		initialProjectID := m.cursorProjectID()
-		m.checkoutBranchForm = sessionui.NewCheckoutBranchForm(m.styles, m.sessionsService, m.projectsService, m.cachedProjects, initialProjectID, m.launchers, m.editors, m.width)
-		m.activePopup = popupCheckoutBranch
-		return m.checkoutBranchForm.Init(), true
+		cmds := []tea.Cmd{m.createForm.Init()}
+		if refresh := m.refreshStaleProjectBranchesCmd(initialProjectID); refresh != nil {
+			cmds = append(cmds, refresh)
+		}
+		return tea.Batch(cmds...), true
 	}
 	if key.Matches(msg, attachShellKeyBinding) {
 		if cmd := m.attachSelectedSessionShellCmd(); cmd != nil {
@@ -260,6 +357,17 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		}
 	}
 	return nil, false
+}
+
+func (m Model) refreshStaleProjectBranchesCmd(initialProjectID uuid.UUID) tea.Cmd {
+	if initialProjectID == uuid.Nil {
+		return nil
+	}
+	cache, ok := m.cachedBranchesByProject[initialProjectID]
+	if ok && time.Since(cache.loadedAt) < BranchCacheStaleThreshold {
+		return nil
+	}
+	return m.loadBranchesForProjectCmd(initialProjectID)
 }
 
 func (m Model) attachSelectedSessionShellCmd() tea.Cmd {
@@ -315,10 +423,6 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case popupNewSession:
 		var cmd tea.Cmd
 		m.createForm, cmd = shared.UpdateModel(m.createForm, msg)
-		return m, cmd
-	case popupCheckoutBranch:
-		var cmd tea.Cmd
-		m.checkoutBranchForm, cmd = shared.UpdateModel(m.checkoutBranchForm, msg)
 		return m, cmd
 	case popupDeleteSession:
 		var cmd tea.Cmd
@@ -391,8 +495,6 @@ func (m Model) popupView() string {
 	switch m.activePopup {
 	case popupNewSession:
 		return m.createForm.View().Content
-	case popupCheckoutBranch:
-		return m.checkoutBranchForm.View().Content
 	case popupDeleteSession:
 		return m.deleteForm.View().Content
 	case popupRename:

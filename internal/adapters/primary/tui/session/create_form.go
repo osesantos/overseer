@@ -17,52 +17,53 @@ import (
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
+type CreateFormModel struct {
+	nameInput                textinput.Model
+	repoPicker               repoPicker
+	createWorktree           bool
+	baseBranchPicker         branchPicker
+	newBranchInput           textinput.Model
+	branchesByProject        map[uuid.UUID][]domain.BranchInfo
+	defaultBranchByProject   map[uuid.UUID]string
+	launchers                []domain.Launcher
+	launcherIdx              int
+	editors                  []domain.Editor
+	editorIdx                int
+	focusOrder               []formField
+	focusIdx                 int
+	errMsg                   string
+	sessionsService          service.SessionService
+	projectsService          service.ProjectService
+	styles                   *styles.Styles
+	contentWidth             int
+}
+
+type formField int
+
 const (
-	fieldName int = iota
+	fieldName formField = iota
 	fieldRepository
-	fieldBaseBranch
-	fieldFeatureBranch
+	fieldCreateWorktreeToggle
+	fieldBaseBranchPicker
+	fieldNewBranch
 	fieldLauncher
 	fieldEditor
 )
 
-const totalCreateFields = 6
-
-type CreateFormModel struct {
-	nameInput          textinput.Model
-	repoPicker         repoPicker
-	baseBranchInput    textinput.Model
-	featureBranchInput textinput.Model
-	launchers          []domain.Launcher
-	launcherIdx        int
-	editors            []domain.Editor
-	editorIdx          int
-	focusIndex         shared.CircularInt
-	errMsg             string
-	sessionsService    service.SessionService
-	projectsService    service.ProjectService
-	styles             *styles.Styles
-	contentWidth       int
-}
-
-// NewCreateForm builds the session-create form. The supplied projects seed
-// the repo picker's "recent" list (ordered by UpdatedAt server-side). When
-// initialProjectID is non-Nil and present in projects, the repo picker
-// starts positioned on that project; otherwise it starts on the most-recent.
-// terminalWidth is the current terminal column count; the form clamps its
-// modal box to [formMinBoxWidth, formMaxBoxWidth] and sizes inputs to fit.
 func NewCreateForm(
 	s *styles.Styles,
 	sessionsService service.SessionService,
 	projectsService service.ProjectService,
 	projects []domain.Project,
 	initialProjectID uuid.UUID,
+	branchesByProject map[uuid.UUID][]domain.BranchInfo,
+	defaultBranchByProject map[uuid.UUID]string,
 	launchers []domain.Launcher,
 	editors []domain.Editor,
 	terminalWidth int,
 ) CreateFormModel {
 	contentWidth := formContentWidth(terminalWidth)
-	inputWidth := formInputWidth(contentWidth)
+	inputWidth := formValueColumnWidth(contentWidth)
 
 	nameInput := textinput.New()
 	nameInput.Placeholder = "Session name"
@@ -71,33 +72,39 @@ func NewCreateForm(
 	nameInput.SetStyles(s.Form.Input)
 	nameInput.Focus()
 
-	baseBranchInput := textinput.New()
-	baseBranchInput.Placeholder = "(repo default)"
-	baseBranchInput.CharLimit = 200
-	baseBranchInput.SetWidth(inputWidth)
-	baseBranchInput.SetStyles(s.Form.Input)
+	newBranchInput := textinput.New()
+	newBranchInput.Placeholder = "(auto-generated if empty)"
+	newBranchInput.CharLimit = 200
+	newBranchInput.SetWidth(inputWidth)
+	newBranchInput.SetStyles(s.Form.Input)
 
-	featureBranchInput := textinput.New()
-	featureBranchInput.Placeholder = "(auto-generated if empty)"
-	featureBranchInput.CharLimit = 200
-	featureBranchInput.SetWidth(inputWidth)
-	featureBranchInput.SetStyles(s.Form.Input)
-
-	return CreateFormModel{
-		nameInput:          nameInput,
-		repoPicker:         newRepoPicker(s, projects, initialProjectID, inputWidth),
-		baseBranchInput:    baseBranchInput,
-		featureBranchInput: featureBranchInput,
-		launchers:          launchers,
-		launcherIdx:        0,
-		editors:            editors,
-		editorIdx:          0,
-		focusIndex:         shared.NewCircularInt(0, totalCreateFields-1),
-		sessionsService:    sessionsService,
-		projectsService:    projectsService,
-		styles:             s,
-		contentWidth:       contentWidth,
+	if branchesByProject == nil {
+		branchesByProject = map[uuid.UUID][]domain.BranchInfo{}
 	}
+	if defaultBranchByProject == nil {
+		defaultBranchByProject = map[uuid.UUID]string{}
+	}
+	repoPicker := newRepoPicker(s, projects, initialProjectID, inputWidth)
+	initialBranches := branchesForSelectedProject(repoPicker, branchesByProject)
+	initialDefault := defaultBranchForSelectedProject(repoPicker, defaultBranchByProject)
+
+	m := CreateFormModel{
+		nameInput:              nameInput,
+		repoPicker:             repoPicker,
+		createWorktree:         true,
+		baseBranchPicker:       newBranchPicker(s, initialBranches, initialDefault, inputWidth),
+		newBranchInput:         newBranchInput,
+		branchesByProject:      branchesByProject,
+		defaultBranchByProject: defaultBranchByProject,
+		launchers:              launchers,
+		editors:                editors,
+		sessionsService:        sessionsService,
+		projectsService:        projectsService,
+		styles:                 s,
+		contentWidth:           contentWidth,
+	}
+	m.rebuildFocusOrder()
+	return m
 }
 
 func (m CreateFormModel) Init() tea.Cmd {
@@ -111,13 +118,13 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, shared.Emit(shared.NewSessionPopupCloseMsg{})
 		}
 
-		// Enter in paste-mode confirms the pasted path (registers the project)
-		// rather than submitting the whole form.
-		if m.focusIndex.Value() == fieldRepository && m.repoPicker.isPasteMode() && key.Matches(msg, popupSubmitFormKeyBinding) {
+		current := m.currentField()
+
+		if current == fieldRepository && m.repoPicker.isPasteMode() && key.Matches(msg, popupSubmitFormKeyBinding) {
 			return m.confirmPastedPath()
 		}
 
-		if key.Matches(msg, popupSubmitFormKeyBinding) {
+		if key.Matches(msg, popupSubmitFormKeyBinding) && current != fieldBaseBranchPicker {
 			return m.submit()
 		}
 		if key.Matches(msg, popupNextFieldKeyBinding) {
@@ -127,13 +134,29 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.moveFocus(-1)
 		}
 
-		if m.focusIndex.Value() == fieldRepository {
+		switch current {
+		case fieldRepository:
 			var cmd tea.Cmd
 			m.repoPicker, cmd = m.repoPicker.update(msg)
+			m.refreshBranchPickerFromSelection()
 			return m, cmd
-		}
-
-		if m.focusIndex.Value() == fieldLauncher {
+		case fieldCreateWorktreeToggle:
+			if key.Matches(msg, popupToggleKeyBinding) ||
+				key.Matches(msg, popupSelectorNextKeyBinding) ||
+				key.Matches(msg, popupSelectorPrevKeyBinding) {
+				m.createWorktree = !m.createWorktree
+				m.rebuildFocusOrder()
+				return m, nil
+			}
+		case fieldBaseBranchPicker:
+			if key.Matches(msg, popupSubmitFormKeyBinding) {
+				m.baseBranchPicker.confirmSelection()
+				return m.moveFocus(1)
+			}
+			var cmd tea.Cmd
+			m.baseBranchPicker, cmd = m.baseBranchPicker.update(msg)
+			return m, cmd
+		case fieldLauncher:
 			if key.Matches(msg, popupSelectorNextKeyBinding) {
 				m.cycleLauncher(1)
 				return m, nil
@@ -142,9 +165,7 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cycleLauncher(-1)
 				return m, nil
 			}
-		}
-
-		if m.focusIndex.Value() == fieldEditor {
+		case fieldEditor:
 			if key.Matches(msg, popupSelectorNextKeyBinding) {
 				m.cycleEditor(1)
 				return m, nil
@@ -164,62 +185,117 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shared.ProjectRegisteredMsg:
 		m.repoPicker.adoptRegisteredProject(msg.Project)
+		m.refreshBranchPickerFromSelection()
 		m.errMsg = ""
 		return m, nil
 
 	case shared.ProjectRegisterErrMsg:
 		m.errMsg = msg.Err.Error()
 		return m, nil
+
+	case shared.BranchesLoadedMsg:
+		if msg.Err == nil {
+			m.branchesByProject[msg.ProjectID] = msg.Branches
+			m.defaultBranchByProject[msg.ProjectID] = msg.DefaultBranch
+			if sel := m.repoPicker.selectedProject(); sel != nil && sel.ID == msg.ProjectID {
+				m.baseBranchPicker.setBranches(msg.Branches, msg.DefaultBranch)
+			}
+		}
+		return m, nil
 	}
 
-	switch m.focusIndex.Value() {
+	switch m.currentField() {
 	case fieldName:
 		var cmd tea.Cmd
 		m.nameInput, cmd = m.nameInput.Update(msg)
 		return m, cmd
-	case fieldBaseBranch:
+	case fieldNewBranch:
 		var cmd tea.Cmd
-		m.baseBranchInput, cmd = m.baseBranchInput.Update(msg)
-		return m, cmd
-	case fieldFeatureBranch:
-		var cmd tea.Cmd
-		m.featureBranchInput, cmd = m.featureBranchInput.Update(msg)
+		m.newBranchInput, cmd = m.newBranchInput.Update(msg)
 		return m, cmd
 	case fieldRepository:
 		var cmd tea.Cmd
 		m.repoPicker, cmd = m.repoPicker.update(msg)
+		return m, cmd
+	case fieldBaseBranchPicker:
+		var cmd tea.Cmd
+		m.baseBranchPicker, cmd = m.baseBranchPicker.update(msg)
 		return m, cmd
 	}
 
 	return m, nil
 }
 
-func (m CreateFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
-	if direction > 0 {
-		m.focusIndex.Increment()
-	} else {
-		m.focusIndex.Decrement()
+func (m *CreateFormModel) rebuildFocusOrder() {
+	order := []formField{fieldName, fieldRepository, fieldCreateWorktreeToggle}
+	if m.createWorktree {
+		order = append(order, fieldBaseBranchPicker, fieldNewBranch)
 	}
+	order = append(order, fieldLauncher, fieldEditor)
+	m.focusOrder = order
+	if m.focusIdx >= len(order) {
+		m.focusIdx = 0
+	}
+	m.updateFocusAndBlurs()
+}
+
+func (m CreateFormModel) currentField() formField {
+	if m.focusIdx < 0 || m.focusIdx >= len(m.focusOrder) {
+		return fieldName
+	}
+	return m.focusOrder[m.focusIdx]
+}
+
+func (m CreateFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
+	n := len(m.focusOrder)
+	if n == 0 {
+		return m, nil
+	}
+	m.focusIdx = ((m.focusIdx+direction)%n + n) % n
 	m.updateFocusAndBlurs()
 	return m, nil
 }
 
 func (m *CreateFormModel) updateFocusAndBlurs() {
 	m.nameInput.Blur()
-	m.baseBranchInput.Blur()
-	m.featureBranchInput.Blur()
+	m.newBranchInput.Blur()
 	m.repoPicker.blur()
+	m.baseBranchPicker.blur()
 
-	switch m.focusIndex.Value() {
+	switch m.currentField() {
 	case fieldName:
 		m.nameInput.Focus()
-	case fieldBaseBranch:
-		m.baseBranchInput.Focus()
-	case fieldFeatureBranch:
-		m.featureBranchInput.Focus()
+	case fieldNewBranch:
+		m.newBranchInput.Focus()
 	case fieldRepository:
 		m.repoPicker.focus()
+	case fieldBaseBranchPicker:
+		m.baseBranchPicker.focus()
 	}
+}
+
+func (m *CreateFormModel) refreshBranchPickerFromSelection() {
+	if sel := m.repoPicker.selectedProject(); sel != nil {
+		if branches, ok := m.branchesByProject[sel.ID]; ok {
+			m.baseBranchPicker.setBranches(branches, m.defaultBranchByProject[sel.ID])
+		}
+	}
+}
+
+func branchesForSelectedProject(p repoPicker, m map[uuid.UUID][]domain.BranchInfo) []domain.BranchInfo {
+	sel := p.selectedProject()
+	if sel == nil {
+		return nil
+	}
+	return m[sel.ID]
+}
+
+func defaultBranchForSelectedProject(p repoPicker, m map[uuid.UUID]string) string {
+	sel := p.selectedProject()
+	if sel == nil {
+		return ""
+	}
+	return m[sel.ID]
 }
 
 func (m *CreateFormModel) cycleLauncher(direction int) {
@@ -252,9 +328,6 @@ func (m CreateFormModel) resolvedEditorCommand() string {
 	return m.editors[m.editorIdx].Command
 }
 
-// confirmPastedPath fires a Register cmd for the path the user just typed in
-// paste mode. The picker stays in paste mode until ProjectRegisteredMsg
-// arrives; on error the form surfaces the message and the user can edit.
 func (m CreateFormModel) confirmPastedPath() (tea.Model, tea.Cmd) {
 	path := m.repoPicker.pastedPath()
 	if path == "" {
@@ -285,22 +358,25 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if selection.Project == nil {
-		// User pasted a path but didn't confirm with Enter — refuse to silently
-		// register on submit; force an explicit confirm so the user sees errors
-		// inline before the whole submission attempt.
 		m.errMsg = "press enter to confirm the pasted path"
 		return m, nil
 	}
 
-	m.errMsg = ""
 	req := service.CreateSessionRequest{
-		Name:          name,
-		ProjectID:     selection.Project.ID,
-		BaseBranch:    strings.TrimSpace(m.baseBranchInput.Value()),
-		FeatureBranch: strings.TrimSpace(m.featureBranchInput.Value()),
-		AgentCommand:  m.resolvedAgentCommand(),
-		EditorCommand: m.resolvedEditorCommand(),
+		Name:           name,
+		ProjectID:      selection.Project.ID,
+		CreateWorktree: m.createWorktree,
+		AgentCommand:   m.resolvedAgentCommand(),
+		EditorCommand:  m.resolvedEditorCommand(),
 	}
+	if m.createWorktree {
+		if sel, ok := m.baseBranchPicker.selected(); ok {
+			req.BaseBranch = sel.Name
+		}
+		req.Branch = strings.TrimSpace(m.newBranchInput.Value())
+	}
+
+	m.errMsg = ""
 	svc := m.sessionsService
 	return m, func() tea.Msg {
 		resp, err := svc.Create(context.Background(), req)
@@ -314,22 +390,32 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 func (m CreateFormModel) View() tea.View {
 	parts := []string{
 		m.styles.Form.Title.Render("New Session"),
-
-		renderField(m.labelStyle(fieldName), "Name", m.nameInput.View()),
+		renderField(m.styles, m.labelStyle(fieldName), "Name", m.nameInput.View()),
 		"",
-		renderField(m.labelStyle(fieldRepository), "Repository", m.repoPicker.view()),
+		renderField(m.styles, m.labelStyle(fieldRepository), "Repository", m.repoPicker.view()),
 		renderFieldHint(m.styles, m.repoPickerHint()),
 		"",
-		renderField(m.labelStyle(fieldBaseBranch), "Base branch", m.baseBranchInput.View()),
+		renderField(m.styles, m.labelStyle(fieldCreateWorktreeToggle), "Create worktree?", m.toggleView()),
+		renderFieldHint(m.styles, "space / ← → toggle"),
+	}
+
+	if m.createWorktree {
+		parts = append(parts,
+			"",
+			renderField(m.styles, m.labelStyle(fieldBaseBranchPicker), "Base branch", m.baseBranchPicker.view()),
+			"",
+			renderField(m.styles, m.labelStyle(fieldNewBranch), "New branch", m.newBranchInput.View()),
+		)
+	}
+
+	parts = append(parts,
 		"",
-		renderField(m.labelStyle(fieldFeatureBranch), "Feature branch", m.featureBranchInput.View()),
-		"",
-		renderField(m.labelStyle(fieldLauncher), "Launcher", m.launcherSelectorView()),
+		renderField(m.styles, m.labelStyle(fieldLauncher), "Launcher", m.launcherSelectorView()),
 		renderFieldHint(m.styles, "←/→ cycle launchers"),
 		"",
-		renderField(m.labelStyle(fieldEditor), "Editor", m.editorSelectorView()),
+		renderField(m.styles, m.labelStyle(fieldEditor), "Editor", m.editorSelectorView()),
 		renderFieldHint(m.styles, "←/→ cycle editors"),
-	}
+	)
 
 	if m.errMsg != "" {
 		parts = append(parts, "", m.styles.Form.Field.Error.Render(m.errMsg))
@@ -340,33 +426,45 @@ func (m CreateFormModel) View() tea.View {
 	return tea.NewView(components.Modal(m.styles, body, m.contentWidth, 0))
 }
 
-func (m CreateFormModel) labelStyle(field int) lipgloss.Style {
-	if m.focusIndex.Value() == field {
+func (m CreateFormModel) labelStyle(field formField) lipgloss.Style {
+	if m.currentField() == field {
 		return m.styles.Form.Field.LabelFocused
 	}
 	return m.styles.Form.Field.Label
 }
 
+func (m CreateFormModel) toggleView() string {
+	value := "Off"
+	if m.createWorktree {
+		value = "On"
+	}
+	focused := m.currentField() == fieldCreateWorktreeToggle
+	if focused {
+		return modalListRow(m.styles, true).Render("< " + value + " >")
+	}
+	return modalListRow(m.styles, false).Render("  " + value + "  ")
+}
+
 func (m CreateFormModel) launcherSelectorView() string {
 	if len(m.launchers) == 0 {
-		return m.styles.ListRow.Normal.Render("  (no launchers configured)  ")
+		return modalListRow(m.styles, false).Render("  (no launchers configured)  ")
 	}
 	name := m.launchers[m.launcherIdx].DisplayName
-	if m.focusIndex.Value() == fieldLauncher {
-		return m.styles.ListRow.Selected.Render("< " + name + " >")
+	if m.currentField() == fieldLauncher {
+		return modalListRow(m.styles, true).Render("< " + name + " >")
 	}
-	return m.styles.ListRow.Normal.Render("  " + name + "  ")
+	return modalListRow(m.styles, false).Render("  " + name + "  ")
 }
 
 func (m CreateFormModel) editorSelectorView() string {
 	if len(m.editors) == 0 {
-		return m.styles.ListRow.Normal.Render("  (no editors configured)  ")
+		return modalListRow(m.styles, false).Render("  (no editors configured)  ")
 	}
 	name := m.editors[m.editorIdx].DisplayName
-	if m.focusIndex.Value() == fieldEditor {
-		return m.styles.ListRow.Selected.Render("< " + name + " >")
+	if m.currentField() == fieldEditor {
+		return modalListRow(m.styles, true).Render("< " + name + " >")
 	}
-	return m.styles.ListRow.Normal.Render("  " + name + "  ")
+	return modalListRow(m.styles, false).Render("  " + name + "  ")
 }
 
 func (m CreateFormModel) repoPickerHint() string {
@@ -380,10 +478,13 @@ func (m CreateFormModel) KeyBindings() []key.Binding {
 	return []key.Binding{
 		popupNextFieldKeyBinding,
 		popupPrevFieldKeyBinding,
+		popupToggleKeyBinding,
 		popupSelectorNextKeyBinding,
 		popupSelectorPrevKeyBinding,
 		repoPickerEnterPasteKeyBinding,
 		repoPickerExitPasteKeyBinding,
+		branchPickerUpKeyBinding,
+		branchPickerDownKeyBinding,
 		popupSubmitFormKeyBinding,
 		popupCloseKeyBinding,
 	}

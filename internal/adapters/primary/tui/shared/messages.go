@@ -2,6 +2,7 @@ package shared
 
 import (
 	"os/exec"
+	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
@@ -35,12 +36,6 @@ type SessionLabelCycledMsg struct {
 type NewSessionPopupCloseMsg struct{}
 
 type SessionCreateErrMsg struct{ Err error }
-
-type SessionCheckedOutMsg struct{ Session domain.Session }
-
-type SessionCheckoutErrMsg struct{ Err error }
-
-type CheckoutBranchPopupCloseMsg struct{}
 
 type SessionAttachReadyMsg struct {
 	Command *exec.Cmd
@@ -94,5 +89,21 @@ type JobsBatchMsg struct{ Cmds []tea.Cmd }
 type PRStatusUpdatedMsg struct {
 	SessionID uuid.UUID
 	PR        domain.PullRequest
+	Err       error
+}
+
+type BranchesLoadedMsg struct {
+	ProjectID     uuid.UUID
+	Branches      []domain.BranchInfo
+	DefaultBranch string
+	LoadedAt      time.Time
+	Err           error
+}
+
+type BranchCacheTickMsg struct{}
+
+type ProjectCurrentBranchLoadedMsg struct {
+	ProjectID uuid.UUID
+	Branch    string
 	Err       error
 }

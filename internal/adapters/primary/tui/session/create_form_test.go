@@ -4,7 +4,6 @@ import (
 	"log/slog"
 	"strings"
 	"testing"
-	"time"
 
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
@@ -22,90 +21,139 @@ import (
 func TestCreateForm_DefaultFocusIsName(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
-	if form.focusIndex.Value() != fieldName {
-		t.Fatalf("default focus = %d, want %d (name)", form.focusIndex.Value(), fieldName)
+	if form.currentField() != fieldName {
+		t.Fatalf("default focus = %v, want fieldName", form.currentField())
 	}
 }
 
-func TestCreateForm_TabCyclesSixFields(t *testing.T) {
+func TestCreateForm_DefaultsToCreateWorktreeOn(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
-	for i, want := range []int{fieldRepository, fieldBaseBranch, fieldFeatureBranch, fieldLauncher, fieldEditor, fieldName} {
+	if !form.createWorktree {
+		t.Fatal("createWorktree default = false, want true")
+	}
+}
+
+func TestCreateForm_TabCyclesThroughWorktreeFields(t *testing.T) {
+	form := newCreateFormForTest(t, nil)
+
+	wantSequence := []formField{
+		fieldRepository,
+		fieldCreateWorktreeToggle,
+		fieldBaseBranchPicker,
+		fieldNewBranch,
+		fieldLauncher,
+		fieldEditor,
+		fieldName,
+	}
+	for i, want := range wantSequence {
 		updated, _ := tea.Model(form).Update(formKeyPress("tab"))
 		form = updated.(CreateFormModel)
-		if form.focusIndex.Value() != want {
-			t.Fatalf("tab %d: focus = %d, want %d", i+1, form.focusIndex.Value(), want)
+		if form.currentField() != want {
+			t.Fatalf("tab %d: focus = %v, want %v", i+1, form.currentField(), want)
 		}
 	}
 }
 
-func TestCreateForm_RepoPickerCyclesProjects(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	widgets := testutil.MakeProject("/repo/widgets", "Widgets")
-	form := newCreateFormForTest(t, []domain.Project{overseer, widgets})
+func TestCreateForm_TabSkipsWorktreeFieldsWhenToggleOff(t *testing.T) {
+	form := newCreateFormForTest(t, nil)
+	form.createWorktree = false
+	form.rebuildFocusOrder()
 
-	updated, _ := tea.Model(form).Update(formKeyPress("tab"))
-	form = updated.(CreateFormModel)
-	initial := form.repoPicker.selectedProject()
-	if initial == nil {
-		t.Fatalf("initial picker selected = nil, want first project")
+	wantSequence := []formField{
+		fieldRepository,
+		fieldCreateWorktreeToggle,
+		fieldLauncher,
+		fieldEditor,
+		fieldName,
 	}
-
-	updated, _ = tea.Model(form).Update(formKeyPress("right"))
-	form = updated.(CreateFormModel)
-	after := form.repoPicker.selectedProject()
-	if after == nil || after.ID == initial.ID {
-		t.Fatalf("after right: selected did not advance from %v to a different project (got %v)", initial.ID, after)
+	for i, want := range wantSequence {
+		updated, _ := tea.Model(form).Update(formKeyPress("tab"))
+		form = updated.(CreateFormModel)
+		if form.currentField() != want {
+			t.Fatalf("tab %d (project-mode): focus = %v, want %v", i+1, form.currentField(), want)
+		}
 	}
 }
 
-func TestCreateForm_RepoPickerPreselectsInitialProjectID(t *testing.T) {
-	older := testutil.MakeProject("/repo/older", "Older")
-	newer := testutil.MakeProject("/repo/newer", "Newer")
-	older.UpdatedAt = time.Now().Add(-time.Hour)
-	newer.UpdatedAt = time.Now()
+func TestCreateForm_SpaceOnToggleSwitchesMode(t *testing.T) {
+	form := newCreateFormForTest(t, nil)
+	form.focusIdx = focusIdxOf(form.focusOrder, fieldCreateWorktreeToggle)
+	form.updateFocusAndBlurs()
 
-	svc, _, _, _, _ := newCreateFormSessionServiceWithMocks(t)
+	updated, _ := tea.Model(form).Update(tea.KeyPressMsg{Code: ' ', Text: " "})
+	form = updated.(CreateFormModel)
+
+	if form.createWorktree {
+		t.Fatal("after space on toggle: createWorktree = true, want false")
+	}
+}
+
+func TestCreateForm_SubmitProjectMode_SendsCreateWorktreeFalseAndNoBranch(t *testing.T) {
+	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	svc, repo, projects, tmux, _ := newCreateFormSessionServiceWithMocks(t)
+	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), overseer.Path, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), overseer.Path, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{older, newer}, older.ID, testLaunchers(t), testEditors(t), 100)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, nil, nil, testLaunchers(t), testEditors(t), 100)
 
-	selected := form.repoPicker.selectedProject()
-	if selected == nil {
-		t.Fatalf("selected = nil, want %s", older.ID)
+	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
+	form = updated.(CreateFormModel)
+	form.createWorktree = false
+	form.rebuildFocusOrder()
+
+	_, cmd := tea.Model(form).Update(formKeyPress("enter"))
+	if cmd == nil {
+		t.Fatalf("submit cmd = nil")
 	}
-	if selected.ID != older.ID {
-		t.Fatalf("selected = %s (%s), want %s (older) — newer should NOT win when older is explicitly initial", selected.ID, selected.Name, older.ID)
+	msg, ok := cmd().(shared.SessionCreatedMsg)
+	if !ok {
+		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
+	}
+	if msg.Session.HasWorktree() {
+		t.Fatalf("project-mode session HasWorktree() = true, want false")
+	}
+	if msg.Session.Branch != "" {
+		t.Fatalf("project-mode session Branch = %q, want empty", msg.Session.Branch)
 	}
 }
 
-func TestCreateForm_RepoPickerFallsBackWhenInitialIDUnknown(t *testing.T) {
+func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
 	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	svc, _, _, _, _ := newCreateFormSessionServiceWithMocks(t)
+	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
+	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "feat/foo", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, uuid.New(), testLaunchers(t), testEditors(t), 100)
-
-	selected := form.repoPicker.selectedProject()
-	if selected == nil || selected.ID != overseer.ID {
-		t.Fatalf("selected = %+v, want fallback to %s", selected, overseer.ID)
+	branches := map[uuid.UUID][]domain.BranchInfo{
+		overseer.ID: {
+			{Name: "feat/foo", Scope: domain.BranchScopeLocal},
+			{Name: "main", Scope: domain.BranchScopeLocal},
+		},
 	}
-}
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, branches, nil, testLaunchers(t), testEditors(t), 100)
 
-func TestCreateForm_RepoPickerSentinelEntersPasteMode(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	form := newCreateFormForTest(t, []domain.Project{overseer})
-
-	updated, _ := tea.Model(form).Update(formKeyPress("tab"))
-	form = updated.(CreateFormModel)
-	updated, _ = tea.Model(form).Update(formKeyPress("right"))
-	form = updated.(CreateFormModel)
-	if !form.repoPicker.onSentinel() {
-		t.Fatalf("after cycling past project: picker not on sentinel, listIdx=%d", form.repoPicker.listIdx)
+	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
+	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
+	if cmd == nil {
+		t.Fatalf("submit cmd = nil")
 	}
-
-	updated, _ = tea.Model(form).Update(tea.KeyPressMsg{Code: 'p', Mod: tea.ModCtrl})
-	form = updated.(CreateFormModel)
-	if !form.repoPicker.isPasteMode() {
-		t.Fatalf("after ctrl+p on sentinel: picker not in paste mode")
+	msg, ok := cmd().(shared.SessionCreatedMsg)
+	if !ok {
+		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
+	}
+	if !msg.Session.HasWorktree() {
+		t.Fatal("worktree-mode session HasWorktree() = false, want true")
 	}
 }
 
@@ -131,200 +179,44 @@ func TestCreateForm_SubmitWithoutRepoShowsError(t *testing.T) {
 	}
 }
 
-func TestCreateForm_SubmitWithExistingProjectCallsServiceCreate(t *testing.T) {
+func TestCreateForm_BranchesLoadedMsg_UpdatesPickerForActiveProject(t *testing.T) {
 	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
-	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "develop", mock.Anything, mock.Anything).Return(nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
-	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, uuid.Nil, testLaunchers(t), testEditors(t), 100)
+	form := newCreateFormForTest(t, []domain.Project{overseer})
 
-	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
+	branches := []domain.BranchInfo{
+		{Name: "main", Scope: domain.BranchScopeLocal},
+		{Name: "feat/foo", Scope: domain.BranchScopeLocal},
+	}
+	updated, _ := tea.Model(form).Update(shared.BranchesLoadedMsg{ProjectID: overseer.ID, Branches: branches})
 	form = updated.(CreateFormModel)
-	form.baseBranchInput.SetValue("develop")
-	_, cmd := tea.Model(form).Update(formKeyPress("enter"))
 
-	if cmd == nil {
-		t.Fatalf("submit cmd = nil")
-	}
-	msg, ok := cmd().(shared.SessionCreatedMsg)
-	if !ok {
-		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
-	}
-	if msg.Session.ProjectID != overseer.ID {
-		t.Fatalf("created session ProjectID = %v, want %v", msg.Session.ProjectID, overseer.ID)
-	}
-	if msg.Session.BaseBranch != "develop" {
-		t.Fatalf("created session BaseBranch = %q, want %q", msg.Session.BaseBranch, "develop")
-	}
-	if msg.Session.EditorCommand != "code" {
-		t.Fatalf("created session EditorCommand = %q, want %q (default VSCode)", msg.Session.EditorCommand, "code")
+	if len(form.baseBranchPicker.branches) != 2 {
+		t.Fatalf("picker branches after load: %d, want 2", len(form.baseBranchPicker.branches))
 	}
 }
 
-func TestCreateForm_FeatureBranchDefaultsToEmpty(t *testing.T) {
-	form := newCreateFormForTest(t, nil)
-
-	if got := form.featureBranchInput.Value(); got != "" {
-		t.Fatalf("default feature branch input = %q, want empty (auto-generate signal)", got)
-	}
-}
-
-func TestCreateForm_BaseBranchDefaultsToEmpty(t *testing.T) {
-	form := newCreateFormForTest(t, nil)
-
-	if got := form.baseBranchInput.Value(); got != "" {
-		t.Fatalf("default base branch input = %q, want empty (repo-default signal)", got)
-	}
-}
-
-func TestCreateForm_SubmitWithEmptyBaseBranchResolvesRepoDefault(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
-	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	git.EXPECT().GetDefaultBranch(mock.Anything, overseer.Path).Return("trunk", nil).Once()
-	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "trunk", mock.Anything, mock.Anything).Return(nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
-	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, uuid.Nil, testLaunchers(t), testEditors(t), 100)
-
-	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
-	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
-
-	if cmd == nil {
-		t.Fatalf("submit cmd = nil")
-	}
-	msg, ok := cmd().(shared.SessionCreatedMsg)
-	if !ok {
-		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
-	}
-	if msg.Session.BaseBranch != "trunk" {
-		t.Fatalf("created session BaseBranch = %q, want resolved default %q", msg.Session.BaseBranch, "trunk")
-	}
-}
-
-func TestCreateForm_SubmitForwardsUserProvidedFeatureBranch(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
-	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "develop", "my-feature", mock.Anything).Return(nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
-	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, uuid.Nil, testLaunchers(t), testEditors(t), 100)
-
-	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	form = updated.(CreateFormModel)
-	form.baseBranchInput.SetValue("develop")
-	form.featureBranchInput.SetValue("my-feature")
-	_, cmd := tea.Model(form).Update(formKeyPress("enter"))
-
-	if cmd == nil {
-		t.Fatalf("submit cmd = nil")
-	}
-	msg, ok := cmd().(shared.SessionCreatedMsg)
-	if !ok {
-		t.Fatalf("submit msg type = %T, want shared.SessionCreatedMsg", cmd())
-	}
-	if msg.Session.FeatureBranch != "my-feature" {
-		t.Fatalf("created session FeatureBranch = %q, want %q", msg.Session.FeatureBranch, "my-feature")
-	}
-}
-
-func TestCreateForm_ViewShowsAllFieldLabels(t *testing.T) {
+func TestCreateForm_ViewContainsToggleAndCoreLabels(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
 	view := form.View().Content
-	for _, want := range []string{"Name", "Repository", "Base branch", "Feature branch", "Launcher", "Editor"} {
+	for _, want := range []string{"Name", "Repository", "Create worktree?", "Launcher", "Editor"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() missing %q label: %q", want, view)
 		}
 	}
 }
 
-func TestCreateForm_ViewShowsSelectedLauncher(t *testing.T) {
+func TestCreateForm_ViewToggleOffHidesBaseBranchField(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
+	form.createWorktree = false
+	form.rebuildFocusOrder()
 
 	view := form.View().Content
-	if !strings.Contains(view, "OpenCode") {
-		t.Fatalf("View() missing selected launcher %q: %q", "OpenCode", view)
+	if strings.Contains(view, "Base branch") {
+		t.Fatalf("project-mode view should not show 'Base branch' field: %q", view)
 	}
-	if strings.Contains(view, "Claude Code") {
-		t.Fatalf("View() unexpectedly shows non-selected launcher %q (picker should show only current): %q", "Claude Code", view)
-	}
-}
-
-func TestCreateForm_ViewShowsSelectedEditor(t *testing.T) {
-	form := newCreateFormForTest(t, nil)
-
-	view := form.View().Content
-	if !strings.Contains(view, "VSCode") {
-		t.Fatalf("View() missing selected editor %q: %q", "VSCode", view)
-	}
-	if strings.Contains(view, "Cursor") {
-		t.Fatalf("View() unexpectedly shows non-selected editor %q (picker should show only current): %q", "Cursor", view)
-	}
-}
-
-func TestCreateForm_DefaultsToOpencodeLauncher(t *testing.T) {
-	form := newCreateFormForTest(t, nil)
-
-	if form.resolvedAgentCommand() != "opencode" {
-		t.Fatalf("default agent command = %q, want %q", form.resolvedAgentCommand(), "opencode")
-	}
-}
-
-func TestCreateForm_DefaultsToVSCodeEditor(t *testing.T) {
-	form := newCreateFormForTest(t, nil)
-
-	if form.resolvedEditorCommand() != "code" {
-		t.Fatalf("default editor command = %q, want %q", form.resolvedEditorCommand(), "code")
-	}
-}
-
-func TestCreateForm_EditorSelectorTogglesBetweenEntries(t *testing.T) {
-	form := newCreateFormForTest(t, nil)
-
-	// Tab past Name, Repository, Base branch, Feature branch, Launcher to reach Editor.
-	updated, _ := tea.Model(form).Update(formKeyPress("tab"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	updated, _ = updated.(CreateFormModel).Update(formKeyPress("tab"))
-	got := updated.(CreateFormModel)
-	if got.focusIndex.Value() != fieldEditor {
-		t.Fatalf("after 5 tabs: focus = %d, want %d (editor)", got.focusIndex.Value(), fieldEditor)
-	}
-	if got.resolvedEditorCommand() != "code" {
-		t.Fatalf("initial editor = %q, want %q", got.resolvedEditorCommand(), "code")
-	}
-
-	updated, _ = tea.Model(got).Update(formKeyPress("right"))
-	got = updated.(CreateFormModel)
-	if got.resolvedEditorCommand() != "cursor" {
-		t.Fatalf("after right: editor = %q, want %q", got.resolvedEditorCommand(), "cursor")
-	}
-
-	updated, _ = tea.Model(got).Update(formKeyPress("right"))
-	got = updated.(CreateFormModel)
-	if got.resolvedEditorCommand() != "code" {
-		t.Fatalf("after 2 rights (wrap): editor = %q, want %q", got.resolvedEditorCommand(), "code")
+	if strings.Contains(view, "New branch") {
+		t.Fatalf("project-mode view should not show 'New branch' field: %q", view)
 	}
 }
 
@@ -341,13 +233,11 @@ func TestCreateForm_ProjectRegisteredMsgAdoptsProject(t *testing.T) {
 	}
 }
 
-// ---- helpers ----
-
 func newCreateFormForTest(t *testing.T, projects []domain.Project) CreateFormModel {
 	t.Helper()
 	svc, _, _, _, _ := newCreateFormSessionServiceWithMocks(t)
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	return NewCreateForm(styles.New(), svc, projectsSvc, projects, uuid.Nil, testLaunchers(t), testEditors(t), 100)
+	return NewCreateForm(styles.New(), svc, projectsSvc, projects, uuid.Nil, nil, nil, testLaunchers(t), testEditors(t), 100)
 }
 
 func newCreateFormSessionService(t *testing.T) service.SessionService {
@@ -410,6 +300,17 @@ func formKeyPress(value string) tea.KeyPressMsg {
 		return tea.KeyPressMsg{Code: tea.KeyLeft}
 	case "right":
 		return tea.KeyPressMsg{Code: tea.KeyRight}
+	case " ":
+		return tea.KeyPressMsg{Code: ' ', Text: " "}
 	}
 	return tea.KeyPressMsg{Text: value, Code: []rune(value)[0]}
+}
+
+func focusIdxOf(order []formField, target formField) int {
+	for i, f := range order {
+		if f == target {
+			return i
+		}
+	}
+	return 0
 }

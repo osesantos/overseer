@@ -11,31 +11,26 @@ import (
 )
 
 const (
-	glyphFeatureBranch = "⎇"
-	glyphBaseBranch    = "↳"
-	glyphRepo          = "⊞"
-	glyphPRLink        = "⎘"
-	glyphPRStateDot    = "●"
-	glyphAdded         = "⊕"
-	glyphRemoved       = "⊖"
-	glyphFiles         = "▤"
-	glyphCheckPass     = "✓"
-	glyphCheckFail     = "✗"
-	glyphCheckPending  = "◷"
+	glyphBranch       = "⎇"
+	glyphRepo         = "⊞"
+	glyphPRLink       = "⎘"
+	glyphPRStateDot   = "●"
+	glyphAdded        = "⊕"
+	glyphRemoved      = "⊖"
+	glyphFiles        = "▤"
+	glyphCheckPass    = "✓"
+	glyphCheckFail    = "✗"
+	glyphCheckPending = "◷"
 
 	titlePullRequest = "Pull Request"
 
-	labelRepository    = "Repository"
-	labelFeatureBranch = "Feature Branch"
-	labelBaseBranch    = "Base Branch"
-	labelStatus        = "Status"
-	labelLink          = "Link"
-	labelChanges       = "Changes"
-	labelChecks        = "Checks"
+	labelRepository = "Repository"
+	labelBranch     = "Branch"
+	labelStatus     = "Status"
+	labelLink       = "Link"
+	labelChanges    = "Changes"
+	labelChecks     = "Checks"
 
-	// labelColumnWidth fixes the width of the left ("label") column so
-	// every row in both sections lines up at the same value start column.
-	// 14 = lipgloss.Width("Feature Branch"), the widest label in the panel.
 	labelColumnWidth = 14
 	columnGap        = 2
 )
@@ -43,9 +38,6 @@ const (
 func (m Model) renderContent(width int) string {
 	if m.session == nil {
 		return m.styles.SessionDetails.Hint.Render("Select a session")
-	}
-	if !m.session.HasWorktree() {
-		return ""
 	}
 
 	sections := [][]string{m.renderRepositorySection(width)}
@@ -104,13 +96,25 @@ func (m Model) renderRepositorySection(width int) []string {
 		rows = append(rows, twoColumnRow(s, labelRepository, glyphLine(s, glyphRepo, repo, valueW)))
 	}
 
-	if m.session.IsCheckout() {
-		rows = append(rows, twoColumnRow(s, labelBaseBranch, glyphLine(s, glyphBaseBranch, m.session.BaseBranch+"  (tracking)", valueW)))
-		return append(rows, "")
+	branch, suffix := m.branchValue()
+	if branch != "" {
+		rows = append(rows, twoColumnRow(s, labelBranch, glyphLine(s, glyphBranch, branch+suffix, valueW)))
 	}
-	rows = append(rows, twoColumnRow(s, labelFeatureBranch, glyphLine(s, glyphFeatureBranch, m.session.FeatureBranch, valueW)))
-	rows = append(rows, twoColumnRow(s, labelBaseBranch, glyphLine(s, glyphBaseBranch, m.session.BaseBranch, valueW)))
 	return append(rows, "")
+}
+
+// branchValue returns the branch name to render and an optional suffix.
+// Worktree sessions show their persisted Branch unadorned; project-mode
+// sessions show the live HEAD (or "(project mode)" placeholder when the
+// adapter has not reported one yet) with a trailing "(live)" hint.
+func (m Model) branchValue() (string, string) {
+	if m.session.HasWorktree() {
+		return m.session.Branch, ""
+	}
+	if live, ok := m.projectBranches[m.session.ProjectID]; ok && live != "" {
+		return live, "  (live)"
+	}
+	return "(project mode)", ""
 }
 
 // renderPRSection returns nil when no PR exists (still fetching or

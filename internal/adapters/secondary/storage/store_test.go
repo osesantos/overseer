@@ -5,7 +5,6 @@ import (
 	"errors"
 	"io"
 	"log/slog"
-	"os"
 	"path/filepath"
 	"testing"
 
@@ -204,7 +203,7 @@ func TestSessionStore_WorktreeFieldsSurviveReload(t *testing.T) {
 	projectID := uuid.New()
 
 	sess := makeSession(t, "with-worktree", projectID)
-	if err := sess.AssignWorktree("/abs/worktrees/alpha", "main", "overseer/alpha"); err != nil {
+	if err := sess.AssignWorktree("/abs/worktrees/alpha", "overseer/alpha"); err != nil {
 		t.Fatalf("AssignWorktree() error = %v", err)
 	}
 
@@ -227,14 +226,37 @@ func TestSessionStore_WorktreeFieldsSurviveReload(t *testing.T) {
 	if got.WorktreePath != "/abs/worktrees/alpha" {
 		t.Errorf("Get() WorktreePath = %q, want %q", got.WorktreePath, "/abs/worktrees/alpha")
 	}
-	if got.BaseBranch != "main" {
-		t.Errorf("Get() BaseBranch = %q, want %q", got.BaseBranch, "main")
-	}
-	if got.FeatureBranch != "overseer/alpha" {
-		t.Errorf("Get() FeatureBranch = %q, want %q", got.FeatureBranch, "overseer/alpha")
+	if got.Branch != "overseer/alpha" {
+		t.Errorf("Get() Branch = %q, want %q", got.Branch, "overseer/alpha")
 	}
 	if !got.HasWorktree() {
 		t.Errorf("Get() HasWorktree() = false, want true")
+	}
+}
+
+func TestSessionStore_ProjectModeSessionSurvivesReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	logger := discardLogger()
+	ctx := context.Background()
+	projectID := uuid.New()
+
+	sess := makeSession(t, "project-mode", projectID)
+
+	store1, _ := storage.New(path, logger)
+	if err := store1.Sessions().Save(ctx, sess); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	store2, _ := storage.New(path, logger)
+	got, err := store2.Sessions().Get(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if got.HasWorktree() {
+		t.Errorf("Get() HasWorktree() = true, want false (project-mode session)")
+	}
+	if got.Branch != "" {
+		t.Errorf("Get() Branch = %q, want empty (project-mode)", got.Branch)
 	}
 }
 
@@ -440,44 +462,4 @@ func TestStore_PersistsBothAggregatesInSameFile(t *testing.T) {
 	}
 }
 
-func TestStore_LegacyOpenBranchKindMigratesToCheckoutOnLoad(t *testing.T) {
-	dir := t.TempDir()
-	dataPath := filepath.Join(dir, "data.json")
-	legacy := `{
-  "projects": [],
-  "sessions": [
-    {
-      "ID": "00000000-0000-0000-0000-00000000abcd",
-      "Name": "main",
-      "ProjectID": "00000000-0000-0000-0000-00000000beef",
-      "Kind": "open-branch",
-      "Order": 1,
-      "WorktreePath": "/tmp/wt/abcd",
-      "BaseBranch": "main",
-      "FeatureBranch": "overseer/check/abcd",
-      "AgentCommand": "",
-      "EditorCommand": "",
-      "CreatedAt": "2025-01-01T00:00:00Z",
-      "UpdatedAt": "2025-01-01T00:00:00Z"
-    }
-  ]
-}`
-	if err := os.WriteFile(dataPath, []byte(legacy), 0o644); err != nil {
-		t.Fatalf("seed legacy file: %v", err)
-	}
 
-	store, err := storage.New(dataPath, discardLogger())
-	if err != nil {
-		t.Fatalf("New() error = %v", err)
-	}
-	sess, err := store.Sessions().Get(context.Background(), uuid.MustParse("00000000-0000-0000-0000-00000000abcd"))
-	if err != nil {
-		t.Fatalf("Get() error = %v", err)
-	}
-	if sess.Kind != domain.SessionKindCheckout {
-		t.Fatalf("legacy Kind not migrated: got %q, want %q", sess.Kind, domain.SessionKindCheckout)
-	}
-	if !sess.IsCheckout() {
-		t.Fatal("legacy session should report IsCheckout() == true after migration")
-	}
-}

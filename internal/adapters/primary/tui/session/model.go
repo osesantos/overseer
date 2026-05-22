@@ -425,12 +425,12 @@ func projectLabel(id uuid.UUID, names map[uuid.UUID]string) string {
 	return id.String()
 }
 
-const checkoutGlyph = "○ "
+const projectModeGlyph = "· "
 
 func sessionTreeNode(sess domain.Session) components.TreeNode[sessionNode] {
 	label := sess.Name
-	if sess.IsCheckout() {
-		label = checkoutGlyph + sess.Name
+	if !sess.HasWorktree() {
+		label = projectModeGlyph + sess.Name
 	}
 	return components.TreeNode[sessionNode]{
 		ID: "session:" + sess.ID.String(),

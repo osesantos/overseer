@@ -53,7 +53,7 @@ func newRenameForm(
 	terminalWidth int,
 ) RenameFormModel {
 	contentWidth := formContentWidth(terminalWidth)
-	inputWidth := formInputWidth(contentWidth)
+	inputWidth := formValueColumnWidth(contentWidth)
 
 	input := textinput.New()
 	input.CharLimit = 100
@@ -140,14 +140,14 @@ func (m RenameFormModel) submit() (tea.Model, tea.Cmd) {
 
 func (m RenameFormModel) View() tea.View {
 	field := m.styles.Form.Field
+	bg := m.styles.Modal.Box.GetBackground()
+	currentValue := field.LabelFocused.Background(bg).Render(m.originalName)
 
 	parts := []string{
 		m.styles.Form.Title.Render(m.title()),
+		renderField(m.styles, field.Label, m.entityLabel(), currentValue),
 		"",
-		field.Label.Render(m.entityLabel()+": ") + field.LabelFocused.Render(m.originalName),
-		"",
-		field.LabelFocused.Render("New name"),
-		m.input.View(),
+		renderField(m.styles, field.LabelFocused, "New name", m.input.View()),
 	}
 
 	if m.errMsg != "" {

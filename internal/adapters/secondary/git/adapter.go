@@ -8,20 +8,18 @@ import (
 	"log/slog"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
 var _ domain.GitAdapter = (*Adapter)(nil)
 
-// Adapter drives a local git installation by invoking the git binary directly.
 type Adapter struct {
 	gitBin string
 	logger *slog.Logger
 }
 
-// New constructs an Adapter using the `git` binary discovered on PATH.
-// Returns an error if git is not installed on the system.
 func New(logger *slog.Logger) (*Adapter, error) {
 	path, err := exec.LookPath("git")
 	if err != nil {
@@ -32,7 +30,10 @@ func New(logger *slog.Logger) (*Adapter, error) {
 
 // CreateWorktree runs `git -C <repoPath> worktree add -b <featureBranch>
 // <worktreePath> <baseBranch>`, creating featureBranch from baseBranch at
-// worktreePath.
+// worktreePath. No --track / --no-track flag is passed: git's defaults
+// handle the upstream automatically — local refs get no upstream (correct
+// for new features), remote-tracking refs get auto-upstream (correct for
+// continuing work on a published branch).
 func (a *Adapter) CreateWorktree(_ context.Context, repoPath, baseBranch, featureBranch, worktreePath string) error {
 	if _, err := a.runIn(repoPath, "worktree", "add", "-b", featureBranch, worktreePath, baseBranch); err != nil {
 		return fmt.Errorf("git: create worktree %q: %w", worktreePath, err)
@@ -46,42 +47,6 @@ func (a *Adapter) CreateWorktree(_ context.Context, repoPath, baseBranch, featur
 	return nil
 }
 
-// CreateTrackingWorktree creates a worktree at worktreePath on a new local
-// branch (localBranch) that tracks origin/<remoteBranch>. When the origin
-// ref is missing (no remote configured, or branch not yet pushed) it falls
-// back to forking localBranch from the same local ref without an upstream,
-// matching what `git checkout -b` would do, so the worktree is still usable
-// for inspection / drafting even on offline or local-only repositories.
-func (a *Adapter) CreateTrackingWorktree(_ context.Context, repoPath, remoteBranch, localBranch, worktreePath string) error {
-	originRef := "origin/" + remoteBranch
-	if _, err := a.runIn(repoPath, "rev-parse", "--verify", "--quiet", "refs/remotes/"+originRef); err == nil {
-		if _, err := a.runIn(repoPath, "worktree", "add", "--track", "-b", localBranch, worktreePath, originRef); err != nil {
-			return fmt.Errorf("git: create tracking worktree %q: %w", worktreePath, err)
-		}
-		a.logger.Debug("git tracking worktree created",
-			"repo", repoPath,
-			"remote_branch", remoteBranch,
-			"local_branch", localBranch,
-			"worktree", worktreePath,
-		)
-		return nil
-	}
-
-	if _, err := a.runIn(repoPath, "worktree", "add", "-b", localBranch, worktreePath, remoteBranch); err != nil {
-		return fmt.Errorf("git: create tracking worktree (no origin) %q: %w", worktreePath, err)
-	}
-	a.logger.Debug("git worktree created without remote tracking",
-		"repo", repoPath,
-		"base_branch", remoteBranch,
-		"local_branch", localBranch,
-		"worktree", worktreePath,
-	)
-	return nil
-}
-
-// RemoveWorktree runs `git -C <repoPath> worktree remove --force
-// <worktreePath>`. The --force flag is used so worktrees with uncommitted
-// changes are not stranded.
 func (a *Adapter) RemoveWorktree(_ context.Context, repoPath, worktreePath string) error {
 	if _, err := a.runIn(repoPath, "worktree", "remove", "--force", worktreePath); err != nil {
 		return fmt.Errorf("git: remove worktree %q: %w", worktreePath, err)
@@ -93,9 +58,6 @@ func (a *Adapter) RemoveWorktree(_ context.Context, repoPath, worktreePath strin
 	return nil
 }
 
-// IsGitRepo verifies path is the root of a working tree by calling
-// `git -C <path> rev-parse --is-inside-work-tree`. Returns
-// domain.ErrProjectNotGitRepo if path is not a git working tree.
 func (a *Adapter) IsGitRepo(_ context.Context, path string) error {
 	stdout, err := a.runIn(path, "rev-parse", "--is-inside-work-tree")
 	if err != nil {
@@ -110,10 +72,6 @@ func (a *Adapter) IsGitRepo(_ context.Context, path string) error {
 	return nil
 }
 
-// GetDefaultBranch resolves the default branch of the repository at repoPath.
-// It first tries `git symbolic-ref refs/remotes/origin/HEAD` (the upstream
-// default), then falls back to local "main"/"master". Returns
-// domain.ErrProjectNoDefaultBranch when no signal yields a branch.
 func (a *Adapter) GetDefaultBranch(_ context.Context, repoPath string) (string, error) {
 	if stdout, err := a.runIn(repoPath, "symbolic-ref", "--short", "refs/remotes/origin/HEAD"); err == nil {
 		branch := strings.TrimPrefix(strings.TrimSpace(stdout), "origin/")
@@ -137,13 +95,72 @@ func (a *Adapter) GetDefaultBranch(_ context.Context, repoPath string) (string, 
 	return "", fmt.Errorf("%w: %s", domain.ErrProjectNoDefaultBranch, repoPath)
 }
 
-// errGitNotARepo is returned by run when git reports the target path is not a
-// repository (or any directory above it).
+// ListBranches enumerates local + remote-tracking branches in repoPath via
+// `git for-each-ref`, returning each branch's short name, scope (local vs
+// remote), and committer date. The remote HEAD symbolic ref
+// (origin/HEAD -> origin/main) is omitted; only concrete branches show up.
+//
+// Output format from git is one line per ref:
+//
+//	<shortname>|<objecttype>|<committerdate-iso>
+//
+// The pipe is unambiguous because git ref names cannot contain '|'.
+func (a *Adapter) ListBranches(_ context.Context, repoPath string) ([]domain.BranchInfo, error) {
+	const format = "%(refname:short)|%(objecttype)|%(committerdate:iso-strict)"
+
+	localOut, err := a.runIn(repoPath, "for-each-ref", "--format="+format, "refs/heads")
+	if err != nil {
+		return nil, fmt.Errorf("git: for-each-ref refs/heads: %w", err)
+	}
+	remoteOut, err := a.runIn(repoPath, "for-each-ref", "--format="+format, "refs/remotes")
+	if err != nil {
+		return nil, fmt.Errorf("git: for-each-ref refs/remotes: %w", err)
+	}
+
+	branches := make([]domain.BranchInfo, 0)
+	branches = appendParsedBranches(branches, localOut, domain.BranchScopeLocal)
+	branches = appendParsedBranches(branches, remoteOut, domain.BranchScopeRemote)
+	return branches, nil
+}
+
+// CurrentBranch reads HEAD's short branch name via `git rev-parse
+// --abbrev-ref HEAD`. Returns "HEAD" if the repo is in a detached HEAD
+// state; callers may treat that as a special-case display.
+func (a *Adapter) CurrentBranch(_ context.Context, repoPath string) (string, error) {
+	stdout, err := a.runIn(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return "", fmt.Errorf("git: current branch %q: %w", repoPath, err)
+	}
+	return strings.TrimSpace(stdout), nil
+}
+
+func appendParsedBranches(dst []domain.BranchInfo, stdout string, scope domain.BranchScope) []domain.BranchInfo {
+	for _, line := range strings.Split(strings.TrimSpace(stdout), "\n") {
+		if line == "" {
+			continue
+		}
+		parts := strings.SplitN(line, "|", 3)
+		if len(parts) != 3 {
+			continue
+		}
+		name := strings.TrimSpace(parts[0])
+		if name == "" || strings.HasSuffix(name, "/HEAD") {
+			continue
+		}
+		if parts[1] != "commit" {
+			continue
+		}
+		when, err := time.Parse(time.RFC3339, strings.TrimSpace(parts[2]))
+		if err != nil {
+			when = time.Time{}
+		}
+		dst = append(dst, domain.BranchInfo{Name: name, Scope: scope, CommitterDate: when})
+	}
+	return dst
+}
+
 var errGitNotARepo = errors.New("git: not a repository")
 
-// runIn executes the git binary against repoPath via `git -C <repoPath>`,
-// returning stdout. "not a git repository" stderr is mapped to errGitNotARepo
-// so callers can map it to domain.ErrProjectNotGitRepo.
 func (a *Adapter) runIn(repoPath string, args ...string) (string, error) {
 	full := append([]string{"-C", repoPath}, args...)
 	cmd := exec.Command(a.gitBin, full...)

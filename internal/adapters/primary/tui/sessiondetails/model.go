@@ -20,14 +20,16 @@ type Model struct {
 	width  int
 	height int
 
-	session *domain.Session
-	prCache map[uuid.UUID]shared.PRStatusUpdatedMsg
+	session         *domain.Session
+	prCache         map[uuid.UUID]shared.PRStatusUpdatedMsg
+	projectBranches map[uuid.UUID]string
 }
 
 func New(s *styles.Styles) Model {
 	return Model{
-		styles:  s,
-		prCache: make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
+		styles:          s,
+		prCache:         make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
+		projectBranches: make(map[uuid.UUID]string),
 	}
 }
 
@@ -47,6 +49,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.SessionsLoadedMsg:
 		if msg.Err == nil {
 			m.reconcileSession(msg.Sessions)
+		}
+	case shared.ProjectCurrentBranchLoadedMsg:
+		if msg.Err == nil {
+			m.projectBranches[msg.ProjectID] = msg.Branch
 		}
 	}
 	return m, nil

@@ -131,7 +131,7 @@ func TestDeleteForm_YConfirmServiceErrorEmitsErrMsg(t *testing.T) {
 }
 
 func TestDeleteForm_ViewMentionsSessionNameAndWorktreeConsequences(t *testing.T) {
-	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), "/data/worktrees/abc", "main", "overseer/alpha")
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), "/data/worktrees/abc", "overseer/alpha")
 	form := NewDeleteForm(styles.New(), newCreateFormSessionService(t), sess)
 
 	view := form.View().Content

@@ -183,14 +183,14 @@ func (p repoPicker) view() string {
 	}
 
 	if p.itemCount() == 0 {
-		return p.styles.ListRow.Normal.Render("  (no repos yet) — press p to paste a path  ")
+		return modalListRow(p.styles, false).Render("  (no repos yet) — press p to paste a path  ")
 	}
 
 	label := p.currentLabel()
 	if p.focused {
-		return p.styles.ListRow.Selected.Render("< " + label + " >")
+		return modalListRow(p.styles, true).Render("< " + label + " >")
 	}
-	return p.styles.ListRow.Normal.Render("  " + label + "  ")
+	return modalListRow(p.styles, false).Render("  " + label + "  ")
 }
 
 func (p repoPicker) currentLabel() string {

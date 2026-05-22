@@ -262,24 +262,24 @@ func NewWithTheme(themeName string) *Styles {
 				Border(lipgloss.RoundedBorder()).
 				BorderForeground(theme.BorderFocus).
 				Padding(1, 2),
-			Title: lipgloss.NewStyle().Foreground(theme.Primary).Bold(true).MarginBottom(1),
-			Hint:  lipgloss.NewStyle().Foreground(theme.Subtext),
+			Title: lipgloss.NewStyle().Foreground(theme.Primary).Background(theme.ModalBg).Bold(true).MarginBottom(1),
+			Hint:  lipgloss.NewStyle().Foreground(theme.Subtext).Background(theme.ModalBg),
 			Field: FormFieldStyles{
-				Label:        lipgloss.NewStyle().Foreground(theme.Subtext),
-				LabelFocused: lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
-				Input:        lipgloss.NewStyle().Foreground(theme.Text),
-				Error:        lipgloss.NewStyle().Foreground(theme.Warning),
+				Label:        lipgloss.NewStyle().Foreground(theme.Subtext).Background(theme.ModalBg),
+				LabelFocused: lipgloss.NewStyle().Foreground(theme.Accent).Background(theme.ModalBg).Bold(true),
+				Input:        lipgloss.NewStyle().Foreground(theme.Text).Background(theme.ModalBg),
+				Error:        lipgloss.NewStyle().Foreground(theme.Warning).Background(theme.ModalBg),
 			},
 			Input: textinput.Styles{
 				Focused: textinput.StyleState{
-					Placeholder: lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
-					Prompt:      lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
-					Text:        lipgloss.NewStyle().Foreground(theme.Text),
+					Placeholder: lipgloss.NewStyle().Foreground(theme.Muted).Background(theme.ModalBg).Italic(true),
+					Prompt:      lipgloss.NewStyle().Foreground(theme.Accent).Background(theme.ModalBg).Bold(true),
+					Text:        lipgloss.NewStyle().Foreground(theme.Text).Background(theme.ModalBg),
 				},
 				Blurred: textinput.StyleState{
-					Placeholder: lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
-					Prompt:      lipgloss.NewStyle().Foreground(theme.Muted),
-					Text:        lipgloss.NewStyle().Foreground(theme.Subtext),
+					Placeholder: lipgloss.NewStyle().Foreground(theme.Muted).Background(theme.ModalBg).Italic(true),
+					Prompt:      lipgloss.NewStyle().Foreground(theme.Muted).Background(theme.ModalBg),
+					Text:        lipgloss.NewStyle().Foreground(theme.Subtext).Background(theme.ModalBg),
 				},
 				Cursor: textinput.CursorStyle{
 					Color: theme.Accent,

@@ -20,14 +20,14 @@ func MakeSession(name string, projectID uuid.UUID) domain.Session {
 	return s
 }
 
-// MakeSessionWithWorktree builds a project-backed Session populated with the
-// supplied worktree path and branch names.
-func MakeSessionWithWorktree(name string, projectID uuid.UUID, worktreePath, baseBranch, featureBranch string) domain.Session {
+// MakeSessionWithWorktree builds a project-backed Mode 1 Session populated
+// with the supplied worktree path and branch.
+func MakeSessionWithWorktree(name string, projectID uuid.UUID, worktreePath, branch string) domain.Session {
 	s, err := domain.NewSession(name, projectID)
 	if err != nil {
 		panic(err)
 	}
-	if err := s.AssignWorktree(worktreePath, baseBranch, featureBranch); err != nil {
+	if err := s.AssignWorktree(worktreePath, branch); err != nil {
 		panic(err)
 	}
 	return s

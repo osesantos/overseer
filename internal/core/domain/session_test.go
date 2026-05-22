@@ -62,54 +62,6 @@ func TestNewSession_RejectsZeroProjectID(t *testing.T) {
 	}
 }
 
-func TestNewSession_DefaultsToFeatureKind(t *testing.T) {
-	s, err := NewSession("alpha", uuid.New())
-	if err != nil {
-		t.Fatalf("NewSession() error = %v", err)
-	}
-	if s.Kind != SessionKindFeature {
-		t.Fatalf("NewSession() Kind = %q, want %q", s.Kind, SessionKindFeature)
-	}
-	if s.IsCheckout() {
-		t.Fatal("NewSession() IsCheckout() = true, want false")
-	}
-}
-
-func TestNewCheckoutSession_SetsCheckoutKind(t *testing.T) {
-	s, err := NewCheckoutSession("main", uuid.New())
-	if err != nil {
-		t.Fatalf("NewCheckoutSession() error = %v", err)
-	}
-	if s.Kind != SessionKindCheckout {
-		t.Fatalf("NewCheckoutSession() Kind = %q, want %q", s.Kind, SessionKindCheckout)
-	}
-	if !s.IsCheckout() {
-		t.Fatal("NewCheckoutSession() IsCheckout() = false, want true")
-	}
-}
-
-func TestNewCheckoutSession_AppliesSameValidationAsNewSession(t *testing.T) {
-	tests := []struct {
-		name      string
-		input     string
-		projectID uuid.UUID
-		wantErr   error
-	}{
-		{name: "empty name", input: "", projectID: uuid.New(), wantErr: ErrSessionEmptyName},
-		{name: "blank name", input: "   ", projectID: uuid.New(), wantErr: ErrSessionEmptyName},
-		{name: "name too long", input: strings.Repeat("a", 101), projectID: uuid.New(), wantErr: ErrSessionNameTooLong},
-		{name: "nil project id", input: "main", projectID: uuid.Nil, wantErr: ErrSessionEmptyProjectID},
-	}
-	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
-			_, err := NewCheckoutSession(tt.input, tt.projectID)
-			if !errors.Is(err, tt.wantErr) {
-				t.Fatalf("NewCheckoutSession() error = %v, want %v", err, tt.wantErr)
-			}
-		})
-	}
-}
-
 func TestNewSession_Validation(t *testing.T) {
 	long := strings.Repeat("a", 101)
 	tests := []struct {
@@ -140,6 +92,19 @@ func TestNewSession_AcceptsExactlyOneHundredCharacterName(t *testing.T) {
 	}
 	if s.Name != exactly100 {
 		t.Fatalf("NewSession() Name length = %d, want 100", len(s.Name))
+	}
+}
+
+func TestSession_HasWorktree_FalseUntilAssigned(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	if s.HasWorktree() {
+		t.Fatalf("HasWorktree() = true on fresh session, want false")
+	}
+	if err := s.AssignWorktree("/abs/wt", "main"); err != nil {
+		t.Fatalf("AssignWorktree() error = %v", err)
+	}
+	if !s.HasWorktree() {
+		t.Fatalf("HasWorktree() = false after AssignWorktree, want true")
 	}
 }
 
@@ -241,22 +206,19 @@ func TestAssignEditorCommand_RejectsEmpty(t *testing.T) {
 	}
 }
 
-func TestAssignWorktree_PopulatesEnsemble(t *testing.T) {
+func TestAssignWorktree_PopulatesPathAndBranch(t *testing.T) {
 	s, _ := NewSession("alpha", uuid.New())
 	originalUpdated := s.UpdatedAt
 	time.Sleep(time.Millisecond)
 
-	if err := s.AssignWorktree("/abs/worktree", "main", "overseer/alpha"); err != nil {
+	if err := s.AssignWorktree("/abs/worktree", "overseer/alpha"); err != nil {
 		t.Fatalf("AssignWorktree() error = %v", err)
 	}
 	if s.WorktreePath != "/abs/worktree" {
 		t.Fatalf("WorktreePath = %q, want %q", s.WorktreePath, "/abs/worktree")
 	}
-	if s.BaseBranch != "main" {
-		t.Fatalf("BaseBranch = %q, want %q", s.BaseBranch, "main")
-	}
-	if s.FeatureBranch != "overseer/alpha" {
-		t.Fatalf("FeatureBranch = %q, want %q", s.FeatureBranch, "overseer/alpha")
+	if s.Branch != "overseer/alpha" {
+		t.Fatalf("Branch = %q, want %q", s.Branch, "overseer/alpha")
 	}
 	if !s.HasWorktree() {
 		t.Fatalf("HasWorktree() = false, want true")
@@ -268,35 +230,31 @@ func TestAssignWorktree_PopulatesEnsemble(t *testing.T) {
 
 func TestAssignWorktree_TrimsFields(t *testing.T) {
 	s, _ := NewSession("alpha", uuid.New())
-	if err := s.AssignWorktree("  /abs/worktree  ", "  main  ", "  overseer/alpha  "); err != nil {
+	if err := s.AssignWorktree("  /abs/worktree  ", "  overseer/alpha  "); err != nil {
 		t.Fatalf("AssignWorktree() error = %v", err)
 	}
-	if s.WorktreePath != "/abs/worktree" || s.BaseBranch != "main" || s.FeatureBranch != "overseer/alpha" {
+	if s.WorktreePath != "/abs/worktree" || s.Branch != "overseer/alpha" {
 		t.Fatalf("AssignWorktree did not trim fields: %+v", s)
 	}
 }
 
 func TestAssignWorktree_Validation(t *testing.T) {
 	tests := []struct {
-		name          string
-		worktreePath  string
-		baseBranch    string
-		featureBranch string
-		wantErr       error
+		name         string
+		worktreePath string
+		branch       string
+		wantErr      error
 	}{
-		{name: "all empty", worktreePath: "", baseBranch: "", featureBranch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "path only", worktreePath: "/abs/worktree", baseBranch: "", featureBranch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "base branch only", worktreePath: "", baseBranch: "main", featureBranch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "feature branch only", worktreePath: "", baseBranch: "", featureBranch: "overseer/alpha", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "missing feature", worktreePath: "/abs/worktree", baseBranch: "main", featureBranch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "missing base", worktreePath: "/abs/worktree", baseBranch: "", featureBranch: "overseer/alpha", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "relative path", worktreePath: "relative/worktree", baseBranch: "main", featureBranch: "overseer/alpha", wantErr: ErrSessionWorktreePathNotAbsolute},
+		{name: "both empty", worktreePath: "", branch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
+		{name: "path only", worktreePath: "/abs/worktree", branch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
+		{name: "branch only", worktreePath: "", branch: "overseer/alpha", wantErr: ErrSessionWorktreeFieldsMismatch},
+		{name: "relative path", worktreePath: "relative/worktree", branch: "overseer/alpha", wantErr: ErrSessionWorktreePathNotAbsolute},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			s, _ := NewSession("alpha", uuid.New())
-			err := s.AssignWorktree(tt.worktreePath, tt.baseBranch, tt.featureBranch)
+			err := s.AssignWorktree(tt.worktreePath, tt.branch)
 			if !errors.Is(err, tt.wantErr) {
 				t.Fatalf("AssignWorktree() error = %v, want %v", err, tt.wantErr)
 			}
