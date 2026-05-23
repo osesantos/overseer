@@ -90,7 +90,7 @@ func New(
 	left.SetFocus(true)
 	m := Model{
 		styles:                  styles,
-		titlebar:                newTitlebar(styles, "Overseer"),
+		titlebar:                newTitlebar(styles, "overseer"),
 		leftPane:                left,
 		inspector:               inspector.New(styles, sessionsService, previewRefreshInterval),
 		helpBar:                 shared.NewHelpBarModel(styles, slices.Concat(sessionsKeyBindings, inspectorKeyBindings, generalKeyBindings)),
