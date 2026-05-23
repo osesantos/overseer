@@ -369,11 +369,11 @@ func TestAssignLabel_StoresAndUpdatesTimestamp(t *testing.T) {
 func TestAssignLabel_TrimsCode(t *testing.T) {
 	s, _ := NewSession("alpha", uuid.New())
 
-	if err := s.AssignLabel("  reviewing  "); err != nil {
+	if err := s.AssignLabel("  testing  "); err != nil {
 		t.Fatalf("AssignLabel() error = %v", err)
 	}
-	if s.Label != "reviewing" {
-		t.Fatalf("Label = %q, want trimmed %q", s.Label, "reviewing")
+	if s.Label != "testing" {
+		t.Fatalf("Label = %q, want trimmed %q", s.Label, "testing")
 	}
 }
 

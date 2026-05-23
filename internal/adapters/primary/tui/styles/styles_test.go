@@ -88,14 +88,14 @@ func TestAllStyles_NonEmptyRender(t *testing.T) {
 }
 
 func TestNewWithTheme_ReturnsNonNil(t *testing.T) {
-	if styles.NewWithTheme("dracula") == nil {
-		t.Fatal("NewWithTheme(\"dracula\") returned nil")
+	if styles.NewWithTheme("dracula", false) == nil {
+		t.Fatal("NewWithTheme(\"dracula\", false) returned nil")
 	}
 }
 
 func TestNewWithTheme_UnknownTheme_MatchesDarkOutput(t *testing.T) {
 	dark := styles.New()
-	unknown := styles.NewWithTheme("does-not-exist")
+	unknown := styles.NewWithTheme("does-not-exist", false)
 
 	if dark.TitleBar.Branding.Render("X") != unknown.TitleBar.Branding.Render("X") {
 		t.Errorf("NewWithTheme with an unknown name should fall back to the dark theme, but TitleBar.Branding output differs")
@@ -103,10 +103,19 @@ func TestNewWithTheme_UnknownTheme_MatchesDarkOutput(t *testing.T) {
 }
 
 func TestNewWithTheme_DifferentThemes_ProduceDifferentOutput(t *testing.T) {
-	dark := styles.NewWithTheme("dark")
-	dracula := styles.NewWithTheme("dracula")
+	dark := styles.NewWithTheme("dark", false)
+	dracula := styles.NewWithTheme("dracula", false)
 
 	if dark.TitleBar.Branding.Render("X") == dracula.TitleBar.Branding.Render("X") {
 		t.Error("dark and dracula themes produce identical TitleBar.Branding output; theme name is not being applied")
+	}
+}
+
+func TestNewWithTheme_DisableEmoji_PropagatesToGlyphs(t *testing.T) {
+	emoji := styles.NewWithTheme("dark", false)
+	ascii := styles.NewWithTheme("dark", true)
+
+	if emoji.Glyphs.Repo == ascii.Glyphs.Repo {
+		t.Errorf("Glyphs.Repo identical between modes (%q); disableEmoji not propagating", emoji.Glyphs.Repo)
 	}
 }

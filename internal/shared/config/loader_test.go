@@ -144,6 +144,44 @@ func TestLoad_ThemeOmitted_KeepsDefault(t *testing.T) {
 	}
 }
 
+func TestLoad_DisableEmojiKey_OverridesDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := "disableEmoji: true\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.DisableEmoji {
+		t.Errorf("DisableEmoji: want true, got %v", cfg.DisableEmoji)
+	}
+}
+
+func TestLoad_DisableEmojiOmitted_KeepsDefault(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	content := "logging:\n  level: debug\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.DisableEmoji {
+		t.Errorf("DisableEmoji: omitting field should preserve false default, got %v", cfg.DisableEmoji)
+	}
+}
+
 func TestLoad_PartialYAML_FillsDefaults(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
@@ -478,7 +516,7 @@ func TestDomainEditors_InvalidEntry_ReturnsInvalidInput(t *testing.T) {
 func TestDefault_ShipsFiveBuiltInLabels(t *testing.T) {
 	cfg := config.Default()
 
-	wantCodes := []string{"WIP", "reviewing", "ready", "done", "draft"}
+	wantCodes := []string{"WIP", "draft", "testing", "ready", "done"}
 	if len(cfg.Labels) != len(wantCodes) {
 		t.Fatalf("Labels: want %d entries, got %d", len(wantCodes), len(cfg.Labels))
 	}
@@ -489,8 +527,8 @@ func TestDefault_ShipsFiveBuiltInLabels(t *testing.T) {
 		if cfg.Labels[i].Color == "" {
 			t.Errorf("Labels[%d].Color is empty", i)
 		}
-		if cfg.Labels[i].Glyph == "" {
-			t.Errorf("Labels[%d].Glyph is empty, want non-empty default glyph", i)
+		if cfg.Labels[i].Glyph != "" {
+			t.Errorf("Labels[%d].Glyph = %q, want empty (built-in glyph defaults are owned by styles.Glyphs.LabelGlyph)", i, cfg.Labels[i].Glyph)
 		}
 	}
 }

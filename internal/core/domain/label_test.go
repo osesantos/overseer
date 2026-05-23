@@ -88,7 +88,7 @@ func TestNewLabel_RejectsTooLongGlyph(t *testing.T) {
 }
 
 func TestDefaultLabels_FiveBuiltInsInCanonicalOrder(t *testing.T) {
-	wantCodes := []string{"WIP", "reviewing", "ready", "done", "draft"}
+	wantCodes := []string{"WIP", "draft", "testing", "ready", "done"}
 
 	if len(DefaultLabels) != len(wantCodes) {
 		t.Fatalf("DefaultLabels length = %d, want %d", len(DefaultLabels), len(wantCodes))
@@ -100,8 +100,8 @@ func TestDefaultLabels_FiveBuiltInsInCanonicalOrder(t *testing.T) {
 		if DefaultLabels[i].Color == "" {
 			t.Errorf("DefaultLabels[%d].Color is empty, want non-empty hex color", i)
 		}
-		if DefaultLabels[i].Glyph == "" {
-			t.Errorf("DefaultLabels[%d].Glyph is empty, want non-empty default glyph", i)
+		if DefaultLabels[i].Glyph != "" {
+			t.Errorf("DefaultLabels[%d].Glyph = %q, want empty (defaults are owned by styles.Glyphs.LabelGlyph)", i, DefaultLabels[i].Glyph)
 		}
 	}
 }

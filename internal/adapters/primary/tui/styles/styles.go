@@ -185,15 +185,16 @@ type Styles struct {
 	// only the typographic weight so colour is the only per-label variable.
 	SessionLabel   lipgloss.Style
 	SessionDetails SessionDetailsStyles
+	Glyphs         Glyphs
 }
 
 // New builds *Styles using the dark theme; production code should use NewWithTheme.
 func New() *Styles {
-	return NewWithTheme("dark")
+	return NewWithTheme("dark", false)
 }
 
 // NewWithTheme builds *Styles using the named theme; unknown names fall back to dark.
-func NewWithTheme(themeName string) *Styles {
+func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 	theme := LoadTheme(themeName)
 
 	helpKeyStyle := lipgloss.NewStyle().Foreground(theme.Text).Background(theme.HelpBarBg).Bold(true)
@@ -355,5 +356,6 @@ func NewWithTheme(themeName string) *Styles {
 			Special:        lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
 			Hint:           lipgloss.NewStyle().Foreground(theme.Subtext).Italic(true),
 		},
+		Glyphs: NewGlyphs(disableEmoji),
 	}
 }

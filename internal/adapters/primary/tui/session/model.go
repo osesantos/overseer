@@ -372,20 +372,20 @@ func (m Model) loadSessions() tea.Cmd {
 
 func (m Model) sessionTreeNodes() []components.TreeNode[sessionNode] {
 	if m.groupingMode == sessionGroupingNone {
-		return rawSessionNodes(m.sessions)
+		return rawSessionNodes(m.sessions, m.styles.Glyphs)
 	}
-	return projectSessionNodes(m.sessions, m.projectNames)
+	return projectSessionNodes(m.sessions, m.projectNames, m.styles.Glyphs)
 }
 
-func rawSessionNodes(sessions []domain.Session) []components.TreeNode[sessionNode] {
+func rawSessionNodes(sessions []domain.Session, glyphs styles.Glyphs) []components.TreeNode[sessionNode] {
 	nodes := make([]components.TreeNode[sessionNode], len(sessions))
 	for i, sess := range sessions {
-		nodes[i] = sessionTreeNode(sess)
+		nodes[i] = sessionTreeNode(sess, glyphs)
 	}
 	return nodes
 }
 
-func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]string) []components.TreeNode[sessionNode] {
+func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]string, glyphs styles.Glyphs) []components.TreeNode[sessionNode] {
 	grouped := make(map[uuid.UUID][]domain.Session)
 	ids := make([]uuid.UUID, 0)
 	for _, sess := range sessions {
@@ -403,7 +403,7 @@ func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]s
 		groupSessions := grouped[id]
 		children := make([]components.TreeNode[sessionNode], len(groupSessions))
 		for j, sess := range groupSessions {
-			children[j] = sessionTreeNode(sess)
+			children[j] = sessionTreeNode(sess, glyphs)
 		}
 		label := projectLabel(id, projectNames)
 		nodes[i] = components.TreeNode[sessionNode]{
@@ -425,12 +425,10 @@ func projectLabel(id uuid.UUID, names map[uuid.UUID]string) string {
 	return id.String()
 }
 
-const projectModeGlyph = "· "
-
-func sessionTreeNode(sess domain.Session) components.TreeNode[sessionNode] {
+func sessionTreeNode(sess domain.Session, glyphs styles.Glyphs) components.TreeNode[sessionNode] {
 	label := sess.Name
 	if !sess.HasWorktree() {
-		label = projectModeGlyph + sess.Name
+		label = glyphs.ProjectMode + " " + sess.Name
 	}
 	return components.TreeNode[sessionNode]{
 		ID: "session:" + sess.ID.String(),
@@ -506,8 +504,12 @@ func renderLabelBadge(s *styles.Styles, code string, labels []domain.Label) stri
 	text := code
 	if l, ok := domain.FindLabel(code, labels); ok {
 		color = lipgloss.Color(l.Color)
-		if l.Glyph != "" {
-			text = l.Glyph + " " + code
+		glyph := l.Glyph
+		if glyph == "" {
+			glyph = s.Glyphs.LabelGlyph(code)
+		}
+		if glyph != "" {
+			text = glyph + " " + code
 		}
 	}
 	return s.SessionLabel.Foreground(color).Render(text)

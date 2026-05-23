@@ -45,18 +45,20 @@ type LabelConfig struct {
 }
 
 type Config struct {
-	Theme     string           `yaml:"theme"`
-	Dashboard DashboardConfig  `yaml:"dashboard"`
-	Logging   LoggingConfig    `yaml:"logging"`
-	Storage   StorageConfig    `yaml:"storage"`
-	Launchers []LauncherConfig `yaml:"launchers"`
-	Editors   []EditorConfig   `yaml:"editors"`
-	Labels    []LabelConfig    `yaml:"labels"`
+	Theme        string           `yaml:"theme"`
+	DisableEmoji bool             `yaml:"disableEmoji"`
+	Dashboard    DashboardConfig  `yaml:"dashboard"`
+	Logging      LoggingConfig    `yaml:"logging"`
+	Storage      StorageConfig    `yaml:"storage"`
+	Launchers    []LauncherConfig `yaml:"launchers"`
+	Editors      []EditorConfig   `yaml:"editors"`
+	Labels       []LabelConfig    `yaml:"labels"`
 }
 
 func Default() Config {
 	return Config{
-		Theme: "dark",
+		Theme:        "dark",
+		DisableEmoji: false,
 		Dashboard: DashboardConfig{
 			MinWidth:               60,
 			MinHeight:              15,

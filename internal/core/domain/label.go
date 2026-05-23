@@ -11,7 +11,7 @@ const (
 )
 
 // Label is a configured status indicator that can be attached to a Session.
-// Code is the persisted identifier (e.g. "WIP", "reviewing"); Color is a
+// Code is the persisted identifier (e.g. "WIP", "testing"); Color is a
 // lipgloss-compatible color string (hex like "#F59E0B" or a named color
 // like "yellow") used to render the badge in the sessions list. Glyph is
 // an optional leading icon (emoji or unicode glyph) rendered before the
@@ -32,24 +32,23 @@ type Label struct {
 // chosen for readable contrast on dark backgrounds and reuse the existing
 // theme palette where possible.
 //
-// Glyphs are deliberately monochrome BMP geometric symbols (Unicode 1.1,
-// blocks U+25xx / U+27xx) rather than color emojis: they render in every
-// modern terminal font without requiring an emoji font, and they are
-// single-cell-wide in non-CJK contexts so alignment is reliable across
-// terminals (iTerm2, Alacritty, Kitty, Wezterm, Terminal.app, gnome-
-// terminal, Windows Terminal, tmux/ssh). Users who want emojis can
-// override per-label in config — alignment still works because the
-// renderer uses lipgloss.Width which handles wide characters.
+// Glyphs are intentionally empty here. The default visual glyph for each
+// built-in code is owned by the primary TUI adapter (see
+// styles.Glyphs.LabelGlyph) so the same code can render as a monochrome
+// geometric symbol in fallback mode or as a color emoji in emoji mode,
+// driven by the user's disableEmoji config flag. Users who want a fixed
+// glyph regardless of mode can set Label.Glyph in config — that always
+// wins over the styles default.
 //
 // When the user defines labels in their config file, this list is fully
 // replaced (not appended-to) — see config.Load. The intent is that custom
 // labels supersede the defaults entirely.
 var DefaultLabels = []Label{
-	{Code: "WIP", Color: "#F59E0B", Glyph: "◐"},
-	{Code: "reviewing", Color: "#22D3EE", Glyph: "◉"},
-	{Code: "ready", Color: "#60A5FA", Glyph: "◆"},
-	{Code: "done", Color: "#10B981", Glyph: "✓"},
-	{Code: "draft", Color: "#9CA3AF", Glyph: "◌"},
+	{Code: "WIP", Color: "#F59E0B"},
+	{Code: "draft", Color: "#9CA3AF"},
+	{Code: "testing", Color: "#22D3EE"},
+	{Code: "ready", Color: "#60A5FA"},
+	{Code: "done", Color: "#10B981"},
 }
 
 // NewLabel constructs a validated Label. Code, Color and Glyph are trimmed.

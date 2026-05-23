@@ -101,7 +101,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	s := styles.NewWithTheme(cfg.Theme)
+	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
 	dash := dashboard.New(s, *sessionSvc, *projectSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 

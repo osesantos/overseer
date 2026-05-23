@@ -11,17 +11,6 @@ import (
 )
 
 const (
-	glyphBranch       = "⎇"
-	glyphRepo         = "⊞"
-	glyphPRLink       = "⎘"
-	glyphPRStateDot   = "●"
-	glyphAdded        = "⊕"
-	glyphRemoved      = "⊖"
-	glyphFiles        = "▤"
-	glyphCheckPass    = "✓"
-	glyphCheckFail    = "✗"
-	glyphCheckPending = "◷"
-
 	titlePullRequest = "Pull Request"
 
 	labelRepository = "Repository"
@@ -89,16 +78,17 @@ func twoColumnValueWidth(totalW int) int {
 
 func (m Model) renderRepositorySection(width int) []string {
 	s := &m.styles.SessionDetails
+	g := m.styles.Glyphs
 	valueW := twoColumnValueWidth(width)
 	rows := []string{}
 
 	if repo := repoSlugFromPR(m.prCache[m.session.ID].PR.URL); repo != "" {
-		rows = append(rows, twoColumnRow(s, labelRepository, glyphLine(s, glyphRepo, repo, valueW)))
+		rows = append(rows, twoColumnRow(s, labelRepository, glyphLine(s, g.Repo, repo, valueW)))
 	}
 
 	branch, suffix := m.branchValue()
 	if branch != "" {
-		rows = append(rows, twoColumnRow(s, labelBranch, glyphLine(s, glyphBranch, branch+suffix, valueW)))
+		rows = append(rows, twoColumnRow(s, labelBranch, glyphLine(s, g.Branch, branch+suffix, valueW)))
 	}
 	return append(rows, "")
 }
@@ -128,41 +118,43 @@ func (m Model) renderPRSection(width int) []string {
 	}
 
 	s := &m.styles.SessionDetails
+	g := m.styles.Glyphs
 	valueW := twoColumnValueWidth(width)
 	rows := sectionHeader(s, titlePullRequest, width)
 
-	statusValue := prStateStyle(s, pr.PR.State).Render(glyphPRStateDot+" "+formatPRState(pr.PR.State)) +
+	stateDot := prStateGlyph(g, pr.PR.State)
+	statusValue := prStateStyle(s, pr.PR.State).Render(stateDot+" "+formatPRState(pr.PR.State)) +
 		"  " + s.Glyph.Render(fmt.Sprintf("#%d", pr.PR.Number))
 	rows = append(rows, twoColumnRow(s, labelStatus, statusValue))
 
 	if pr.PR.URL != "" {
-		rows = append(rows, twoColumnRow(s, labelLink, pathLine(s, glyphPRLink, pr.PR.URL, valueW)))
+		rows = append(rows, twoColumnRow(s, labelLink, pathLine(s, g.PRLink, pr.PR.URL, valueW)))
 	}
 
-	changesValue := s.Good.Render(fmt.Sprintf("%s +%d", glyphAdded, pr.PR.Stats.Additions)) +
-		"   " + s.Bad.Render(fmt.Sprintf("%s -%d", glyphRemoved, pr.PR.Stats.Deletions)) +
-		"   " + s.Glyph.Render(fmt.Sprintf("%s %d files", glyphFiles, pr.PR.Stats.ChangedFiles))
+	changesValue := s.Good.Render(fmt.Sprintf("%s +%d", g.Added, pr.PR.Stats.Additions)) +
+		"   " + s.Bad.Render(fmt.Sprintf("%s -%d", g.Removed, pr.PR.Stats.Deletions)) +
+		"   " + s.Glyph.Render(fmt.Sprintf("%s %d files", g.Files, pr.PR.Stats.ChangedFiles))
 	rows = append(rows, twoColumnRow(s, labelChanges, changesValue))
 
-	if checksValue := renderChecksLine(s, pr.PR.Checks); checksValue != "" {
+	if checksValue := renderChecksLine(s, g, pr.PR.Checks); checksValue != "" {
 		rows = append(rows, twoColumnRow(s, labelChecks, checksValue))
 	}
 	return append(rows, "")
 }
 
-func renderChecksLine(s *styles.SessionDetailsStyles, c domain.PRChecks) string {
+func renderChecksLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChecks) string {
 	if c.Total == 0 {
 		return ""
 	}
 	var parts []string
 	if c.Passing > 0 {
-		parts = append(parts, s.Good.Render(fmt.Sprintf("%s %d", glyphCheckPass, c.Passing)))
+		parts = append(parts, s.Good.Render(fmt.Sprintf("%s %d", g.CheckPass, c.Passing)))
 	}
 	if c.Failing > 0 {
-		parts = append(parts, s.Bad.Render(fmt.Sprintf("%s %d", glyphCheckFail, c.Failing)))
+		parts = append(parts, s.Bad.Render(fmt.Sprintf("%s %d", g.CheckFail, c.Failing)))
 	}
 	if c.Pending > 0 {
-		parts = append(parts, s.Warn.Render(fmt.Sprintf("%s %d", glyphCheckPending, c.Pending)))
+		parts = append(parts, s.Warn.Render(fmt.Sprintf("%s %d", g.CheckPending, c.Pending)))
 	}
 	return strings.Join(parts, "   ")
 }
@@ -179,6 +171,20 @@ func prStateStyle(s *styles.SessionDetailsStyles, state domain.PRState) lipgloss
 		return s.Warn
 	}
 	return s.Glyph
+}
+
+func prStateGlyph(g styles.Glyphs, state domain.PRState) string {
+	switch state {
+	case domain.PRStateOpen:
+		return g.PRStateOpen
+	case domain.PRStateMerged:
+		return g.PRStateMerged
+	case domain.PRStateClosed:
+		return g.PRStateClosed
+	case domain.PRStateDraft:
+		return g.PRStateDraft
+	}
+	return g.PRStateOpen
 }
 
 // formatPRState turns the uppercase domain enum value ("OPEN", "DRAFT", …)
