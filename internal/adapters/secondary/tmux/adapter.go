@@ -181,6 +181,17 @@ func (a *Adapter) ResizeWindow(_ context.Context, tmuxID string, width, height i
 	return nil
 }
 
+// SendKeys sends the named key to the named tmux session's active pane without
+// attaching to it. key is a tmux key name such as "Enter". The call is
+// fire-and-forget: the TUI keeps running while the keypress is delivered.
+func (a *Adapter) SendKeys(_ context.Context, tmuxID string, key string) error {
+	if _, err := a.run("send-keys", "-t", tmuxID, key); err != nil {
+		return fmt.Errorf("tmux: send-keys to %q: %w", tmuxID, err)
+	}
+	a.logger.Debug("tmux send-keys", "target", tmuxID, "key", key)
+	return nil
+}
+
 // errTmuxNoServer is returned by run when tmux reports that no server is running.
 var errTmuxNoServer = errors.New("tmux: no server running")
 

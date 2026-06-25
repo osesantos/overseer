@@ -114,8 +114,8 @@ overseer
 ```
 
 On first run, Overseer creates a default configuration file at:
-- macOS: `~/Library/Application Support/overseer/overseer.yaml`
-- Linux: `~/.config/overseer/overseer.yaml`
+- macOS: `~/Library/Application Support/overseer/config.yaml`
+- Linux: `~/.config/overseer/config.yaml`
 
 ### 2. Register a Project
 
@@ -143,7 +143,7 @@ Select a session and press `Enter` to attach to its tmux window. Press `e` to op
 Overseer is configured via a YAML file. Here's the default configuration:
 
 ```yaml
-# overseer.yaml
+# config.yaml
 theme: dark
 disableEmoji: false
 

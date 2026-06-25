@@ -283,6 +283,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case shared.SessionEditorLaunchedMsg:
 		return m, nil
+	case shared.AgentEnterSentMsg:
+		return m, nil
 	case shared.PreviewSessionKilledMsg:
 		m.activePopup = popupNone
 		return m, m.inspector.Init()
@@ -371,6 +373,11 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 	}
+	if key.Matches(msg, sendAgentEnterKeyBinding) {
+		if cmd := m.sendAgentEnterCmd(); cmd != nil {
+			return cmd, true
+		}
+	}
 	if key.Matches(msg, killPreviewSessionKeyBinding) {
 		if cmd := m.showKillPreviewPopupCmd(); cmd != nil {
 			return cmd, true
@@ -435,6 +442,22 @@ func (m Model) openSelectedSessionEditorCmd() tea.Cmd {
 	return func() tea.Msg {
 		_, err := svc.OpenEditor(context.Background(), service.OpenEditorRequest{ID: sessID})
 		return shared.SessionEditorLaunchedMsg{Err: err}
+	}
+}
+
+func (m Model) sendAgentEnterCmd() tea.Cmd {
+	idStr := m.leftPane.SelectedSessionID()
+	if idStr == "" {
+		return nil
+	}
+	sessID, err := uuid.Parse(idStr)
+	if err != nil {
+		return nil
+	}
+	svc := m.sessionsService
+	return func() tea.Msg {
+		_, err := svc.SendAgentEnter(context.Background(), service.SendAgentEnterRequest{ID: sessID})
+		return shared.AgentEnterSentMsg{Err: err}
 	}
 }
 

@@ -26,6 +26,7 @@ type Stub struct {
 	AttachCommandCalls int
 	CapturePaneCalls   int
 	ResizeWindowCalls  int
+	SendKeysCalls      int
 
 	LastStartDir     string
 	LastShellCommand string
@@ -86,5 +87,11 @@ func (s *Stub) CapturePane(_ context.Context, _ string) (string, error) {
 // ResizeWindow records the call without touching any real tmux session.
 func (s *Stub) ResizeWindow(_ context.Context, _ string, _, _ int) error {
 	s.ResizeWindowCalls++
+	return nil
+}
+
+// SendKeys records the call without sending any real keys.
+func (s *Stub) SendKeys(_ context.Context, _ string, _ string) error {
+	s.SendKeysCalls++
 	return nil
 }

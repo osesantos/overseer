@@ -34,6 +34,10 @@ type TmuxAdapter interface {
 	// and redraws on the new canvas. Returns ErrTmuxSessionNotFound if the
 	// session does not exist.
 	ResizeWindow(ctx context.Context, tmuxID string, width, height int) error
+	// SendKeys sends the named key(s) to the given tmux session's active pane
+	// without attaching to it. key is a tmux key name such as "Enter".
+	// Returns ErrTmuxSessionNotFound if the session does not exist.
+	SendKeys(ctx context.Context, tmuxID string, key string) error
 }
 
 var ErrTmuxSessionNotFound = errors.New("tmux session not found")

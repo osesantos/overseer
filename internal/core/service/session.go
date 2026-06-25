@@ -597,6 +597,30 @@ func (s *SessionService) OpenEditor(ctx context.Context, req OpenEditorRequest) 
 	return OpenEditorResponse{Command: cmd}, nil
 }
 
+// --- SendAgentEnter ---
+
+type SendAgentEnterRequest struct {
+	ID uuid.UUID
+}
+
+type SendAgentEnterResponse struct{}
+
+// SendAgentEnter delivers an Enter keypress to the agent tmux pane of the
+// given session without attaching to it. The TUI keeps running. If the agent
+// pane does not exist the call returns domain.ErrTmuxSessionNotFound.
+func (s *SessionService) SendAgentEnter(ctx context.Context, req SendAgentEnterRequest) (SendAgentEnterResponse, error) {
+	sess, err := s.repo.Get(ctx, req.ID)
+	if err != nil {
+		return SendAgentEnterResponse{}, err
+	}
+	agentTmuxID := sess.ID.String() + "-agent"
+	if err := s.tmux.SendKeys(ctx, agentTmuxID, "Enter"); err != nil {
+		return SendAgentEnterResponse{}, fmt.Errorf("send enter to agent: %w", err)
+	}
+	s.logger.InfoContext(ctx, "sent enter to agent", slog.String("id", sess.ID.String()))
+	return SendAgentEnterResponse{}, nil
+}
+
 // --- PreviewSession ---
 
 // PreviewKind selects which tmux session attached to an Overseer session is

@@ -46,6 +46,8 @@ type SessionAttachedMsg struct{ Err error }
 
 type SessionEditorLaunchedMsg struct{ Err error }
 
+type AgentEnterSentMsg struct{ Err error }
+
 type PreviewSessionKilledMsg struct{ Err error }
 
 type KillPreviewPopupCloseMsg struct{}
