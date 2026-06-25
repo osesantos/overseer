@@ -38,6 +38,12 @@ type TmuxAdapter interface {
 	// without attaching to it. key is a tmux key name such as "Enter".
 	// Returns ErrTmuxSessionNotFound if the session does not exist.
 	SendKeys(ctx context.Context, tmuxID string, key string) error
+	// EnsureExtendedKeys sets the tmux server option `extended-keys on` so that
+	// modifier key sequences (e.g. Shift+Enter) are preserved and forwarded to
+	// inner applications instead of being collapsed to their unmodified form.
+	// The option is server-scoped and only needs to be set once per tmux server
+	// process. It is a no-op on tmux servers that do not support the option.
+	EnsureExtendedKeys(ctx context.Context) error
 }
 
 var ErrTmuxSessionNotFound = errors.New("tmux session not found")

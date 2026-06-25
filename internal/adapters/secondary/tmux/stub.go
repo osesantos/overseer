@@ -95,3 +95,8 @@ func (s *Stub) SendKeys(_ context.Context, _ string, _ string) error {
 	s.SendKeysCalls++
 	return nil
 }
+
+// EnsureExtendedKeys is a no-op in the stub; it always returns nil.
+func (s *Stub) EnsureExtendedKeys(_ context.Context) error {
+	return nil
+}

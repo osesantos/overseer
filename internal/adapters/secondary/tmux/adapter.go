@@ -181,6 +181,33 @@ func (a *Adapter) ResizeWindow(_ context.Context, tmuxID string, width, height i
 	return nil
 }
 
+// EnsureExtendedKeys sets the tmux server option `extended-keys on` so that
+// modifier key sequences (e.g. Shift+Enter) are preserved and forwarded to
+// inner panes instead of being collapsed to their unmodified equivalent.
+//
+// tmux server options can only be set while the server is running. We call
+// `tmux start-server` first (idempotent — no-op if already running) so the
+// option is applied even when Overseer launches before any tmux session exists.
+// Errors are swallowed with a warning so startup is never aborted.
+func (a *Adapter) EnsureExtendedKeys(_ context.Context) error {
+	// Ensure the server is running before attempting to set a server option.
+	if _, err := a.run("start-server"); err != nil {
+		a.logger.Warn("tmux: could not start server, skipping extended-keys setup", "error", err)
+		return nil
+	}
+	// Use "always" rather than "on": the "on" mode activates only when the
+	// outer terminal announces extended-key support via a capability query,
+	// which many terminals skip. "always" forces the encoding unconditionally,
+	// ensuring modifier sequences (e.g. Shift+Enter → \e[13;2u) are always
+	// forwarded to inner applications like OpenCode or Claude Code.
+	if _, err := a.run("set", "-s", "extended-keys", "always"); err != nil {
+		a.logger.Warn("tmux: could not enable extended-keys (tmux <3.2?)", "error", err)
+	} else {
+		a.logger.Debug("tmux: extended-keys set to always")
+	}
+	return nil
+}
+
 // SendKeys sends the named key to the named tmux session's active pane without
 // attaching to it. key is a tmux key name such as "Enter". The call is
 // fire-and-forget: the TUI keeps running while the keypress is delivered.

@@ -82,6 +82,9 @@ func main() {
 		log.Error("initialize tmux", "error", err)
 		os.Exit(1)
 	}
+	if err := tmuxAdapter.EnsureExtendedKeys(context.Background()); err != nil {
+		log.Warn("tmux: could not enable extended-keys", "error", err)
+	}
 
 	gitAdapter, err := git.New(log)
 	if err != nil {
