@@ -91,7 +91,7 @@ func NewCreateForm(
 	m := CreateFormModel{
 		nameInput:              nameInput,
 		repoPicker:             repoPicker,
-		createWorktree:         true,
+		createWorktree:         false,
 		baseBranchPicker:       newBranchPicker(s, initialBranches, initialDefault, inputWidth),
 		newBranchInput:         newBranchInput,
 		branchesByProject:      branchesByProject,
@@ -132,6 +132,15 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if key.Matches(msg, popupPrevFieldKeyBinding) {
 			return m.moveFocus(-1)
+		}
+		// Arrow keys also navigate fields, except for pickers that own up/down internally.
+		if current != fieldRepository && current != fieldBaseBranchPicker {
+			if key.Matches(msg, popupArrowDownKeyBinding) {
+				return m.moveFocus(1)
+			}
+			if key.Matches(msg, popupArrowUpKeyBinding) {
+				return m.moveFocus(-1)
+			}
 		}
 
 		switch current {
@@ -486,6 +495,8 @@ func (m CreateFormModel) KeyBindings() []key.Binding {
 	return []key.Binding{
 		popupNextFieldKeyBinding,
 		popupPrevFieldKeyBinding,
+		popupArrowDownKeyBinding,
+		popupArrowUpKeyBinding,
 		popupToggleKeyBinding,
 		popupSelectorNextKeyBinding,
 		popupSelectorPrevKeyBinding,

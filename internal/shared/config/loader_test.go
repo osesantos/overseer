@@ -40,11 +40,11 @@ func TestDefault_ShipsOpencodeAndClaudeLaunchers(t *testing.T) {
 	if len(cfg.Launchers) != 2 {
 		t.Fatalf("Launchers: want 2 entries, got %d", len(cfg.Launchers))
 	}
-	if cfg.Launchers[0].DisplayName != "OpenCode (default)" || cfg.Launchers[0].Command != "opencode" {
-		t.Errorf("Launchers[0]: want {OpenCode (default), opencode}, got %+v", cfg.Launchers[0])
+	if cfg.Launchers[0].DisplayName != "Claude Code (default)" || cfg.Launchers[0].Command != "claude" {
+		t.Errorf("Launchers[0]: want {Claude Code (default), claude}, got %+v", cfg.Launchers[0])
 	}
-	if cfg.Launchers[1].DisplayName != "Claude Code (default)" || cfg.Launchers[1].Command != "claude" {
-		t.Errorf("Launchers[1]: want {Claude Code (default), claude}, got %+v", cfg.Launchers[1])
+	if cfg.Launchers[1].DisplayName != "OpenCode (default)" || cfg.Launchers[1].Command != "opencode" {
+		t.Errorf("Launchers[1]: want {OpenCode (default), opencode}, got %+v", cfg.Launchers[1])
 	}
 }
 
@@ -54,11 +54,11 @@ func TestLoad_BuiltinDefaultsHaveAgentType(t *testing.T) {
 	if len(cfg.Launchers) != 2 {
 		t.Fatalf("Launchers: want 2 entries, got %d", len(cfg.Launchers))
 	}
-	if cfg.Launchers[0].AgentType != "opencode" {
-		t.Errorf("Launchers[0].AgentType = %q, want %q", cfg.Launchers[0].AgentType, "opencode")
+	if cfg.Launchers[0].AgentType != "claude-code" {
+		t.Errorf("Launchers[0].AgentType = %q, want %q", cfg.Launchers[0].AgentType, "claude-code")
 	}
-	if cfg.Launchers[1].AgentType != "claude-code" {
-		t.Errorf("Launchers[1].AgentType = %q, want %q", cfg.Launchers[1].AgentType, "claude-code")
+	if cfg.Launchers[1].AgentType != "opencode" {
+		t.Errorf("Launchers[1].AgentType = %q, want %q", cfg.Launchers[1].AgentType, "opencode")
 	}
 }
 
@@ -331,11 +331,11 @@ editors:
 	if len(cfg.Launchers) != 4 {
 		t.Fatalf("Launchers: want 4 entries, got %d", len(cfg.Launchers))
 	}
-	if cfg.Launchers[0].DisplayName != "OpenCode (default)" || cfg.Launchers[0].Command != "opencode" {
-		t.Errorf("Launchers[0]: want {OpenCode (default), opencode}, got %+v", cfg.Launchers[0])
+	if cfg.Launchers[0].DisplayName != "Claude Code (default)" || cfg.Launchers[0].Command != "claude" {
+		t.Errorf("Launchers[0]: want {Claude Code (default), claude}, got %+v", cfg.Launchers[0])
 	}
-	if cfg.Launchers[1].DisplayName != "Claude Code (default)" || cfg.Launchers[1].Command != "claude" {
-		t.Errorf("Launchers[1]: want {Claude Code (default), claude}, got %+v", cfg.Launchers[1])
+	if cfg.Launchers[1].DisplayName != "OpenCode (default)" || cfg.Launchers[1].Command != "opencode" {
+		t.Errorf("Launchers[1]: want {OpenCode (default), opencode}, got %+v", cfg.Launchers[1])
 	}
 	if cfg.Launchers[2].DisplayName != "Custom Agent" || cfg.Launchers[2].Command != "my-agent --foo" {
 		t.Errorf("Launchers[2]: want {Custom Agent, my-agent --foo}, got %+v", cfg.Launchers[2])

@@ -91,8 +91,8 @@ func Default() Config {
 		Logging: LoggingConfig{Level: "info"},
 		Storage: StorageConfig{DataDir: ""},
 		Launchers: []LauncherConfig{
-			{DisplayName: "OpenCode (default)", Command: "opencode", AgentType: string(domain.AgentTypeOpenCode)},
 			{DisplayName: "Claude Code (default)", Command: "claude", AgentType: string(domain.AgentTypeClaudeCode)},
+			{DisplayName: "OpenCode (default)", Command: "opencode", AgentType: string(domain.AgentTypeOpenCode)},
 		},
 		Editors: []EditorConfig{
 			{DisplayName: "VSCode (default)", Command: "code"},
