@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"syscall"
 	"time"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
@@ -225,8 +226,13 @@ var errTmuxNoServer = errors.New("tmux: no server running")
 // run executes the tmux binary with the given arguments, returning stdout.
 // "can't find session" stderr is mapped to domain.ErrTmuxSessionNotFound; "no server
 // running" is mapped to errTmuxNoServer so callers can distinguish empty state from failure.
+//
+// Setsid detaches every non-interactive subprocess from the controlling terminal so
+// that tmux cannot write "[detached (from session ...)]" notifications to the user's
+// terminal when these short-lived client processes exit.
 func (a *Adapter) run(args ...string) (string, error) {
 	cmd := exec.Command(a.tmuxBin, args...)
+	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	stdout, err := cmd.Output()
 	if err == nil {
 		return string(stdout), nil
