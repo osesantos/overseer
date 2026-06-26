@@ -420,13 +420,39 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-		if cmd, handled := m.handleKey(keyMsg); handled {
+		// ctrl+o toggles the chat panel regardless of focus state.
+		// ctrl+c is the hard-kill escape hatch that always quits.
+		if key.Matches(keyMsg, overseerPanelKeyBinding) {
+			if cmd, handled := m.handleKey(keyMsg); handled {
+				return m, cmd
+			}
+		}
+		if keyMsg.String() == "ctrl+c" {
+			return m, tea.Quit
+		}
+
+		if m.chatPanelVisible {
+			// Navigation keys pass through to the session list so the user can
+			// change the selected session while typing in the chat.
+			if key.Matches(keyMsg, chatPassthroughNav) {
+				var cmd tea.Cmd
+				m.leftPane, cmd = shared.UpdateModel(m.leftPane, keyMsg)
+				return m, cmd
+			}
+			// tab toggles the inspector (Agent/Shell) tab.
+			if key.Matches(keyMsg, inspector.ToggleViewKeyBinding) {
+				var cmd tea.Cmd
+				m.inspector, cmd = shared.UpdateModel(m.inspector, keyMsg)
+				return m, cmd
+			}
+			// Every other key is consumed by the chat input.
+			var cmd tea.Cmd
+			m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, keyMsg)
 			return m, cmd
 		}
-		// When the chat panel is visible and focused, route key events to it.
-		if m.chatPanelVisible {
-			var cmd tea.Cmd
-			m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
+
+		// Normal routing when the chat panel is closed.
+		if cmd, handled := m.handleKey(keyMsg); handled {
 			return m, cmd
 		}
 		var cmd tea.Cmd
