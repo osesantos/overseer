@@ -96,10 +96,13 @@ func (a *Adapter) EvaluateLoop(ctx context.Context, criteria, paneOutput string)
 	return parseLoopResponse(raw)
 }
 
-// run executes `claude -p <prompt>` and returns stdout. Stderr is captured
-// and surfaced in the error when the process exits non-zero.
+// run executes `claude -p --dangerously-skip-permissions <prompt>` and returns
+// stdout. The skip-permissions flag is required because the subprocess runs
+// detached from the controlling TTY (Setsid: true); without it Claude Code
+// shows an allow/refuse permission dialog that defaults to refuse when no
+// TTY is present, silently producing empty output.
 func (a *Adapter) run(ctx context.Context, prompt string) (string, error) {
-	cmd := exec.CommandContext(ctx, a.claudeBin, "-p", prompt)
+	cmd := exec.CommandContext(ctx, a.claudeBin, "-p", "--dangerously-skip-permissions", prompt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
 	var stdout, stderr bytes.Buffer

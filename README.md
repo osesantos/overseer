@@ -18,6 +18,7 @@ Overseer is a TUI application that helps developers organize, launch, and monito
 - [Quick Start](#quick-start)
 - [Configuration](#configuration)
 - [Usage](#usage)
+- [Overseer Agent Loop](#overseer-agent-loop)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -40,6 +41,12 @@ Overseer is a TUI application that helps developers organize, launch, and monito
 
 ### Real-Time Monitoring
 - **Live Session Preview**: Toggle between Agent and Shell stream views to see what your AI agent is doing in real-time.
+
+### Overseer Chat Panel
+- **Agent Mode**: Chat with a Claude-backed meta-agent that can read session output and send prompts to your sessions on your behalf.
+- **Operator Mode**: Type any message starting with `/` to execute a direct command without involving the LLM (see [Operator Commands](#operator-commands)).
+- **Scrollable History**: The chat history is fully scrollable — use `↑`/`↓` to scroll line by line or `PgUp`/`PgDn` to jump a full page. New messages auto-scroll to the bottom unless you have scrolled up to read history.
+- **Background Loops**: Start an evaluation loop that periodically checks a session's agent pane against your acceptance criteria and sends follow-up prompts until the goal is met.
 
 ### Project Discovery
 - **Autodiscovery**: Configure one or more root directories and Overseer will scan their immediate subdirectories at startup, automatically registering any Git repositories it finds. A non-intrusive toast notification shows progress, and a warning popup highlights any configured paths that could not be found on disk.
@@ -241,15 +248,17 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 |-----|--------|
 | `j` / `↓` | Move down |
 | `k` / `↑` | Move up |
-| `shift + ↓` | Reorder session down |
-| `shift + ↑` | Reorder session up |
+| `Shift+↓` | Reorder session down |
+| `Shift+↑` | Reorder session up |
 | `n` | Create new session |
 | `d` | Delete selected session |
 | `r` | Rename selected session |
 | `l` | Cycle through labels |
-| `Enter` | Attach to session (agent or shell, based on active tab) |
+| `Enter` | Attach to session (agent or shell, based on active inspector tab) |
 | `e` | Open session in editor |
-| `g` / `G` | Go to next/previous project group |
+| `Ctrl+E` | Send Enter keystroke to the agent pane |
+| `x` | Kill the preview tmux session |
+| `g` / `G` | Go to next / previous project group |
 
 #### Session Creation Form
 
@@ -259,6 +268,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 | `↓` / `↑` | Next / previous field |
 | `←` / `→` | Cycle option (launcher, editor, worktree toggle) |
 | `Space` | Toggle worktree on/off |
+| `e` | Paste a path into the repository field |
 | `Enter` | Create session |
 | `Esc` | Cancel |
 
@@ -268,10 +278,48 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 |-----|--------|
 | `Tab` | Toggle between Agent and Shell views |
 
+#### Overseer Chat Panel
+
+Open / close the chat panel with `Ctrl+O` from anywhere in the dashboard.
+
+**Input modes** — auto-detected per message:
+
+| Prefix | Mode | Behaviour |
+|--------|------|-----------|
+| _(none)_ | Agent | Message sent to the Claude meta-agent (LLM) |
+| `/` | Operator | Parsed as a slash command; no LLM call |
+
+**Operator commands:**
+
+| Command | Description |
+|---------|-------------|
+| `/send <session> <prompt…>` | Send a prompt directly to a session's agent pane |
+| `/delete <session>` | Open the delete-session confirmation dialog |
+| `/new` | Open the new-session creation form |
+| `/list` | Print all active sessions inline |
+| `/loop <session> <criteria…>` | Start a background evaluation loop |
+| `/loop stop <session>` | Stop a running loop |
+| `/loop info <session>` | Print loop status, iteration count, and criteria |
+| `/help` | List all available commands |
+
+**Scrolling the chat history:**
+
+| Key | Action |
+|-----|--------|
+| `↑` | Scroll history up one line |
+| `↓` | Scroll history down one line |
+| `PgUp` | Scroll history up one page |
+| `PgDn` | Scroll history down one page |
+
+New messages auto-scroll to the bottom only if you were already at the bottom. Scrolling up to read history freezes the view until you scroll back down.
+
+**While the chat panel is open**, `↑`/`↓` scroll the chat history. To navigate the session list at the same time, use `j`/`k` instead.
+
 #### Global
 
 | Key | Action |
 |-----|--------|
+| `Ctrl+O` | Toggle Overseer chat panel |
 | `?` | Show help menu |
 | `q` / `Ctrl+C` | Quit |
 
@@ -292,6 +340,43 @@ Attaches directly to the project's working directory:
 - No branch or worktree manipulation
 - Uses the project's current HEAD
 - Useful for quick experiments or when you don't need isolation
+
+---
+
+## Overseer Agent Loop
+
+The `/loop` command starts a background evaluation loop that repeatedly checks a session's agent pane output against your acceptance criteria and sends follow-up prompts until the goal is reached — or a safety limit is hit.
+
+### Starting a loop
+
+```
+/loop overseer-improvements all failing tests are now passing
+```
+
+Overseer will:
+1. Immediately capture the session's agent pane.
+2. Ask the Claude meta-agent whether the criteria are met.
+3. If **not met**: send the agent's suggested follow-up prompt to the session and wait 10 seconds.
+4. If **met**: the agent replies `END` and the loop stops automatically.
+5. Repeat up to **20 iterations** (safety cap).
+
+### Loop status
+
+- The session row in the list shows a badge: 🔄 running · ✅ done · ⏹ stopped.
+- The **Session Details** pane shows a Loop section with status, iteration count, elapsed time, and criteria.
+- The chat panel prints a dimmed system message after each iteration and a final summary when the loop ends.
+
+### Stopping a loop manually
+
+```
+/loop stop overseer-improvements
+```
+
+### Checking loop status
+
+```
+/loop info overseer-improvements
+```
 
 ---
 
