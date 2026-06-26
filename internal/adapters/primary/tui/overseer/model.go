@@ -25,10 +25,10 @@ const (
 	borderFrameH = 2
 )
 
-// SessionSnapshot is a lightweight view into a session's state that the
-// dashboard builds at submit time and passes to OverseerService.Chat as
-// context. Defined here so the dashboard can use the type without a circular
-// import; the dashboard is the only producer, the claude adapter the only consumer.
+// SessionSnapshot is a lightweight view into a session's static state that
+// the dashboard builds at submit time. PaneOutput is intentionally absent:
+// overseerChatCmd fetches it fresh via PreviewSession inside the request
+// goroutine so it is never stale.
 type SessionSnapshot struct {
 	SessionID   uuid.UUID
 	SessionName string
@@ -36,7 +36,6 @@ type SessionSnapshot struct {
 	Branch      string
 	AgentType   domain.AgentType
 	Status      domain.AgentStatusKind
-	PaneOutput  string
 }
 
 // Model is the Overseer chat panel. It holds a scrollable message history

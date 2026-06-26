@@ -96,6 +96,7 @@ func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) strin
 	}
 	for _, s := range sessions {
 		fmt.Fprintf(&b, "\nSession:  %s\n", s.SessionName)
+		fmt.Fprintf(&b, "ID:       %s\n", s.SessionID.String())
 		fmt.Fprintf(&b, "Project:  %s\n", s.ProjectName)
 		fmt.Fprintf(&b, "Branch:   %s\n", s.Branch)
 		fmt.Fprintf(&b, "Agent:    %s\n", string(s.AgentType))

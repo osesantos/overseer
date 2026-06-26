@@ -7,6 +7,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -864,27 +866,60 @@ func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
 // overseerChatCmd builds the async tea.Cmd that calls OverseerService.Chat.
 // It is called from the dashboard's Update so that it always reads from the
 // live cachedSessions at submit time — never from a stale closure.
+//
+// Before invoking the LLM the command concurrently captures the agent-pane
+// output for every session so the Overseer has real context when deciding
+// what to do.
 func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
 	if m.overseerService == nil {
 		return nil
 	}
 	svc := m.overseerService
+	sessSvc := m.sessionsService
 	snaps := m.sessionSnapshots()
-	sessions := make([]domain.OverseerSessionContext, 0, len(snaps))
-	for _, snap := range snaps {
-		sessions = append(sessions, domain.OverseerSessionContext{
-			SessionID:   snap.SessionID,
-			SessionName: snap.SessionName,
-			ProjectName: snap.ProjectName,
-			Branch:      snap.Branch,
-			AgentType:   snap.AgentType,
-			Status:      snap.Status,
-			PaneOutput:  snap.PaneOutput,
-		})
-	}
+
 	return shared.RequestWithTimeout(
 		60*time.Second,
 		func(ctx context.Context) (service.OverseerChatResponse, error) {
+			// Concurrently capture each session's agent-pane output so the
+			// LLM gets real context without blocking on N sequential calls.
+			type paneResult struct {
+				idx    int
+				output string
+			}
+			ch := make(chan paneResult, len(snaps))
+			for i, snap := range snaps {
+				i, snap := i, snap
+				go func() {
+					resp, err := sessSvc.PreviewSession(ctx, service.PreviewSessionRequest{
+						ID:   snap.SessionID,
+						Kind: service.PreviewKindAgent,
+					})
+					out := ""
+					if err == nil && resp.SessionReady {
+						out = truncateLines(ansi.Strip(resp.Content), 50)
+					}
+					ch <- paneResult{idx: i, output: out}
+				}()
+			}
+			paneOutputs := make([]string, len(snaps))
+			for range snaps {
+				r := <-ch
+				paneOutputs[r.idx] = r.output
+			}
+
+			sessions := make([]domain.OverseerSessionContext, 0, len(snaps))
+			for i, snap := range snaps {
+				sessions = append(sessions, domain.OverseerSessionContext{
+					SessionID:   snap.SessionID,
+					SessionName: snap.SessionName,
+					ProjectName: snap.ProjectName,
+					Branch:      snap.Branch,
+					AgentType:   snap.AgentType,
+					Status:      snap.Status,
+					PaneOutput:  paneOutputs[i],
+				})
+			}
 			return svc.Chat(ctx, service.OverseerChatRequest{
 				UserMessage: userMsg,
 				Sessions:    sessions,
@@ -900,6 +935,17 @@ func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
 			}
 		},
 	)
+}
+
+// truncateLines returns the last n lines of s, or s unchanged when it has
+// fewer than n lines. Used to cap pane-capture output sent to the LLM so
+// prompt size stays bounded regardless of session history length.
+func truncateLines(s string, n int) string {
+	lines := strings.Split(s, "\n")
+	if len(lines) <= n {
+		return s
+	}
+	return strings.Join(lines[len(lines)-n:], "\n")
 }
 
 func fit(s *styles.Styles, content string, width, height int) string {
