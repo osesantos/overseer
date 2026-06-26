@@ -22,6 +22,7 @@ type streamView struct {
 	notReadyMessage string
 
 	sessionID     uuid.UUID
+	generation    int // incremented on each Init(); stale msgs from old chains are dropped
 	width, height int
 	content       string
 	ready         bool
@@ -58,6 +59,7 @@ func newShellView(svc service.SessionService, s *styles.Styles, pollInterval tim
 func (v *streamView) Label() string { return v.label }
 
 func (v *streamView) Init() tea.Cmd {
+	v.generation++
 	return v.capture()
 }
 
@@ -73,6 +75,12 @@ func (v *streamView) Update(msg tea.Msg) (View, tea.Cmd) {
 		return v, nil
 	}
 	if v.sessionID == uuid.Nil {
+		return v, nil
+	}
+	// Drop messages produced by a superseded capture chain. This prevents the
+	// old polling goroutine from scheduling a duplicate chain after Init() was
+	// called mid-flight (e.g. on a force refresh or session switch).
+	if captured.generation != v.generation {
 		return v, nil
 	}
 	if captured.err != nil {
@@ -123,9 +131,10 @@ func (v *streamView) capture() tea.Cmd {
 	previewKind := v.previewKind
 	width := v.width
 	height := v.height
+	gen := v.generation
 	return func() tea.Msg {
 		if sessID == uuid.Nil {
-			return previewCapturedMsg{kind: kind, sessionID: sessID}
+			return previewCapturedMsg{kind: kind, sessionID: sessID, generation: gen}
 		}
 		resp, err := svc.PreviewSession(context.Background(), service.PreviewSessionRequest{
 			ID:     sessID,
@@ -136,6 +145,7 @@ func (v *streamView) capture() tea.Cmd {
 		return previewCapturedMsg{
 			kind:         kind,
 			sessionID:    sessID,
+			generation:   gen,
 			content:      resp.Content,
 			sessionReady: resp.SessionReady,
 			err:          err,

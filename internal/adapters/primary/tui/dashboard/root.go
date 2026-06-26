@@ -415,7 +415,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.OverseerPromptSentMsg:
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
-		return m, cmd
+		// Immediately refresh the preview so the user sees the sent prompt
+		// land without waiting for the next scheduled poll tick.
+		var refreshCmd tea.Cmd
+		m.inspector, refreshCmd = shared.UpdateModel(m.inspector, inspector.ForceRefreshMsg{})
+		return m, tea.Batch(cmd, refreshCmd)
 	}
 
 	if m.activePopup != popupNone {

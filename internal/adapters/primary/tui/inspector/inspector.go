@@ -78,6 +78,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		updated, cmd := m.views[m.activeIx].Update(msg)
 		m.views[m.activeIx] = updated
 		return m, cmd
+
+	case ForceRefreshMsg:
+		// Trigger an immediate capture, superseding the current polling chain.
+		// Init() increments the view's generation so in-flight msgs from the
+		// old chain are dropped without re-scheduling.
+		return m, m.views[m.activeIx].Init()
 	}
 	return m, nil
 }
