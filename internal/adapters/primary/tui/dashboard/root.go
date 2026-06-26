@@ -974,6 +974,25 @@ func fit(s *styles.Styles, content string, width, height int) string {
 	return s.Layout.Box.Width(width).Height(height).Render(content)
 }
 
+// promptLooksLikeInputRequest returns true when the evaluator's suggested
+// prompt contains a question or input-request phrase, indicating the session
+// agent is waiting for user guidance rather than actively executing.
+func promptLooksLikeInputRequest(s string) bool {
+	if strings.Contains(s, "?") {
+		return true
+	}
+	lower := strings.ToLower(s)
+	for _, phrase := range []string{
+		"would you like", "should i", "do you want",
+		"please provide", "let me know", "can you", "could you",
+	} {
+		if strings.Contains(lower, phrase) {
+			return true
+		}
+	}
+	return false
+}
+
 // handleLoopEvalResult processes the result of a single EvaluateLoop call.
 func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, tea.Cmd) {
 	ls := m.loops[msg.state.SessionID]
@@ -981,9 +1000,8 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 		return m, nil // loop was stopped while the eval was in flight
 	}
 
-	ls.Iterations++
-
 	if msg.err != nil {
+		ls.Iterations++
 		ls.ConsecutiveErrors++
 		const maxConsecutiveErrors = 3
 		if ls.ConsecutiveErrors >= maxConsecutiveErrors {
@@ -1007,6 +1025,7 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 	ls.ConsecutiveErrors = 0
 
 	if msg.eval.Done {
+		ls.Iterations++
 		ls.Status = domain.LoopStatusDone
 		note := fmt.Sprintf("Loop on %q completed after %d iteration(s).\n%s", ls.SessionName, ls.Iterations, msg.eval.Summary)
 		return m, tea.Batch(
@@ -1015,6 +1034,39 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 			func() tea.Msg { return inspector.ForceRefreshMsg{} },
 		)
 	}
+
+	// Detect whether the session agent is still actively working and should
+	// not be interrupted. Triggered by an explicit WAIT from the evaluator,
+	// or when the suggested prompt is a directive rather than a question
+	// (heuristic: no question mark or input-request phrase).
+	agentStillWorking := msg.eval.AgentStillWorking ||
+		(msg.eval.PromptToSend != "" && !promptLooksLikeInputRequest(msg.eval.PromptToSend))
+
+	if agentStillWorking {
+		// WAIT iterations do not count against MaxIterations.
+		ls.ConsecutiveWaits++
+		if ls.ConsecutiveWaits >= loopMaxConsecutiveWaits {
+			ls.Status = domain.LoopStatusStopped
+			note := fmt.Sprintf(
+				"Loop on %q stopped: agent was still working for %d consecutive iterations without requesting input.",
+				ls.SessionName, ls.ConsecutiveWaits)
+			return m, tea.Batch(
+				shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
+				m.broadcastLoopState(),
+			)
+		}
+		waitNote := fmt.Sprintf("Loop on %q — iteration %d/%d: agent is still working, waiting…",
+			ls.SessionName, ls.Iterations, ls.MaxIterations)
+		return m, tea.Batch(
+			shared.Emit(shared.OverseerCommandResultMsg{Text: waitNote}),
+			m.broadcastLoopState(),
+			loopNextTickCmd(*ls),
+		)
+	}
+
+	// Agent is waiting for input — count this as a real iteration.
+	ls.Iterations++
+	ls.ConsecutiveWaits = 0
 
 	if ls.Iterations >= ls.MaxIterations {
 		ls.Status = domain.LoopStatusStopped

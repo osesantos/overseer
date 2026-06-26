@@ -84,11 +84,12 @@ func TestParseResponse(t *testing.T) {
 
 func TestParseLoopResponse(t *testing.T) {
 	tests := []struct {
-		name         string
-		raw          string
-		wantDone     bool
-		wantPrompt   string
-		wantErr      bool
+		name              string
+		raw               string
+		wantDone          bool
+		wantPrompt        string
+		wantStillWorking  bool
+		wantErr           bool
 	}{
 		{
 			name:    "empty string returns error",
@@ -111,7 +112,17 @@ func TestParseLoopResponse(t *testing.T) {
 			wantDone: true,
 		},
 		{
-			name:       "multi-line prompt means not done",
+			name:             "WAIT sets AgentStillWorking",
+			raw:              "WAIT",
+			wantStillWorking: true,
+		},
+		{
+			name:             "wait (lowercase) sets AgentStillWorking",
+			raw:              "wait",
+			wantStillWorking: true,
+		},
+		{
+			name:       "directive prompt means not done",
 			raw:        "please run the tests again",
 			wantDone:   false,
 			wantPrompt: "please run the tests again",
@@ -135,6 +146,9 @@ func TestParseLoopResponse(t *testing.T) {
 			}
 			if eval.PromptToSend != tt.wantPrompt {
 				t.Errorf("PromptToSend = %q, want %q", eval.PromptToSend, tt.wantPrompt)
+			}
+			if eval.AgentStillWorking != tt.wantStillWorking {
+				t.Errorf("AgentStillWorking = %v, want %v", eval.AgentStillWorking, tt.wantStillWorking)
 			}
 		})
 	}

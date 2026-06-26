@@ -100,7 +100,7 @@ overseer/
 │   │   │       ├── inspector/      # Right pane: Agent + Shell preview tabs with polling
 │   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, branch cache)
 │   │   │       ├── leftpane/       # Left pane: session list + session details
-│   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go)
+│   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go, bindings.go)
 │   │   │       ├── session/        # Session list model + create/delete/rename forms
 │   │   │       ├── sessiondetails/ # Session details card (repo, PR, loop section)
 │   │   │       ├── shared/         # Messages, helpers, emit utilities
@@ -132,6 +132,7 @@ Pure Go structs and interfaces. No I/O. Defines:
 - `Session`, `Project`, `Label` aggregates
 - Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `OverseerAgentPort`
 - Overseer types: `LoopState`, `LoopEvaluation`, `OverseerMessage`, `OverseerAction`
+- `InferAgentType(agentCommand string) AgentType` — maps a legacy session's agent command string to a typed `AgentType` (lives in `domain/agent_type.go`)
 - Sentinel errors: `ErrTmuxSessionNotFound`, `ErrOverseerAgentNotFound`, etc.
 
 ### `internal/core/service`
@@ -161,6 +162,7 @@ Right-pane preview with generation-counter-based polling (prevents chain doublin
 Implements `OverseerAgentPort`. Invokes `claude -p <prompt>` as a subprocess.
 - `Chat`: parses `<action>{...}</action>` fence for structured actions
 - `EvaluateLoop`: detects plain-text `END` sentinel to signal loop completion
+- Both calls use `overseerRequestTimeout = 60s` (via `shared.RequestWithTimeout`) rather than the default 30s `shared.Request` timeout, because LLM subprocess calls routinely take longer than 30 seconds
 
 ---
 

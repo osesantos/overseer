@@ -16,8 +16,9 @@ import (
 )
 
 const (
-	loopCheckInterval      = 10 * time.Second
-	loopMaxIterations      = 20
+	loopCheckInterval      = 5 * time.Second
+	loopMaxIterations      = 40
+	loopMaxConsecutiveWaits = 8 // stop if the agent is still working for this many consecutive iterations
 	overseerRequestTimeout = 60 * time.Second
 )
 

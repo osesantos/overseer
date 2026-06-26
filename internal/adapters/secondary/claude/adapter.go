@@ -175,8 +175,10 @@ func buildLoopPrompt(criteria, paneOutput string) string {
 	b.WriteString("Reply with ONE of the following:\n\n")
 	b.WriteString("1. If the acceptance criteria are clearly and unambiguously satisfied, reply with exactly the word:\n")
 	b.WriteString("   END\n\n")
-	b.WriteString("2. If the criteria are NOT yet satisfied, reply with a single concrete instruction to send to the session agent to make progress toward the goal. Do NOT include the word END in this case.\n\n")
-	b.WriteString("Do not include any explanation or extra text — only END or the next instruction.\n")
+	b.WriteString("2. If the session agent is actively executing — compiling, running tests, making changes, or producing output — and has NOT yet produced a clear question or prompt waiting for user input, reply with exactly the word:\n")
+	b.WriteString("   WAIT\n\n")
+	b.WriteString("3. If the criteria are NOT yet satisfied and the agent is idle or waiting for guidance, reply with a single concrete instruction to send to the session agent to make progress toward the goal. Do NOT include the words END or WAIT in this case.\n\n")
+	b.WriteString("Do not include any explanation or extra text — only END, WAIT, or the next instruction.\n")
 
 	return b.String()
 }
@@ -225,16 +227,20 @@ func parseResponse(raw string) (domain.OverseerResponse, error) {
 }
 
 // parseLoopResponse interprets Claude's raw stdout for a loop evaluation.
-// If the trimmed output is exactly "END" (case-insensitive) the loop is
-// considered complete. Otherwise the entire trimmed output is treated as
-// the next prompt to send to the session agent.
+// "END" (case-insensitive, trimmed) signals the criteria are met.
+// "WAIT" signals the session agent is still actively working.
+// Anything else is treated as the next prompt to send to the session agent.
 func parseLoopResponse(raw string) (domain.LoopEvaluation, error) {
 	text := strings.TrimSpace(raw)
 	if text == "" {
 		return domain.LoopEvaluation{}, fmt.Errorf("overseer: empty loop evaluation response")
 	}
-	if strings.ToUpper(text) == "END" {
+	upper := strings.ToUpper(text)
+	if upper == "END" {
 		return domain.LoopEvaluation{Done: true, Summary: "Acceptance criteria met."}, nil
+	}
+	if upper == "WAIT" {
+		return domain.LoopEvaluation{AgentStillWorking: true}, nil
 	}
 	return domain.LoopEvaluation{Done: false, PromptToSend: text}, nil
 }

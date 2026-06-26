@@ -88,16 +88,21 @@ type LoopState struct {
 	MaxIterations     int
 	StartedAt         time.Time
 	ConsecutiveErrors int // reset to 0 on any successful evaluation
+	ConsecutiveWaits  int // incremented when evaluator signals WAIT; reset when agent produces normal output
 }
 
 // LoopEvaluation is the structured result of a single EvaluateLoop call.
 // When Done is false the LLM decided the criteria are not yet met and
 // produced a follow-up prompt to send to the session agent. When Done is
 // true the criteria have been met and Summary describes the outcome.
+// AgentStillWorking is set when the evaluator explicitly signals that the
+// session agent is mid-task (WAIT sentinel) — in that case PromptToSend is
+// empty and the loop should wait without interrupting the agent.
 type LoopEvaluation struct {
-	Done         bool
-	PromptToSend string // populated when Done=false
-	Summary      string // populated when Done=true
+	Done              bool
+	PromptToSend      string // populated when Done=false and AgentStillWorking=false
+	Summary           string // populated when Done=true
+	AgentStillWorking bool   // evaluator signalled WAIT — agent is busy, do not interrupt
 }
 
 // OverseerAgentPort is the outbound port for the meta-agent backend.

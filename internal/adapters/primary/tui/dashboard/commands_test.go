@@ -222,9 +222,12 @@ func TestHandleLoopEvalResult_MaxIterations_StopsLoop(t *testing.T) {
 		StartedAt:     time.Now(),
 	}
 	m := newTestModel(sessID, ls)
+	// Use a question-style prompt so the heuristic treats the agent as
+	// waiting for input (not still working) — only then does the max-iterations
+	// guard trigger.
 	msg := overseerLoopEvalResultMsg{
 		state: *ls,
-		eval:  domain.LoopEvaluation{Done: false, PromptToSend: "keep going"},
+		eval:  domain.LoopEvaluation{Done: false, PromptToSend: "should I run the tests again?"},
 	}
 	_, cmd := m.handleLoopEvalResult(msg)
 
@@ -247,9 +250,10 @@ func TestHandleLoopEvalResult_ProgressBranch_SendsPromptAndSchedulesTick(t *test
 		StartedAt:     time.Now(),
 	}
 	m := newTestModel(sessID, ls)
+	// Question-style prompt → heuristic says agent is waiting → normal progress branch.
 	msg := overseerLoopEvalResultMsg{
 		state: *ls,
-		eval:  domain.LoopEvaluation{Done: false, PromptToSend: "run the failing tests again"},
+		eval:  domain.LoopEvaluation{Done: false, PromptToSend: "should I run the failing tests again?"},
 	}
 	_, cmd := m.handleLoopEvalResult(msg)
 
@@ -276,6 +280,95 @@ func TestHandleLoopEvalResult_StoppedLoop_Ignored(t *testing.T) {
 
 	if cmd != nil {
 		t.Fatal("expected nil cmd for already-stopped loop")
+	}
+}
+
+func TestHandleLoopEvalResult_AgentStillWorking_WAIT_SkipsIteration(t *testing.T) {
+	sessID := uuid.New()
+	ls := &domain.LoopState{
+		SessionID:     sessID,
+		SessionName:   "my-session",
+		Status:        domain.LoopStatusRunning,
+		Iterations:    9,  // would hit MaxIterations on a normal eval
+		MaxIterations: 10,
+		StartedAt:     time.Now(),
+	}
+	m := newTestModel(sessID, ls)
+	msg := overseerLoopEvalResultMsg{
+		state: *ls,
+		eval:  domain.LoopEvaluation{AgentStillWorking: true},
+	}
+	_, cmd := m.handleLoopEvalResult(msg)
+
+	if ls.Status != domain.LoopStatusRunning {
+		t.Errorf("Status = %s, want still running (WAIT skips max-iterations guard)", ls.Status)
+	}
+	if ls.Iterations != 9 {
+		t.Errorf("Iterations = %d, want 9 (WAIT does not increment)", ls.Iterations)
+	}
+	if ls.ConsecutiveWaits != 1 {
+		t.Errorf("ConsecutiveWaits = %d, want 1", ls.ConsecutiveWaits)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd to schedule next tick")
+	}
+}
+
+func TestHandleLoopEvalResult_AgentStillWorking_DirectivePrompt_SkipsIteration(t *testing.T) {
+	sessID := uuid.New()
+	ls := &domain.LoopState{
+		SessionID:     sessID,
+		SessionName:   "my-session",
+		Status:        domain.LoopStatusRunning,
+		Iterations:    9,
+		MaxIterations: 10,
+		StartedAt:     time.Now(),
+	}
+	m := newTestModel(sessID, ls)
+	// Directive with no question mark → heuristic says agent still working.
+	msg := overseerLoopEvalResultMsg{
+		state: *ls,
+		eval:  domain.LoopEvaluation{Done: false, PromptToSend: "run the failing tests"},
+	}
+	_, cmd := m.handleLoopEvalResult(msg)
+
+	if ls.Status != domain.LoopStatusRunning {
+		t.Errorf("Status = %s, want still running", ls.Status)
+	}
+	if ls.Iterations != 9 {
+		t.Errorf("Iterations = %d, want 9 (directive prompt does not increment)", ls.Iterations)
+	}
+	if ls.ConsecutiveWaits != 1 {
+		t.Errorf("ConsecutiveWaits = %d, want 1", ls.ConsecutiveWaits)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd to schedule next tick")
+	}
+}
+
+func TestHandleLoopEvalResult_AgentStillWorking_ExceedsMaxWaits_StopsLoop(t *testing.T) {
+	sessID := uuid.New()
+	ls := &domain.LoopState{
+		SessionID:        sessID,
+		SessionName:      "my-session",
+		Status:           domain.LoopStatusRunning,
+		Iterations:       5,
+		MaxIterations:    40,
+		ConsecutiveWaits: loopMaxConsecutiveWaits - 1, // one more will hit the cap
+		StartedAt:        time.Now(),
+	}
+	m := newTestModel(sessID, ls)
+	msg := overseerLoopEvalResultMsg{
+		state: *ls,
+		eval:  domain.LoopEvaluation{AgentStillWorking: true},
+	}
+	_, cmd := m.handleLoopEvalResult(msg)
+
+	if ls.Status != domain.LoopStatusStopped {
+		t.Errorf("Status = %s, want stopped after %d consecutive waits", ls.Status, loopMaxConsecutiveWaits)
+	}
+	if cmd == nil {
+		t.Fatal("expected non-nil cmd")
 	}
 }
 
