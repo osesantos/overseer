@@ -118,3 +118,14 @@ type ProjectCurrentBranchLoadedMsg struct {
 	Branch    string
 	Err       error
 }
+
+// ProjectDiscoveryCompletedMsg is emitted by the dashboard when the startup
+// repo-discovery background job finishes. Count is the number of repositories
+// newly registered during the scan. MissingPaths lists every configured
+// discovery path that does not exist on disk; an empty slice means all paths
+// were accessible.
+type ProjectDiscoveryCompletedMsg struct {
+	Count        int
+	MissingPaths []string
+	Err          error
+}

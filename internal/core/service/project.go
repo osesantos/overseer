@@ -5,6 +5,8 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"sort"
 
 	"github.com/google/uuid"
@@ -115,4 +117,64 @@ func (s *ProjectService) Rename(ctx context.Context, req RenameProjectRequest) (
 		slog.String("name", project.Name),
 	)
 	return RenameProjectResponse{Project: project}, nil
+}
+
+// --- Discover ---
+
+type DiscoverProjectsRequest struct {
+	// Paths is the list of root directories to scan. Each directory is
+	// inspected one level deep — only immediate subdirectories are checked.
+	// Paths must already be expanded (no ~ prefixes).
+	Paths []string
+}
+
+type DiscoverProjectsResponse struct {
+	// Registered is the count of repositories newly registered during this
+	// scan. Already-known paths are skipped silently.
+	Registered int
+	// MissingPaths contains every entry from Paths that does not exist on
+	// disk so callers can surface a warning to the user.
+	MissingPaths []string
+}
+
+// Discover scans each root directory in req.Paths one level deep, checks
+// every immediate subdirectory for a git repository, and registers any that
+// are not yet known to Overseer. It is intentionally permissive: individual
+// subdirectory errors (non-git dirs, permission denied) are logged and
+// skipped so a single bad entry never aborts the whole scan.
+func (s *ProjectService) Discover(ctx context.Context, req DiscoverProjectsRequest) (DiscoverProjectsResponse, error) {
+	var resp DiscoverProjectsResponse
+	for _, root := range req.Paths {
+		entries, err := os.ReadDir(root)
+		if err != nil {
+			if errors.Is(err, os.ErrNotExist) {
+				resp.MissingPaths = append(resp.MissingPaths, root)
+				continue
+			}
+			s.logger.WarnContext(ctx, "project discovery: read dir failed", "path", root, "error", err)
+			continue
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			fullPath := filepath.Join(root, entry.Name())
+			if _, err := s.Register(ctx, RegisterProjectRequest{Path: fullPath}); err != nil {
+				switch {
+				case errors.Is(err, domain.ErrProjectAlreadyExists),
+					errors.Is(err, domain.ErrProjectNotGitRepo):
+					// expected — skip silently
+				default:
+					s.logger.WarnContext(ctx, "project discovery: register failed", "path", fullPath, "error", err)
+				}
+				continue
+			}
+			resp.Registered++
+		}
+	}
+	s.logger.InfoContext(ctx, "project discovery complete",
+		slog.Int("registered", resp.Registered),
+		slog.Int("missing_paths", len(resp.MissingPaths)),
+	)
+	return resp, nil
 }

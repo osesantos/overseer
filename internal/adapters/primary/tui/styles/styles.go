@@ -195,7 +195,15 @@ type Styles struct {
 	// only the typographic weight so colour is the only per-label variable.
 	SessionLabel   lipgloss.Style
 	SessionDetails SessionDetailsStyles
-	Glyphs         Glyphs
+	// Toast holds the styles used by the transient top-right notification
+	// that appears during and after the startup repo-discovery scan.
+	Toast struct {
+		// Indexing is shown while the background discovery job is running.
+		Indexing lipgloss.Style
+		// Done is shown briefly after discovery completes successfully.
+		Done lipgloss.Style
+	}
+	Glyphs Glyphs
 }
 
 // New builds *Styles using the dark theme; production code should use NewWithTheme.
@@ -371,6 +379,13 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 			Warn:           lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
 			Special:        lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
 			Hint:           lipgloss.NewStyle().Foreground(theme.Subtext).Italic(true),
+		},
+		Toast: struct {
+			Indexing lipgloss.Style
+			Done     lipgloss.Style
+		}{
+			Indexing: lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
+			Done:     lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
 		},
 		Glyphs: NewGlyphs(disableEmoji),
 	}

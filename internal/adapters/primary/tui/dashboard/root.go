@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strings"
 	"time"
 
 	"charm.land/bubbles/v2/key"
@@ -11,6 +12,7 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
@@ -38,7 +40,12 @@ const (
 	popupRename
 	popupHelp
 	popupKillPreview
+	popupDiscoveryWarning
 )
+
+// discoveryDismissMsg is an internal message that clears the discovery toast
+// after its auto-dismiss timer fires.
+type discoveryDismissMsg struct{}
 
 type projectBranchCache struct {
 	branches      []domain.BranchInfo
@@ -61,6 +68,13 @@ type Model struct {
 	cachedProjects          []domain.Project
 	cachedBranchesByProject map[uuid.UUID]projectBranchCache
 	prStatuses              map[uuid.UUID]shared.PRStatusUpdatedMsg
+
+	// discovery
+	discoveryPaths        []string // configured scan roots, already expanded
+	discovering           bool     // true while the background scan is in flight
+	discoveryMsg          string   // non-empty = show success toast briefly
+	discoveryWarningPaths []string // non-empty = show warning popup
+	discoveryCount        int      // newly registered repos (shown in warning popup)
 
 	width           int
 	height          int
@@ -85,6 +99,7 @@ func New(
 	labels []domain.Label,
 	minWidth, minHeight int,
 	previewRefreshInterval time.Duration,
+	discoveryPaths []string,
 ) Model {
 	sessionsModel := sessionui.New(styles, sessionsService, labels)
 	detailsModel := sessiondetails.New(styles)
@@ -106,12 +121,14 @@ func New(
 		minHeight:               minHeight,
 		prStatuses:              make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
 		cachedBranchesByProject: make(map[uuid.UUID]projectBranchCache),
+		discoveryPaths:          discoveryPaths,
+		discovering:             len(discoveryPaths) > 0,
 	}
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(
+	cmds := []tea.Cmd{
 		m.titlebar.Init(),
 		m.leftPane.Init(),
 		m.inspector.Init(),
@@ -119,7 +136,11 @@ func (m Model) Init() tea.Cmd {
 		m.scheduler.Init(),
 		m.loadProjects(),
 		m.scheduleBranchTick(),
-	)
+	}
+	if len(m.discoveryPaths) > 0 {
+		cmds = append(cmds, m.discoverProjectsCmd())
+	}
+	return tea.Batch(cmds...)
 }
 
 func (m Model) loadProjects() tea.Cmd {
@@ -127,6 +148,19 @@ func (m Model) loadProjects() tea.Cmd {
 	return func() tea.Msg {
 		resp, err := svc.List(context.Background(), service.ListProjectsRequest{})
 		return shared.ProjectsLoadedMsg{Projects: resp.Projects, Err: err}
+	}
+}
+
+func (m Model) discoverProjectsCmd() tea.Cmd {
+	svc := m.projectsService
+	paths := m.discoveryPaths
+	return func() tea.Msg {
+		resp, err := svc.Discover(context.Background(), service.DiscoverProjectsRequest{Paths: paths})
+		return shared.ProjectDiscoveryCompletedMsg{
+			Count:        resp.Registered,
+			MissingPaths: resp.MissingPaths,
+			Err:          err,
+		}
 	}
 }
 
@@ -197,6 +231,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.refreshProjectNameLookup()
 			return m, m.fanOutBranchRefresh()
 		}
+		return m, nil
+	case shared.ProjectDiscoveryCompletedMsg:
+		m.discovering = false
+		m.discoveryCount = msg.Count
+		var cmds []tea.Cmd
+		if msg.Count > 0 {
+			// reload the project list so newly discovered repos appear in the picker
+			cmds = append(cmds, m.loadProjects())
+		}
+		if len(msg.MissingPaths) > 0 {
+			m.discoveryWarningPaths = msg.MissingPaths
+			m.activePopup = popupDiscoveryWarning
+			return m, tea.Batch(cmds...)
+		}
+		if msg.Count > 0 {
+			m.discoveryMsg = fmt.Sprintf("Found %d new repo(s)", msg.Count)
+			cmds = append(cmds, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
+				return discoveryDismissMsg{}
+			}))
+		}
+		return m, tea.Batch(cmds...)
+	case discoveryDismissMsg:
+		m.discoveryMsg = ""
 		return m, nil
 	case shared.BranchesLoadedMsg:
 		if msg.Err == nil {
@@ -502,6 +559,14 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.killPreviewForm, cmd = shared.UpdateModel(m.killPreviewForm, msg)
 		return m, cmd
+	case popupDiscoveryWarning:
+		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+			switch keyMsg.String() {
+			case "enter", "esc", " ":
+				m.activePopup = popupNone
+			}
+		}
+		return m, nil
 	}
 	return m, nil
 }
@@ -552,7 +617,22 @@ func (m Model) View() tea.View {
 	left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
 	right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
 	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
-	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, "", body, helpView)
+
+	// The gap line between the titlebar and body doubles as a notification
+	// slot: it shows a right-aligned toast while repo discovery is running
+	// or briefly after it completes. The line already exists in the layout
+	// so no height shift occurs.
+	var gapLine string
+	switch {
+	case m.discovering:
+		gapLine = lipgloss.NewStyle().Width(m.width).AlignHorizontal(lipgloss.Right).
+			Render(m.styles.Toast.Indexing.Render(" Indexing repos… "))
+	case m.discoveryMsg != "":
+		gapLine = lipgloss.NewStyle().Width(m.width).AlignHorizontal(lipgloss.Right).
+			Render(m.styles.Toast.Done.Render(" " + m.discoveryMsg + " "))
+	}
+
+	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, gapLine, body, helpView)
 
 	return tea.NewView(full)
 }
@@ -569,8 +649,33 @@ func (m Model) popupView() string {
 		return m.helpPopup.View().Content
 	case popupKillPreview:
 		return m.killPreviewForm.View().Content
+	case popupDiscoveryWarning:
+		return m.discoveryWarningView()
 	}
 	return ""
+}
+
+// discoveryWarningView renders a modal listing the discovery paths that could
+// not be found on disk. If any repos were also newly registered during the
+// same scan, a success line is shown above the warning list.
+func (m Model) discoveryWarningView() string {
+	s := m.styles
+	var b strings.Builder
+	b.WriteString(s.Danger.Title.Render("Discovery paths not found"))
+	b.WriteString("\n\n")
+	if m.discoveryCount > 0 {
+		b.WriteString(s.SessionDetails.Good.Render(fmt.Sprintf("%d new repo(s) registered.", m.discoveryCount)))
+		b.WriteString("\n\n")
+	}
+	for _, p := range m.discoveryWarningPaths {
+		b.WriteString(s.Danger.Body.Render("  • " + p))
+		b.WriteString("\n")
+	}
+	b.WriteString("\n")
+	b.WriteString(s.Form.Hint.Render("These paths do not exist. Check your config."))
+	b.WriteString("\n\n")
+	b.WriteString(s.Form.Hint.Render("Enter / Esc  dismiss"))
+	return components.Modal(s, b.String(), 52, 0)
 }
 
 func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {

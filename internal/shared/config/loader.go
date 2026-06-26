@@ -58,16 +58,25 @@ type AgentStatusDisplayConfig struct {
 	RowHighlight string `yaml:"rowHighlight"`
 }
 
+// ProjectDiscoveryConfig holds the list of root directories that Overseer
+// scans at startup to auto-register git repositories. Each entry is expanded
+// (~ → home dir) before use. Only immediate subdirectories are inspected —
+// no recursive walk is performed.
+type ProjectDiscoveryConfig struct {
+	Paths []string `yaml:"paths"`
+}
+
 type Config struct {
-	Theme        string            `yaml:"theme"`
-	DisableEmoji bool              `yaml:"disableEmoji"`
-	Dashboard    DashboardConfig   `yaml:"dashboard"`
-	Logging      LoggingConfig     `yaml:"logging"`
-	Storage      StorageConfig     `yaml:"storage"`
-	Launchers    []LauncherConfig  `yaml:"launchers"`
-	Editors      []EditorConfig    `yaml:"editors"`
-	Labels       []LabelConfig     `yaml:"labels"`
-	AgentStatus  AgentStatusConfig `yaml:"agentStatus"`
+	Theme            string                 `yaml:"theme"`
+	DisableEmoji     bool                   `yaml:"disableEmoji"`
+	Dashboard        DashboardConfig        `yaml:"dashboard"`
+	Logging          LoggingConfig          `yaml:"logging"`
+	Storage          StorageConfig          `yaml:"storage"`
+	Launchers        []LauncherConfig       `yaml:"launchers"`
+	Editors          []EditorConfig         `yaml:"editors"`
+	Labels           []LabelConfig          `yaml:"labels"`
+	AgentStatus      AgentStatusConfig      `yaml:"agentStatus"`
+	ProjectDiscovery ProjectDiscoveryConfig `yaml:"projectDiscovery"`
 }
 
 func Default() Config {
@@ -269,6 +278,27 @@ func (c Config) DomainLabels() ([]domain.Label, error) {
 			return nil, errs.Wrap(errs.ErrInvalidInput, fmt.Sprintf("config: labels[%d]: %v", i, err))
 		}
 		out = append(out, label)
+	}
+	return out, nil
+}
+
+// ExpandedDiscoveryPaths returns the discovery paths from config with any
+// leading "~/" expanded to the current user's home directory.
+// Returns an error only if the home directory cannot be determined.
+func (c Config) ExpandedDiscoveryPaths() ([]string, error) {
+	if len(c.ProjectDiscovery.Paths) == 0 {
+		return nil, nil
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return nil, fmt.Errorf("config: resolve home dir for discovery paths: %w", err)
+	}
+	out := make([]string, 0, len(c.ProjectDiscovery.Paths))
+	for _, p := range c.ProjectDiscovery.Paths {
+		if strings.HasPrefix(p, "~/") {
+			p = filepath.Join(home, p[2:])
+		}
+		out = append(out, p)
 	}
 	return out, nil
 }

@@ -116,8 +116,14 @@ func main() {
 		os.Exit(1)
 	}
 
+	discoveryPaths, err := cfg.ExpandedDiscoveryPaths()
+	if err != nil {
+		log.Warn("could not resolve project discovery paths, skipping autodiscovery", "error", err)
+		discoveryPaths = nil
+	}
+
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {
