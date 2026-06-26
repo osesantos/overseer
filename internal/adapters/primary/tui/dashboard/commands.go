@@ -16,16 +16,17 @@ import (
 )
 
 const (
-	loopCheckInterval = 10 * time.Second
-	loopMaxIterations = 20
+	loopCheckInterval      = 10 * time.Second
+	loopMaxIterations      = 20
+	overseerRequestTimeout = 60 * time.Second
 )
 
 // overseerLoopEvalResultMsg carries the result of a single EvaluateLoop
 // call. It is an unexported dashboard-internal message.
 type overseerLoopEvalResultMsg struct {
-	sessionID domain.LoopState // copy of state at eval time
-	eval      domain.LoopEvaluation
-	err       error
+	state domain.LoopState // copy of state at eval time
+	eval  domain.LoopEvaluation
+	err   error
 }
 
 // overseerLoopNextTickMsg triggers the next evaluation in a loop's polling
@@ -286,7 +287,7 @@ func (m *Model) loopEvalCmd(ls domain.LoopState) tea.Cmd {
 	svc := m.overseerService
 	sessSvc := m.sessionsService
 	return shared.RequestWithTimeout(
-		60*time.Second,
+		overseerRequestTimeout,
 		func(ctx context.Context) (domain.LoopEvaluation, error) {
 			resp, err := sessSvc.PreviewSession(ctx, service.PreviewSessionRequest{
 				ID:   ls.SessionID,
@@ -299,7 +300,7 @@ func (m *Model) loopEvalCmd(ls domain.LoopState) tea.Cmd {
 			return svc.EvaluateLoop(ctx, ls.Criteria, pane)
 		},
 		func(eval domain.LoopEvaluation, err error) tea.Msg {
-			return overseerLoopEvalResultMsg{sessionID: ls, eval: eval, err: err}
+			return overseerLoopEvalResultMsg{state: ls, eval: eval, err: err}
 		},
 	)
 }

@@ -144,8 +144,7 @@ func helpPopupContentWidth(terminalWidth int) int {
 }
 
 func padHelpBody(s *styles.Styles, body string, width int) string {
-	bg := s.Modal.Box.GetBackground()
-	padder := lipgloss.NewStyle().Background(bg).Width(width)
+	padder := s.Modal.LinePad.Width(width)
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
 		lines[i] = padder.Render(line)

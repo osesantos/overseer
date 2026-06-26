@@ -9,7 +9,6 @@ import (
 	"os"
 	"path/filepath"
 	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -19,9 +18,12 @@ import (
 	"github.com/dnlopes/overseer/internal/shared/paths"
 )
 
+const currentSchemaVersion = 1
+
 type fileSchema struct {
-	Projects []domain.Project `json:"projects"`
-	Sessions []domain.Session `json:"sessions"`
+	SchemaVersion int              `json:"schemaVersion"`
+	Projects      []domain.Project `json:"projects"`
+	Sessions      []domain.Session `json:"sessions"`
 }
 
 type Store struct {
@@ -71,7 +73,7 @@ func (s *Store) load() error {
 	}
 	for _, sess := range schema.Sessions {
 		if sess.AgentType == "" {
-			inferred := inferAgentType(sess.AgentCommand)
+			inferred := domain.InferAgentType(sess.AgentCommand)
 			s.logger.Info("storage: agent type inferred for legacy session",
 				"session_id", sess.ID.String(),
 				"session_name", sess.Name,
@@ -83,29 +85,6 @@ func (s *Store) load() error {
 		s.sessions[sess.ID] = sess
 	}
 	return nil
-}
-
-// inferAgentType maps a legacy session's AgentCommand to an AgentType using
-// a simple prefix match against the built-in defaults. The first token of
-// the command (e.g. "claude" from "claude --debug") is compared to the
-// known agent commands; anything else falls back to AgentTypeUnknown, which
-// keeps the session routable through the registry (resolves to no detector
-// → Unknown status).
-func inferAgentType(agentCommand string) domain.AgentType {
-	first := strings.TrimSpace(agentCommand)
-	if first == "" {
-		return domain.AgentTypeUnknown
-	}
-	if idx := strings.IndexAny(first, " \t"); idx >= 0 {
-		first = first[:idx]
-	}
-	switch first {
-	case "claude":
-		return domain.AgentTypeClaudeCode
-	case "opencode":
-		return domain.AgentTypeOpenCode
-	}
-	return domain.AgentTypeUnknown
 }
 
 func (s *Store) quarantine(reason string) {
@@ -133,7 +112,7 @@ func (s *Store) persist() error {
 	for _, sess := range s.sessions {
 		sessions = append(sessions, sess)
 	}
-	schema := fileSchema{Projects: projects, Sessions: sessions}
+	schema := fileSchema{SchemaVersion: currentSchemaVersion, Projects: projects, Sessions: sessions}
 	data, err := json.MarshalIndent(schema, "", "  ")
 	if err != nil {
 		return fmt.Errorf("storage: marshal: %w", err)

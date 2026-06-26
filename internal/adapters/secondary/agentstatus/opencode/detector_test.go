@@ -109,10 +109,6 @@ func TestPaneDetector_Detect_TmuxError_PropagatesAsError(t *testing.T) {
 	}
 }
 
-func TestPaneDetector_Detect_SatisfiesDomainPort(t *testing.T) {
-	var _ domain.AgentStatusDetector = (*PaneDetector)(nil)
-}
-
 func detectFromFixture(t *testing.T, name string) domain.AgentStatus {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("testdata", name))

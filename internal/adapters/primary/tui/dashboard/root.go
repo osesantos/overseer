@@ -453,7 +453,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, cmd
 			}
 		}
-		if keyMsg.String() == "ctrl+c" {
+		if key.Matches(keyMsg, quitKeyBinding) {
 			return m, tea.Quit
 		}
 
@@ -682,8 +682,7 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case popupDiscoveryWarning:
 		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
-			switch keyMsg.String() {
-			case "enter", "esc", " ":
+			if key.Matches(keyMsg, discoveryPopupDismissBinding) {
 				m.activePopup = popupNone
 			}
 		}
@@ -752,10 +751,10 @@ func (m Model) View() tea.View {
 	var gapLine string
 	switch {
 	case m.discovering:
-		gapLine = lipgloss.NewStyle().Width(m.width).AlignHorizontal(lipgloss.Right).
+		gapLine = m.styles.Toast.GapLine.Width(m.width).
 			Render(m.styles.Toast.Indexing.Render(" Indexing repos… "))
 	case m.discoveryMsg != "":
-		gapLine = lipgloss.NewStyle().Width(m.width).AlignHorizontal(lipgloss.Right).
+		gapLine = m.styles.Toast.GapLine.Width(m.width).
 			Render(m.styles.Toast.Done.Render(" " + m.discoveryMsg + " "))
 	}
 
@@ -902,7 +901,7 @@ func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
 	snaps := m.sessionSnapshots()
 
 	return shared.RequestWithTimeout(
-		60*time.Second,
+		overseerRequestTimeout,
 		func(ctx context.Context) (service.OverseerChatResponse, error) {
 			// Concurrently capture each session's agent-pane output so the
 			// LLM gets real context without blocking on N sequential calls.
@@ -977,7 +976,7 @@ func fit(s *styles.Styles, content string, width, height int) string {
 
 // handleLoopEvalResult processes the result of a single EvaluateLoop call.
 func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, tea.Cmd) {
-	ls := m.loops[msg.sessionID.SessionID]
+	ls := m.loops[msg.state.SessionID]
 	if ls == nil || ls.Status != domain.LoopStatusRunning {
 		return m, nil // loop was stopped while the eval was in flight
 	}
@@ -985,12 +984,27 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 	ls.Iterations++
 
 	if msg.err != nil {
+		ls.ConsecutiveErrors++
+		const maxConsecutiveErrors = 3
+		if ls.ConsecutiveErrors >= maxConsecutiveErrors {
+			ls.Status = domain.LoopStatusStopped
+			note := fmt.Sprintf(
+				"Loop on %q stopped after %d consecutive evaluation errors (iteration %d). "+
+					"The session may be waiting for user input.\nLast error: %s",
+				ls.SessionName, maxConsecutiveErrors, ls.Iterations, msg.err)
+			return m, tea.Batch(
+				shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
+				m.broadcastLoopState(),
+			)
+		}
 		errMsg := fmt.Sprintf("Loop on %q — evaluation error (iteration %d): %s", ls.SessionName, ls.Iterations, msg.err)
 		return m, tea.Batch(
 			shared.Emit(shared.OverseerCommandResultMsg{Text: errMsg, IsError: true}),
 			loopNextTickCmd(*ls),
 		)
 	}
+
+	ls.ConsecutiveErrors = 0
 
 	if msg.eval.Done {
 		ls.Status = domain.LoopStatusDone
@@ -1024,6 +1038,7 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 		ls.SessionName, ls.Iterations, ls.MaxIterations)
 	cmds = append(cmds,
 		shared.Emit(shared.OverseerCommandResultMsg{Text: progress}),
+		m.broadcastLoopState(),
 		loopNextTickCmd(*ls),
 	)
 	return m, tea.Batch(cmds...)

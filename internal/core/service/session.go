@@ -8,6 +8,7 @@ import (
 	"os/exec"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/google/uuid"
 
@@ -444,7 +445,7 @@ func (s *SessionService) Reorder(ctx context.Context, req ReorderSessionRequest)
 	neighbor := idx + req.Direction
 
 	projectSessions[idx].Order, projectSessions[neighbor].Order = projectSessions[neighbor].Order, projectSessions[idx].Order
-	projectSessions[idx].UpdatedAt = projectSessions[neighbor].UpdatedAt
+	projectSessions[idx].UpdatedAt = time.Now()
 
 	if err := s.repo.Save(ctx, projectSessions[idx]); err != nil {
 		return ReorderSessionResponse{}, fmt.Errorf("save target session: %w", err)

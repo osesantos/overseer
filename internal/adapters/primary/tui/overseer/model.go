@@ -4,6 +4,7 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/spinner"
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
@@ -105,10 +106,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.thinking {
 			return m, nil
 		}
-		switch msg.String() {
-		case "enter":
+		if key.Matches(msg, submitKeyBinding) {
 			return m.submit()
-		case "up", "down", "pgup", "pgdown":
+		}
+		if key.Matches(msg, scrollUpKeyBinding, scrollDownKeyBinding, scrollPageUpBinding, scrollPageDownBinding) {
 			// Route scroll keys to the viewport; do not pass to text input.
 			var cmd tea.Cmd
 			m.viewport, cmd = m.viewport.Update(msg)
@@ -276,13 +277,6 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		m.spinner.Tick,
 		shared.Emit(shared.OverseerSubmitMsg{UserMessage: text}),
 	)
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }
 
 // panelBorder returns a copy of the focused border style sized to the given

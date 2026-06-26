@@ -197,6 +197,10 @@ type Styles struct {
 		Box          lipgloss.Style
 		Overlay      color.Color
 		OverlayStyle lipgloss.Style
+		// LinePad is a blank style pre-filled with the modal background.
+		// Use it instead of lipgloss.NewStyle().Background(bg) inside modal
+		// rendering functions to keep all style origins in styles.go.
+		LinePad lipgloss.Style
 	}
 	Badge struct {
 		Key   lipgloss.Style
@@ -223,6 +227,8 @@ type Styles struct {
 		Indexing lipgloss.Style
 		// Done is shown briefly after discovery completes successfully.
 		Done lipgloss.Style
+		// GapLine is the full-width right-aligned wrapper for the gap row.
+		GapLine lipgloss.Style
 	}
 	Glyphs Glyphs
 	Chat   ChatStyles
@@ -346,6 +352,7 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 			Box          lipgloss.Style
 			Overlay      color.Color
 			OverlayStyle lipgloss.Style
+			LinePad      lipgloss.Style
 		}{
 			Box: lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
@@ -355,6 +362,7 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 				Padding(1, 3),
 			Overlay:      theme.OverlayBg,
 			OverlayStyle: lipgloss.NewStyle().Background(theme.OverlayBg),
+			LinePad:      lipgloss.NewStyle().Background(theme.ModalBg),
 		},
 		Badge: struct {
 			Key   lipgloss.Style
@@ -405,9 +413,11 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 		Toast: struct {
 			Indexing lipgloss.Style
 			Done     lipgloss.Style
+			GapLine  lipgloss.Style
 		}{
 			Indexing: lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
 			Done:     lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
+			GapLine:  lipgloss.NewStyle().AlignHorizontal(lipgloss.Right),
 		},
 		Glyphs: NewGlyphs(disableEmoji),
 		Chat: ChatStyles{

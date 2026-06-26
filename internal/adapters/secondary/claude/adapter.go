@@ -24,9 +24,6 @@ var _ domain.OverseerAgentPort = (*Adapter)(nil)
 // a single response cannot embed multiple action blocks accidentally.
 var actionFence = regexp.MustCompile(`(?s)<action>\s*(\{.*?\})\s*</action>`)
 
-// loopFence matches a <loop>…</loop> block in EvaluateLoop responses.
-var loopFence = regexp.MustCompile(`(?s)<loop>\s*(\{.*?\})\s*</loop>`)
-
 // rawAction is the JSON shape we expect inside an <action> block.
 type rawAction struct {
 	Type        string `json:"type"`
@@ -34,13 +31,6 @@ type rawAction struct {
 	SessionName string `json:"session_name"`
 	Project     string `json:"project"`
 	Prompt      string `json:"prompt"`
-}
-
-// rawLoopDecision is the JSON shape we expect inside a <loop> block.
-type rawLoopDecision struct {
-	Done         bool   `json:"done"`
-	PromptToSend string `json:"prompt_to_send,omitempty"`
-	Summary      string `json:"summary,omitempty"`
 }
 
 // Adapter invokes `claude -p` as a non-interactive subprocess and returns a

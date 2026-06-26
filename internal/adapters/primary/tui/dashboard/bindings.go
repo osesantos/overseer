@@ -18,6 +18,8 @@ var (
 	sendAgentEnterKeyBinding     = key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "send enter to agent"))
 	overseerPanelKeyBinding      = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "overseer agent"))
 
+	discoveryPopupDismissBinding = key.NewBinding(key.WithKeys("enter", "esc", " "), key.WithHelp("enter/esc", "dismiss"))
+
 	// chatPassthroughNav are the only keys forwarded to the session list while
 	// the Overseer chat panel is open. Only the arrow keys pass through so the
 	// user can navigate sessions; every other key (letters, enter, esc, …) is

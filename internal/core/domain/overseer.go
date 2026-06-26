@@ -80,13 +80,14 @@ const (
 // periodically captures the session's agent pane and asks the Overseer LLM
 // whether the acceptance criteria have been met.
 type LoopState struct {
-	SessionID     uuid.UUID
-	SessionName   string
-	Criteria      string
-	Status        LoopStatus
-	Iterations    int
-	MaxIterations int
-	StartedAt     time.Time
+	SessionID         uuid.UUID
+	SessionName       string
+	Criteria          string
+	Status            LoopStatus
+	Iterations        int
+	MaxIterations     int
+	StartedAt         time.Time
+	ConsecutiveErrors int // reset to 0 on any successful evaluation
 }
 
 // LoopEvaluation is the structured result of a single EvaluateLoop call.

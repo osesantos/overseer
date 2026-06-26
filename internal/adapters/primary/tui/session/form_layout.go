@@ -47,7 +47,7 @@ func renderField(s *styles.Styles, labelStyle lipgloss.Style, label, value strin
 	bg := s.Modal.Box.GetBackground()
 	h := max(lipgloss.Height(value), 1)
 	padded := labelStyle.Background(bg).Width(formLabelColumnWidth).Height(h).Render(label)
-	gap := lipgloss.NewStyle().Background(bg).Width(formLabelGap).Height(h).Render("")
+	gap := s.Modal.LinePad.Width(formLabelGap).Height(h).Render("")
 	return lipgloss.JoinHorizontal(lipgloss.Top, padded, gap, value)
 }
 
@@ -56,7 +56,7 @@ func renderField(s *styles.Styles, labelStyle lipgloss.Style, label, value strin
 // with the modal background to match the rest of the row.
 func renderFieldHint(s *styles.Styles, hint string) string {
 	bg := s.Modal.Box.GetBackground()
-	indent := lipgloss.NewStyle().Background(bg).Render(strings.Repeat(" ", formLabelColumnWidth+formLabelGap))
+	indent := s.Modal.LinePad.Render(strings.Repeat(" ", formLabelColumnWidth+formLabelGap))
 	return indent + s.Form.Hint.Background(bg).Render(hint)
 }
 
@@ -77,8 +77,7 @@ func modalListRow(s *styles.Styles, selected bool) lipgloss.Style {
 // in the gap between content and the modal's right edge — visible as dark
 // stripes inside the modal.
 func padBodyLines(s *styles.Styles, body string, width int) string {
-	bg := s.Modal.Box.GetBackground()
-	padder := lipgloss.NewStyle().Background(bg).Width(width)
+	padder := s.Modal.LinePad.Width(width)
 	lines := strings.Split(body, "\n")
 	for i, line := range lines {
 		lines[i] = padder.Render(line)

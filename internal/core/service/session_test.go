@@ -847,6 +847,42 @@ func TestSessionService_Reorder_NotFound(t *testing.T) {
 	}
 }
 
+func TestSessionService_Reorder_UpdatedAt_UsesNowNotNeighbour(t *testing.T) {
+	projectID := uuid.New()
+	oldTime := time.Now().Add(-1 * time.Hour)
+
+	a := testutil.MakeSession("A", projectID)
+	a.Order = 1
+	a.UpdatedAt = oldTime
+
+	b := testutil.MakeSession("B", projectID)
+	b.Order = 2
+	b.UpdatedAt = oldTime
+
+	repo, projects, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, b.ID).Return(b, nil).Once()
+	repo.EXPECT().List(mock.Anything).Return([]domain.Session{a, b}, nil).Once()
+
+	before := time.Now()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Twice()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.Reorder(context.Background(), ReorderSessionRequest{ID: b.ID, Direction: -1})
+	if err != nil {
+		t.Fatalf("Reorder() error = %v", err)
+	}
+
+	for _, sess := range resp.Sessions {
+		if sess.ID == b.ID {
+			if !sess.UpdatedAt.After(before) && !sess.UpdatedAt.Equal(before) {
+				t.Errorf("moved session UpdatedAt = %v, want >= %v (time.Now() at call time)", sess.UpdatedAt, before)
+			}
+			return
+		}
+	}
+	t.Fatal("moved session B not found in response")
+}
+
 func TestSessionService_AttachShell_HappyPath(t *testing.T) {
 	sess := testutil.MakeSession("alpha", uuid.New())
 	repo, projects, tmux, git := newSessionMocks(t)
