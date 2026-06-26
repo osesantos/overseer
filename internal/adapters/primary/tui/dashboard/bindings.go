@@ -16,10 +16,11 @@ var (
 	openEditorKeyBinding         = key.NewBinding(key.WithKeys("e"), key.WithHelp("e", "open editor"))
 	killPreviewSessionKeyBinding = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "kill preview session"))
 	sendAgentEnterKeyBinding     = key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "send enter to agent"))
+	overseerPanelKeyBinding      = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "overseer agent"))
 
 	sessionsKeyBindings  = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
 	inspectorKeyBindings = []key.Binding{inspector.ToggleViewKeyBinding, killPreviewSessionKeyBinding}
-	generalKeyBindings   = []key.Binding{helpMenuKeyBinding, quitKeyBinding}
+	generalKeyBindings   = []key.Binding{helpMenuKeyBinding, overseerPanelKeyBinding, quitKeyBinding}
 
 	sessionsHelpGroups = []shared.HelpPopupGroup{
 		{

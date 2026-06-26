@@ -96,6 +96,11 @@ func (s *Stub) SendKeys(_ context.Context, _ string, _ string) error {
 	return nil
 }
 
+// SendText records the call without sending any real text.
+func (s *Stub) SendText(_ context.Context, _ string, _ string) error {
+	return nil
+}
+
 // EnsureExtendedKeys is a no-op in the stub; it always returns nil.
 func (s *Stub) EnsureExtendedKeys(_ context.Context) error {
 	return nil

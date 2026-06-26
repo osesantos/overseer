@@ -16,6 +16,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/claudecode"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/opencode"
 	agentstatusregistry "github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/registry"
+	claudeadapter "github.com/dnlopes/overseer/internal/adapters/secondary/claude"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/git"
 	githubcli "github.com/dnlopes/overseer/internal/adapters/secondary/github"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/storage"
@@ -98,6 +99,15 @@ func main() {
 	projectSvc := service.NewProjectService(store.Projects(), gitAdapter, log)
 	prSvc := service.NewPullRequestService(githubAdapter, log)
 
+	// Overseer Agent (optional: gracefully disabled when claude is not on PATH).
+	var overseerSvc *service.OverseerService
+	claudeAgent, err := claudeadapter.New(log)
+	if err != nil {
+		log.Warn("overseer agent disabled: claude binary not found", "error", err)
+	} else {
+		overseerSvc = service.NewOverseerService(claudeAgent, log)
+	}
+
 	agentStatusRegistry := agentstatusregistry.New()
 	agentStatusRegistry.Register(claudecode.NewPaneDetector(tmuxAdapter))
 	agentStatusRegistry.Register(opencode.NewPaneDetector(tmuxAdapter))
@@ -123,7 +133,7 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {

@@ -37,12 +37,14 @@ func newTestDashboard(t *testing.T) Model {
 		styles.New(),
 		*sessSvc,
 		*projSvc,
+		nil, // overseerService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
 		[]domain.Editor{defaultEditor},
 		domain.DefaultLabels,
 		60, 15,
 		500*time.Millisecond,
+		nil, // discoveryPaths
 	)
 }
 
@@ -187,11 +189,13 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		styles.NewWithTheme("dark", true),
 		*sessSvc,
 		*projSvc,
+		nil, // overseerService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
 		[]domain.Editor{defaultEditor},
 		domain.DefaultLabels,
 		60, 15,
 		500*time.Millisecond,
+		nil, // discoveryPaths
 	)
 }

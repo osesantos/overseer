@@ -16,6 +16,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
+	overseerui "github.com/dnlopes/overseer/internal/adapters/primary/tui/overseer"
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/sessiondetails"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -29,6 +30,9 @@ const (
 	TitleBarHeight           = 1
 	TitleBarGap              = 1
 	HelpBarHeight            = 1
+	// ChatPanelHeightPercent is the share of body height reserved for the
+	// Overseer chat panel when it is visible.
+	ChatPanelHeightPercent = 30
 )
 
 type popupKind int
@@ -41,6 +45,7 @@ const (
 	popupHelp
 	popupKillPreview
 	popupDiscoveryWarning
+	popupOverseerConfirm
 )
 
 // discoveryDismissMsg is an internal message that clears the discovery toast
@@ -66,8 +71,10 @@ type Model struct {
 	scheduler               jobs.Model
 	activePopup             popupKind
 	cachedProjects          []domain.Project
+	cachedSessions          []domain.Session
 	cachedBranchesByProject map[uuid.UUID]projectBranchCache
 	prStatuses              map[uuid.UUID]shared.PRStatusUpdatedMsg
+	agentStatuses           map[uuid.UUID]domain.AgentStatus
 
 	// discovery
 	discoveryPaths        []string // configured scan roots, already expanded
@@ -75,6 +82,11 @@ type Model struct {
 	discoveryMsg          string   // non-empty = show success toast briefly
 	discoveryWarningPaths []string // non-empty = show warning popup
 	discoveryCount        int      // newly registered repos (shown in warning popup)
+
+	// Overseer chat panel
+	chatPanel        overseerui.Model
+	overseerConfirm  overseerui.ConfirmModel
+	chatPanelVisible bool
 
 	width           int
 	height          int
@@ -84,6 +96,7 @@ type Model struct {
 	styles          *styles.Styles
 	sessionsService service.SessionService
 	projectsService service.ProjectService
+	overseerService *service.OverseerService
 	launchers       []domain.Launcher
 	editors         []domain.Editor
 	labels          []domain.Label
@@ -93,6 +106,7 @@ func New(
 	styles *styles.Styles,
 	sessionsService service.SessionService,
 	projectsService service.ProjectService,
+	overseerService *service.OverseerService,
 	scheduler jobs.Model,
 	launchers []domain.Launcher,
 	editors []domain.Editor,
@@ -105,6 +119,9 @@ func New(
 	detailsModel := sessiondetails.New(styles)
 	left := leftpane.New(styles, sessionsModel, detailsModel)
 	left.SetFocus(true)
+
+	// The snapshots closure captures a pointer to the model so the chat panel
+	// always reads the current session/project/status state when the user submits.
 	m := Model{
 		styles:                  styles,
 		titlebar:                newTitlebar(styles, "overseer"),
@@ -114,15 +131,20 @@ func New(
 		scheduler:               scheduler,
 		sessionsService:         sessionsService,
 		projectsService:         projectsService,
+		overseerService:         overseerService,
 		labels:                  labels,
 		launchers:               launchers,
 		editors:                 editors,
 		minWidth:                minWidth,
 		minHeight:               minHeight,
 		prStatuses:              make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
+		agentStatuses:           make(map[uuid.UUID]domain.AgentStatus),
 		cachedBranchesByProject: make(map[uuid.UUID]projectBranchCache),
 		discoveryPaths:          discoveryPaths,
 		discovering:             len(discoveryPaths) > 0,
+	}
+	if overseerService != nil {
+		m.chatPanel = overseerui.New(styles, overseerService, m.sessionSnapshots)
 	}
 	return m
 }
@@ -136,6 +158,7 @@ func (m Model) Init() tea.Cmd {
 		m.scheduler.Init(),
 		m.loadProjects(),
 		m.scheduleBranchTick(),
+		m.chatPanel.Init(),
 	}
 	if len(m.discoveryPaths) > 0 {
 		cmds = append(cmds, m.discoverProjectsCmd())
@@ -355,8 +378,40 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
 	case shared.AgentStatusesUpdatedMsg:
+		m.agentStatuses = msg.Statuses
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.SessionsLoadedMsg:
+		if msg.Err == nil {
+			m.cachedSessions = msg.Sessions
+		}
+		// Also forward to the left pane so the session tree updates.
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.OverseerTogglePanelMsg:
+		m.chatPanelVisible = !m.chatPanelVisible
+		m.reapplySize()
+		return m, nil
+	case shared.OverseerChatResponseMsg:
+		var cmd tea.Cmd
+		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
+		if msg.Action != nil {
+			m.overseerConfirm = overseerui.NewConfirmModel(m.styles, *msg.Action)
+			m.activePopup = popupOverseerConfirm
+			return m, tea.Batch(cmd, m.overseerConfirm.Init())
+		}
+		return m, cmd
+	case shared.OverseerConfirmActionMsg:
+		m.activePopup = popupNone
+		return m, m.sendAgentPromptCmd(msg.Action)
+	case shared.OverseerCancelActionMsg:
+		m.activePopup = popupNone
+		return m, nil
+	case shared.OverseerPromptSentMsg:
+		var cmd tea.Cmd
+		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
 		return m, cmd
 	}
 
@@ -368,6 +423,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if cmd, handled := m.handleKey(keyMsg); handled {
 			return m, cmd
 		}
+		// When the chat panel is visible and focused, route key events to it.
+		if m.chatPanelVisible {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
+			return m, cmd
+		}
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
@@ -376,12 +437,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, shared.Broadcast(msg,
 		shared.Forward(&m.leftPane),
 		shared.Forward(&m.inspector),
+		shared.Forward(&m.chatPanel),
 	)
 }
 
 func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key.Matches(msg, quitKeyBinding) {
 		return tea.Quit, true
+	}
+	if key.Matches(msg, overseerPanelKeyBinding) {
+		return shared.Emit(shared.OverseerTogglePanelMsg{}), true
 	}
 	if key.Matches(msg, helpMenuKeyBinding) {
 		m.helpPopup = shared.NewHelpPopupModel(m.styles, sessionsHelpGroups, m.width)
@@ -559,6 +624,10 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.killPreviewForm, cmd = shared.UpdateModel(m.killPreviewForm, msg)
 		return m, cmd
+	case popupOverseerConfirm:
+		var cmd tea.Cmd
+		m.overseerConfirm, cmd = shared.UpdateModel(m.overseerConfirm, msg)
+		return m, cmd
 	case popupDiscoveryWarning:
 		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 			switch keyMsg.String() {
@@ -614,6 +683,12 @@ func (m Model) View() tea.View {
 	leftWidth := m.width * SessionsListWidthPercent / 100
 	rightWidth := m.width - leftWidth
 
+	// When the chat panel is visible the body shrinks to make room for it.
+	if m.chatPanelVisible {
+		chatHeight := max(bodyHeight*ChatPanelHeightPercent/100, 4)
+		bodyHeight = max(bodyHeight-chatHeight, 1)
+	}
+
 	left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
 	right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
 	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
@@ -634,6 +709,11 @@ func (m Model) View() tea.View {
 
 	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, gapLine, body, helpView)
 
+	if m.chatPanelVisible {
+		chatView := m.chatPanel.View().Content
+		full = lipgloss.JoinVertical(lipgloss.Left, titlebarView, gapLine, body, chatView, helpView)
+	}
+
 	return tea.NewView(full)
 }
 
@@ -651,6 +731,8 @@ func (m Model) popupView() string {
 		return m.killPreviewForm.View().Content
 	case popupDiscoveryWarning:
 		return m.discoveryWarningView()
+	case popupOverseerConfirm:
+		return m.overseerConfirm.View().Content
 	}
 	return ""
 }
@@ -682,16 +764,73 @@ func (m Model) resize(msg tea.WindowSizeMsg) (tea.Model, tea.Cmd) {
 	m.width = msg.Width
 	m.height = msg.Height
 	m.tooSmall = m.width < m.minWidth || m.height < m.minHeight
+	m.reapplySize()
+	return m, nil
+}
 
+// reapplySize recalculates all child panel dimensions from the current m.width
+// and m.height. Called both from resize() and when the chat panel is toggled.
+func (m *Model) reapplySize() {
 	leftWidth := m.width * SessionsListWidthPercent / 100
 	rightWidth := m.width - leftWidth
-	bodyHeight := max(m.height-TitleBarHeight-TitleBarGap-HelpBarHeight, 1)
+
+	fullBodyHeight := max(m.height-TitleBarHeight-TitleBarGap-HelpBarHeight, 1)
+	bodyHeight := fullBodyHeight
+	if m.chatPanelVisible {
+		chatHeight := max(fullBodyHeight*ChatPanelHeightPercent/100, 4)
+		bodyHeight = max(fullBodyHeight-chatHeight, 1)
+		m.chatPanel.SetSize(m.width, chatHeight)
+	}
 
 	m.leftPane.SetSize(leftWidth, bodyHeight)
 	m.inspector.SetSize(rightWidth, bodyHeight)
 	m.helpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)
-	return m, nil
+}
+
+// sendAgentPromptCmd fires the async SendAgentPrompt call.
+func (m Model) sendAgentPromptCmd(action domain.OverseerAction) tea.Cmd {
+	svc := m.sessionsService
+	sessionName := action.SessionName
+	return shared.Request(
+		func(ctx context.Context) (service.SendAgentPromptResponse, error) {
+			return svc.SendAgentPrompt(ctx, service.SendAgentPromptRequest{
+				ID:     action.SessionID,
+				Prompt: action.Prompt,
+			})
+		},
+		func(_ service.SendAgentPromptResponse, err error) tea.Msg {
+			return shared.OverseerPromptSentMsg{SessionName: sessionName, Err: err}
+		},
+	)
+}
+
+// sessionSnapshots returns a snapshot of all current sessions for injection
+// into the Overseer Agent's context. Called by the chat panel's submit closure.
+func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
+	snaps := make([]overseerui.SessionSnapshot, 0, len(m.cachedSessions))
+	for _, sess := range m.cachedSessions {
+		projectName := ""
+		for _, p := range m.cachedProjects {
+			if p.ID == sess.ProjectID {
+				projectName = p.Name
+				break
+			}
+		}
+		status := domain.AgentStatusUnknown
+		if st, ok := m.agentStatuses[sess.ID]; ok {
+			status = st.Kind
+		}
+		snaps = append(snaps, overseerui.SessionSnapshot{
+			SessionID:   sess.ID,
+			SessionName: sess.Name,
+			ProjectName: projectName,
+			Branch:      sess.Branch,
+			AgentType:   sess.AgentType,
+			Status:      status,
+		})
+	}
+	return snaps
 }
 
 func fit(s *styles.Styles, content string, width, height int) string {

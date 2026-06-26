@@ -220,6 +220,19 @@ func (a *Adapter) SendKeys(_ context.Context, tmuxID string, key string) error {
 	return nil
 }
 
+// SendText sends a literal text string to the named session's active pane
+// using `-l` (literal) mode so that every character is delivered verbatim
+// without tmux interpreting it as a key name. Useful for injecting arbitrary
+// prompts into an agent session. After sending the text the caller typically
+// follows up with SendKeys("Enter") to submit it.
+func (a *Adapter) SendText(_ context.Context, tmuxID string, text string) error {
+	if _, err := a.run("send-keys", "-t", tmuxID, "-l", text); err != nil {
+		return fmt.Errorf("tmux: send-text to %q: %w", tmuxID, err)
+	}
+	a.logger.Debug("tmux send-text", "target", tmuxID, "len", len(text))
+	return nil
+}
+
 // errTmuxNoServer is returned by run when tmux reports that no server is running.
 var errTmuxNoServer = errors.New("tmux: no server running")
 

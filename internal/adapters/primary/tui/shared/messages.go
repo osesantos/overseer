@@ -129,3 +129,36 @@ type ProjectDiscoveryCompletedMsg struct {
 	MissingPaths []string
 	Err          error
 }
+
+// --- Overseer chat panel messages ---
+
+// OverseerTogglePanelMsg is emitted when the user presses ctrl+o. The
+// dashboard uses it to flip chatPanelVisible and resize child panels.
+type OverseerTogglePanelMsg struct{}
+
+// OverseerChatResponseMsg carries the result of a completed Chat call from
+// the OverseerService. The overseer panel appends Text to history and, when
+// Action is non-nil, asks the dashboard to open the confirmation popup.
+type OverseerChatResponseMsg struct {
+	Text   string
+	Action *domain.OverseerAction
+	Err    error
+}
+
+// OverseerConfirmActionMsg is emitted by the confirmation popup when the user
+// presses y/Enter. The dashboard forwards it to the session service as a
+// SendAgentPrompt call.
+type OverseerConfirmActionMsg struct {
+	Action domain.OverseerAction
+}
+
+// OverseerCancelActionMsg is emitted by the confirmation popup when the user
+// presses Esc/n. The dashboard closes the popup without sending anything.
+type OverseerCancelActionMsg struct{}
+
+// OverseerPromptSentMsg is emitted after SendAgentPrompt completes. The
+// overseer panel uses it to append a system note to the chat history.
+type OverseerPromptSentMsg struct {
+	SessionName string
+	Err         error
+}

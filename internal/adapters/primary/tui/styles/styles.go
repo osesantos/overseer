@@ -97,6 +97,23 @@ type TabStyles struct {
 	Bar      lipgloss.Style
 }
 
+type ChatStyles struct {
+	// Panel is the border style used for the chat panel container.
+	Panel lipgloss.Style
+	// UserLabel styles the "You  " prefix on user messages.
+	UserLabel lipgloss.Style
+	// UserText styles the body of user messages.
+	UserText lipgloss.Style
+	// AgentLabel styles the "Agent" prefix on agent messages.
+	AgentLabel lipgloss.Style
+	// AgentText styles the body of agent messages.
+	AgentText lipgloss.Style
+	// ThinkingPrefix styles the spinner shown while the agent is thinking.
+	ThinkingPrefix lipgloss.Style
+	// ThinkingText styles the "thinking…" label beside the spinner.
+	ThinkingText lipgloss.Style
+}
+
 type SessionDetailsStyles struct {
 	// SectionTitle styles the heading rendered above each grouped block
 	// ("Pull Request", "Repository"). Bold in the theme's subtext colour
@@ -204,6 +221,7 @@ type Styles struct {
 		Done lipgloss.Style
 	}
 	Glyphs Glyphs
+	Chat   ChatStyles
 }
 
 // New builds *Styles using the dark theme; production code should use NewWithTheme.
@@ -388,5 +406,16 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 			Done:     lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
 		},
 		Glyphs: NewGlyphs(disableEmoji),
+		Chat: ChatStyles{
+			Panel: lipgloss.NewStyle().
+				Border(lipgloss.RoundedBorder()).
+				BorderForeground(theme.BorderFocus),
+			UserLabel:      lipgloss.NewStyle().Foreground(theme.Accent).Bold(true),
+			UserText:       lipgloss.NewStyle().Foreground(theme.Text),
+			AgentLabel:     lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
+			AgentText:      lipgloss.NewStyle().Foreground(theme.Text),
+			ThinkingPrefix: lipgloss.NewStyle().Foreground(theme.Accent),
+			ThinkingText:   lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
+		},
 	}
 }

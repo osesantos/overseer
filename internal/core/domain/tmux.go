@@ -38,6 +38,13 @@ type TmuxAdapter interface {
 	// without attaching to it. key is a tmux key name such as "Enter".
 	// Returns ErrTmuxSessionNotFound if the session does not exist.
 	SendKeys(ctx context.Context, tmuxID string, key string) error
+	// SendText sends a literal text string to the named session's active pane
+	// using tmux send-keys -l (literal mode), which bypasses key-name
+	// interpretation so arbitrary text — including characters like < > / " —
+	// is delivered verbatim. The caller is responsible for sending a
+	// subsequent SendKeys("Enter") if the text should be submitted.
+	// Returns ErrTmuxSessionNotFound if the session does not exist.
+	SendText(ctx context.Context, tmuxID string, text string) error
 	// EnsureExtendedKeys sets the tmux server option `extended-keys on` so that
 	// modifier key sequences (e.g. Shift+Enter) are preserved and forwarded to
 	// inner applications instead of being collapsed to their unmodified form.

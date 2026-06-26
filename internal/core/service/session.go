@@ -621,6 +621,39 @@ func (s *SessionService) SendAgentEnter(ctx context.Context, req SendAgentEnterR
 	return SendAgentEnterResponse{}, nil
 }
 
+// --- SendAgentPrompt ---
+
+type SendAgentPromptRequest struct {
+	ID     uuid.UUID
+	Prompt string
+}
+
+type SendAgentPromptResponse struct{}
+
+// SendAgentPrompt delivers a literal text prompt followed by an Enter keypress
+// to the agent tmux pane of the given session without attaching to it. The
+// text is sent in literal mode so characters like < > / " are delivered
+// verbatim. If the agent pane does not exist the call returns
+// domain.ErrTmuxSessionNotFound.
+func (s *SessionService) SendAgentPrompt(ctx context.Context, req SendAgentPromptRequest) (SendAgentPromptResponse, error) {
+	sess, err := s.repo.Get(ctx, req.ID)
+	if err != nil {
+		return SendAgentPromptResponse{}, err
+	}
+	agentTmuxID := sess.ID.String() + "-agent"
+	if err := s.tmux.SendText(ctx, agentTmuxID, req.Prompt); err != nil {
+		return SendAgentPromptResponse{}, fmt.Errorf("send prompt to agent: %w", err)
+	}
+	if err := s.tmux.SendKeys(ctx, agentTmuxID, "Enter"); err != nil {
+		return SendAgentPromptResponse{}, fmt.Errorf("send enter after prompt: %w", err)
+	}
+	s.logger.InfoContext(ctx, "sent prompt to agent",
+		slog.String("id", sess.ID.String()),
+		slog.Int("prompt_len", len(req.Prompt)),
+	)
+	return SendAgentPromptResponse{}, nil
+}
+
 // --- PreviewSession ---
 
 // PreviewKind selects which tmux session attached to an Overseer session is

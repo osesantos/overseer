@@ -624,3 +624,109 @@ func (_c *MockTmuxAdapter_SendKeys_Call) RunAndReturn(run func(ctx context.Conte
 	_c.Call.Return(run)
 	return _c
 }
+
+// EnsureExtendedKeys provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) EnsureExtendedKeys(ctx context.Context) error {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnsureExtendedKeys")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxAdapter_EnsureExtendedKeys_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureExtendedKeys'
+type MockTmuxAdapter_EnsureExtendedKeys_Call struct {
+	*mock.Call
+}
+
+func (_e *MockTmuxAdapter_Expecter) EnsureExtendedKeys(ctx interface{}) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	return &MockTmuxAdapter_EnsureExtendedKeys_Call{Call: _e.mock.On("EnsureExtendedKeys", ctx)}
+}
+
+func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) Run(run func(ctx context.Context)) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(arg0)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) Return(err error) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) RunAndReturn(run func(ctx context.Context) error) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SendText provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) SendText(ctx context.Context, tmuxID string, text string) error {
+	ret := _mock.Called(ctx, tmuxID, text)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SendText")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, tmuxID, text)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxAdapter_SendText_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendText'
+type MockTmuxAdapter_SendText_Call struct {
+	*mock.Call
+}
+
+// SendText is a helper method to define mock.On call
+//   - ctx context.Context
+//   - tmuxID string
+//   - text string
+func (_e *MockTmuxAdapter_Expecter) SendText(ctx interface{}, tmuxID interface{}, text interface{}) *MockTmuxAdapter_SendText_Call {
+	return &MockTmuxAdapter_SendText_Call{Call: _e.mock.On("SendText", ctx, tmuxID, text)}
+}
+
+func (_c *MockTmuxAdapter_SendText_Call) Run(run func(ctx context.Context, tmuxID string, text string)) *MockTmuxAdapter_SendText_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(arg0, arg1, arg2)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_SendText_Call) Return(err error) *MockTmuxAdapter_SendText_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_SendText_Call) RunAndReturn(run func(ctx context.Context, tmuxID string, text string) error) *MockTmuxAdapter_SendText_Call {
+	_c.Call.Return(run)
+	return _c
+}
