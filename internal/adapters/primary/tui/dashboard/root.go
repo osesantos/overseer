@@ -120,8 +120,6 @@ func New(
 	left := leftpane.New(styles, sessionsModel, detailsModel)
 	left.SetFocus(true)
 
-	// The snapshots closure captures a pointer to the model so the chat panel
-	// always reads the current session/project/status state when the user submits.
 	m := Model{
 		styles:                  styles,
 		titlebar:                newTitlebar(styles, "overseer"),
@@ -142,9 +140,7 @@ func New(
 		cachedBranchesByProject: make(map[uuid.UUID]projectBranchCache),
 		discoveryPaths:          discoveryPaths,
 		discovering:             len(discoveryPaths) > 0,
-	}
-	if overseerService != nil {
-		m.chatPanel = overseerui.New(styles, overseerService, m.sessionSnapshots)
+		chatPanel:               overseerui.New(styles),
 	}
 	return m
 }
@@ -394,6 +390,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.chatPanelVisible = !m.chatPanelVisible
 		m.reapplySize()
 		return m, nil
+	case shared.OverseerSubmitMsg:
+		// The panel has already appended the user message and started the
+		// spinner. We build the session context here — reading from the
+		// live cachedSessions — and fire the service call.
+		return m, m.overseerChatCmd(msg.UserMessage)
 	case shared.OverseerChatResponseMsg:
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
@@ -832,7 +833,8 @@ func (m Model) sendAgentPromptCmd(action domain.OverseerAction) tea.Cmd {
 }
 
 // sessionSnapshots returns a snapshot of all current sessions for injection
-// into the Overseer Agent's context. Called by the chat panel's submit closure.
+// into the Overseer Agent's context. Called by overseerChatCmd at the moment
+// the user submits a message, so it always reads from the live cachedSessions.
 func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
 	snaps := make([]overseerui.SessionSnapshot, 0, len(m.cachedSessions))
 	for _, sess := range m.cachedSessions {
@@ -857,6 +859,47 @@ func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
 		})
 	}
 	return snaps
+}
+
+// overseerChatCmd builds the async tea.Cmd that calls OverseerService.Chat.
+// It is called from the dashboard's Update so that it always reads from the
+// live cachedSessions at submit time — never from a stale closure.
+func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
+	if m.overseerService == nil {
+		return nil
+	}
+	svc := m.overseerService
+	snaps := m.sessionSnapshots()
+	sessions := make([]domain.OverseerSessionContext, 0, len(snaps))
+	for _, snap := range snaps {
+		sessions = append(sessions, domain.OverseerSessionContext{
+			SessionID:   snap.SessionID,
+			SessionName: snap.SessionName,
+			ProjectName: snap.ProjectName,
+			Branch:      snap.Branch,
+			AgentType:   snap.AgentType,
+			Status:      snap.Status,
+			PaneOutput:  snap.PaneOutput,
+		})
+	}
+	return shared.RequestWithTimeout(
+		60*time.Second,
+		func(ctx context.Context) (service.OverseerChatResponse, error) {
+			return svc.Chat(ctx, service.OverseerChatRequest{
+				UserMessage: userMsg,
+				Sessions:    sessions,
+			})
+		},
+		func(resp service.OverseerChatResponse, err error) tea.Msg {
+			if err != nil {
+				return shared.OverseerChatResponseMsg{Err: err}
+			}
+			return shared.OverseerChatResponseMsg{
+				Text:   resp.Text,
+				Action: resp.Action,
+			}
+		},
+	)
 }
 
 func fit(s *styles.Styles, content string, width, height int) string {

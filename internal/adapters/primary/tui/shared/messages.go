@@ -136,6 +136,15 @@ type ProjectDiscoveryCompletedMsg struct {
 // dashboard uses it to flip chatPanelVisible and resize child panels.
 type OverseerTogglePanelMsg struct{}
 
+// OverseerSubmitMsg is emitted by the chat panel when the user presses Enter.
+// The dashboard receives it, attaches a live session context snapshot, and
+// fires the OverseerService.Chat command. Keeping the service call in the
+// dashboard ensures it always reads from the current cachedSessions rather
+// than from a stale closure captured at panel construction time.
+type OverseerSubmitMsg struct {
+	UserMessage string
+}
+
 // OverseerChatResponseMsg carries the result of a completed Chat call from
 // the OverseerService. The overseer panel appends Text to history and, when
 // Action is non-nil, asks the dashboard to open the confirmation popup.

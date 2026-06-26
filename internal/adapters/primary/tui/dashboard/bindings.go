@@ -18,11 +18,11 @@ var (
 	sendAgentEnterKeyBinding     = key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "send enter to agent"))
 	overseerPanelKeyBinding      = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "overseer agent"))
 
-	// chatPassthroughNav are the keys that navigate the session list while the
-	// Overseer chat panel is open. All other keys are consumed by the chat
-	// input so the user can type freely without triggering dashboard actions.
-	chatPassthroughNav = key.NewBinding(key.WithKeys("up", "down", "j", "k",
-		"shift+up", "shift+down", "g", "G", "ctrl+up", "ctrl+down"))
+	// chatPassthroughNav are the only keys forwarded to the session list while
+	// the Overseer chat panel is open. Only the arrow keys pass through so the
+	// user can navigate sessions; every other key (letters, enter, esc, …) is
+	// consumed by the chat input.
+	chatPassthroughNav = key.NewBinding(key.WithKeys("up", "down"))
 
 	sessionsKeyBindings  = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
 	inspectorKeyBindings = []key.Binding{inspector.ToggleViewKeyBinding, killPreviewSessionKeyBinding}

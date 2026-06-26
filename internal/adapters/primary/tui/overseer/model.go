@@ -1,7 +1,6 @@
 package overseer
 
 import (
-	"context"
 	"strings"
 	"time"
 
@@ -15,7 +14,6 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
 	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
 )
 
 const (
@@ -27,8 +25,10 @@ const (
 	borderFrameH = 2
 )
 
-// SessionSnapshot is a lightweight view into a session's state that the Model
-// collects at submit time to pass to OverseerService.Chat as context.
+// SessionSnapshot is a lightweight view into a session's state that the
+// dashboard builds at submit time and passes to OverseerService.Chat as
+// context. Defined here so the dashboard can use the type without a circular
+// import; the dashboard is the only producer, the claude adapter the only consumer.
 type SessionSnapshot struct {
 	SessionID   uuid.UUID
 	SessionName string
@@ -43,25 +43,27 @@ type SessionSnapshot struct {
 // (viewport), a single-line text input, and a thinking-spinner shown while
 // the agent is processing. It is embedded directly in dashboard.Model and
 // becomes visible when the user presses ctrl+o.
+//
+// The panel itself never calls the OverseerService directly. On submit it
+// emits shared.OverseerSubmitMsg; the dashboard receives that message,
+// attaches a live session context snapshot, and fires the service command.
+// This avoids the stale-closure bug that arises when service/snapshot
+// references are captured at panel construction time.
 type Model struct {
 	// history accumulates all chat messages for the viewport.
 	history []domain.OverseerMessage
 
-	viewport  viewport.Model
-	input     textinput.Model
-	spinner   spinner.Model
-	thinking  bool
-	width     int
-	height    int
-	styles    *styles.Styles
-	svc       *service.OverseerService
-	snapshots func() []SessionSnapshot // injected at construction
+	viewport viewport.Model
+	input    textinput.Model
+	spinner  spinner.Model
+	thinking bool
+	width    int
+	height   int
+	styles   *styles.Styles
 }
 
-// New constructs a Model. snapshots is a function called at submit time to
-// capture the current session state; the dashboard provides this closure so
-// the chat panel never needs to hold a reference to the session list.
-func New(s *styles.Styles, svc *service.OverseerService, snapshots func() []SessionSnapshot) Model {
+// New constructs a Model.
+func New(s *styles.Styles) Model {
 	ti := textinput.New()
 	ti.Placeholder = "Ask the Overseer Agent…"
 	ti.Prompt = inputPrompt
@@ -73,24 +75,20 @@ func New(s *styles.Styles, svc *service.OverseerService, snapshots func() []Sess
 	vp := viewport.New()
 
 	return Model{
-		viewport:  vp,
-		input:     ti,
-		spinner:   sp,
-		styles:    s,
-		svc:       svc,
-		snapshots: snapshots,
+		viewport: vp,
+		input:    ti,
+		spinner:  sp,
+		styles:   s,
 	}
 }
 
 // SetSize updates the panel dimensions. Called by the dashboard whenever the
-// terminal is resized or the panel is toggled open. height is the full height
-// available to the panel (border + history + input row).
+// terminal is resized or the panel is toggled open.
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	m.input.SetWidth(width - len(inputPrompt) - borderFrameH)
 
-	// History viewport fills the space above the input row inside the border.
 	vpHeight := max(height-borderFrameH-inputHeight, 1)
 	m.viewport.SetWidth(width - borderFrameH)
 	m.viewport.SetHeight(vpHeight)
@@ -105,7 +103,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
 		if m.thinking {
-			// Disable input while the agent is thinking.
 			return m, nil
 		}
 		switch msg.String() {
@@ -139,8 +136,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			Content:   msg.Text,
 			Timestamp: time.Now(),
 		})
-		// Action handling is delegated to the dashboard via the message bus;
-		// the panel itself just records the chat history.
 		return m, nil
 
 	case shared.OverseerPromptSentMsg:
@@ -168,10 +163,8 @@ func (m Model) View() tea.View {
 		Height(m.height - borderFrameH)
 
 	var b strings.Builder
-	// History pane.
 	b.WriteString(m.viewport.View())
 	b.WriteByte('\n')
-	// Input row: spinner (when thinking) replaces the prompt prefix.
 	if m.thinking {
 		b.WriteString(s.Chat.ThinkingPrefix.Render(m.spinner.View()))
 		b.WriteString(s.Chat.ThinkingText.Render(" thinking…"))
@@ -182,8 +175,7 @@ func (m Model) View() tea.View {
 	return tea.NewView(border.Render(b.String()))
 }
 
-// appendMessage adds msg to history and refreshes the viewport, scrolling to
-// the bottom so the latest message is always visible.
+// appendMessage adds msg to history and refreshes the viewport.
 func (m *Model) appendMessage(msg domain.OverseerMessage) {
 	m.history = append(m.history, msg)
 	m.refreshViewport()
@@ -215,8 +207,8 @@ func (m *Model) refreshViewport() {
 	m.viewport.GotoBottom()
 }
 
-// submit reads the current input value, appends a user message, and fires the
-// async Chat command.
+// submit reads the current input value, appends a user message, starts the
+// spinner, and emits OverseerSubmitMsg for the dashboard to handle.
 func (m Model) submit() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
 	if text == "" {
@@ -229,42 +221,9 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 		Timestamp: time.Now(),
 	})
 	m.thinking = true
-	return m, tea.Batch(m.spinner.Tick, m.chatCmd(text))
-}
-
-// chatCmd builds the async tea.Cmd that calls OverseerService.Chat.
-func (m Model) chatCmd(userMsg string) tea.Cmd {
-	svc := m.svc
-	snaps := m.snapshots()
-	sessions := make([]domain.OverseerSessionContext, 0, len(snaps))
-	for _, snap := range snaps {
-		sessions = append(sessions, domain.OverseerSessionContext{
-			SessionID:   snap.SessionID,
-			SessionName: snap.SessionName,
-			ProjectName: snap.ProjectName,
-			Branch:      snap.Branch,
-			AgentType:   snap.AgentType,
-			Status:      snap.Status,
-			PaneOutput:  snap.PaneOutput,
-		})
-	}
-	return shared.RequestWithTimeout(
-		60*time.Second,
-		func(ctx context.Context) (service.OverseerChatResponse, error) {
-			return svc.Chat(ctx, service.OverseerChatRequest{
-				UserMessage: userMsg,
-				Sessions:    sessions,
-			})
-		},
-		func(resp service.OverseerChatResponse, err error) tea.Msg {
-			if err != nil {
-				return shared.OverseerChatResponseMsg{Err: err}
-			}
-			return shared.OverseerChatResponseMsg{
-				Text:   resp.Text,
-				Action: resp.Action,
-			}
-		},
+	return m, tea.Batch(
+		m.spinner.Tick,
+		shared.Emit(shared.OverseerSubmitMsg{UserMessage: text}),
 	)
 }
 
@@ -273,13 +232,6 @@ func max(a, b int) int {
 		return a
 	}
 	return b
-}
-
-// borderWidth returns the horizontal frame size of the focused border style.
-func borderWidth(s *styles.Styles) int {
-	l, r := s.Border.Focused.GetFrameSize()
-	_ = l
-	return r
 }
 
 // panelBorder returns a copy of the focused border style sized to the given
