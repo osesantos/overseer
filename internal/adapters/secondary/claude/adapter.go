@@ -24,6 +24,9 @@ var _ domain.OverseerAgentPort = (*Adapter)(nil)
 // a single response cannot embed multiple action blocks accidentally.
 var actionFence = regexp.MustCompile(`(?s)<action>\s*(\{.*?\})\s*</action>`)
 
+// loopFence matches a <loop>…</loop> block in EvaluateLoop responses.
+var loopFence = regexp.MustCompile(`(?s)<loop>\s*(\{.*?\})\s*</loop>`)
+
 // rawAction is the JSON shape we expect inside an <action> block.
 type rawAction struct {
 	Type        string `json:"type"`
@@ -31,6 +34,13 @@ type rawAction struct {
 	SessionName string `json:"session_name"`
 	Project     string `json:"project"`
 	Prompt      string `json:"prompt"`
+}
+
+// rawLoopDecision is the JSON shape we expect inside a <loop> block.
+type rawLoopDecision struct {
+	Done         bool   `json:"done"`
+	PromptToSend string `json:"prompt_to_send,omitempty"`
+	Summary      string `json:"summary,omitempty"`
 }
 
 // Adapter invokes `claude -p` as a non-interactive subprocess and returns a
@@ -60,6 +70,35 @@ func (a *Adapter) Chat(ctx context.Context, userMsg string, sessions []domain.Ov
 
 	a.logger.Debug("overseer: invoking claude", slog.Int("prompt_len", len(prompt)))
 
+	raw, err := a.run(ctx, prompt)
+	if err != nil {
+		return domain.OverseerResponse{}, err
+	}
+
+	a.logger.Debug("overseer: claude replied", slog.Int("response_len", len(raw)))
+	return parseResponse(raw)
+}
+
+// EvaluateLoop asks Claude whether the acceptance criteria have been met
+// given the current pane output. The response is expected to contain a
+// <loop>{"done":bool,...}</loop> block.
+func (a *Adapter) EvaluateLoop(ctx context.Context, criteria, paneOutput string) (domain.LoopEvaluation, error) {
+	prompt := buildLoopPrompt(criteria, paneOutput)
+
+	a.logger.Debug("overseer: invoking claude for loop eval", slog.Int("prompt_len", len(prompt)))
+
+	raw, err := a.run(ctx, prompt)
+	if err != nil {
+		return domain.LoopEvaluation{}, err
+	}
+
+	a.logger.Debug("overseer: claude loop eval replied", slog.Int("response_len", len(raw)))
+	return parseLoopResponse(raw)
+}
+
+// run executes `claude -p <prompt>` and returns stdout. Stderr is captured
+// and surfaced in the error when the process exits non-zero.
+func (a *Adapter) run(ctx context.Context, prompt string) (string, error) {
 	cmd := exec.CommandContext(ctx, a.claudeBin, "-p", prompt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 
@@ -70,20 +109,15 @@ func (a *Adapter) Chat(ctx context.Context, userMsg string, sessions []domain.Ov
 	if err := cmd.Run(); err != nil {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
-			return domain.OverseerResponse{}, fmt.Errorf("%w: exit %d: %s",
+			return "", fmt.Errorf("%w: exit %d: %s",
 				domain.ErrOverseerAgentFailed, exitErr.ExitCode(), strings.TrimSpace(stderr.String()))
 		}
-		return domain.OverseerResponse{}, fmt.Errorf("%w: %w", domain.ErrOverseerAgentFailed, err)
+		return "", fmt.Errorf("%w: %w", domain.ErrOverseerAgentFailed, err)
 	}
-
-	raw := stdout.String()
-	a.logger.Debug("overseer: claude replied", slog.Int("response_len", len(raw)))
-
-	return parseResponse(raw)
+	return stdout.String(), nil
 }
 
-// buildPrompt assembles the full text sent to `claude -p`. It includes a role
-// description, a snapshot of all session contexts, and the user's message.
+// buildPrompt assembles the full text sent to `claude -p` for Chat calls.
 func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) string {
 	var b strings.Builder
 
@@ -120,6 +154,38 @@ func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) strin
 	b.WriteString("=== User Message ===\n")
 	b.WriteString(userMsg)
 	b.WriteByte('\n')
+
+	return b.String()
+}
+
+// buildLoopPrompt assembles the prompt used for loop evaluation calls.
+func buildLoopPrompt(criteria, paneOutput string) string {
+	var b strings.Builder
+
+	b.WriteString("You are an evaluation agent. Your task is to determine whether an acceptance criterion has been met by inspecting the output of an AI coding session.\n\n")
+
+	b.WriteString("=== Acceptance Criteria ===\n")
+	b.WriteString(criteria)
+	b.WriteString("\n\n")
+
+	b.WriteString("=== Session Output ===\n")
+	if paneOutput == "" {
+		b.WriteString("(no output available)\n")
+	} else {
+		b.WriteString(paneOutput)
+		b.WriteByte('\n')
+	}
+
+	b.WriteString("\n=== Instructions ===\n")
+	b.WriteString("Respond with exactly one <loop> block containing a JSON object:\n\n")
+	b.WriteString("<loop>\n")
+	b.WriteString(`{"done": true/false, "prompt_to_send": "<optional follow-up prompt when done=false>", "summary": "<brief outcome summary when done=true>"}`)
+	b.WriteString("\n</loop>\n\n")
+	b.WriteString("Rules:\n")
+	b.WriteString("- Set done=true only when the acceptance criteria are clearly and unambiguously satisfied.\n")
+	b.WriteString("- When done=false, set prompt_to_send to a concrete instruction that will help the session agent make progress.\n")
+	b.WriteString("- When done=true, set summary to a one-sentence description of how the criteria were met.\n")
+	b.WriteString("- Do not include any text outside the <loop> block.\n")
 
 	return b.String()
 }
@@ -165,4 +231,27 @@ func parseResponse(raw string) (domain.OverseerResponse, error) {
 	text := strings.TrimSpace(actionFence.ReplaceAllString(raw, ""))
 
 	return domain.OverseerResponse{Text: text, Action: action}, nil
+}
+
+// parseLoopResponse extracts the LoopEvaluation from Claude's raw stdout.
+// The response must contain exactly one <loop>…</loop> block. On parse
+// failure we assume the criteria are not yet met to avoid silently finishing
+// a loop prematurely.
+func parseLoopResponse(raw string) (domain.LoopEvaluation, error) {
+	match := loopFence.FindStringSubmatchIndex(raw)
+	if match == nil {
+		return domain.LoopEvaluation{}, fmt.Errorf("overseer: loop response missing <loop> block: %q", raw)
+	}
+
+	jsonStart, jsonEnd := match[2], match[3]
+	var rd rawLoopDecision
+	if err := json.Unmarshal([]byte(raw[jsonStart:jsonEnd]), &rd); err != nil {
+		return domain.LoopEvaluation{}, fmt.Errorf("overseer: loop response malformed JSON: %w", err)
+	}
+
+	return domain.LoopEvaluation{
+		Done:         rd.Done,
+		PromptToSend: rd.PromptToSend,
+		Summary:      rd.Summary,
+	}, nil
 }

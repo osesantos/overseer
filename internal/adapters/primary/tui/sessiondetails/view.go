@@ -3,6 +3,7 @@ package sessiondetails
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"charm.land/lipgloss/v2"
 
@@ -31,6 +32,9 @@ func (m Model) renderContent(width, height int) string {
 	}
 
 	sections := [][]string{m.renderRepositorySection(width)}
+	if loop := m.renderLoopSection(width); loop != nil {
+		sections = append(sections, loop)
+	}
 	if pr := m.renderPRSection(width); pr != nil {
 		sections = append(sections, pr)
 	}
@@ -106,6 +110,48 @@ func (m Model) branchValue() (string, string) {
 		return live, "  (live)"
 	}
 	return "(project mode)", ""
+}
+
+// renderLoopSection returns nil when no loop exists for the selected session.
+func (m Model) renderLoopSection(width int) []string {
+	if m.session == nil {
+		return nil
+	}
+	ls, ok := m.loops[m.session.ID]
+	if !ok {
+		return nil
+	}
+
+	s := &m.styles.SessionDetails
+	g := m.styles.Glyphs
+	rows := sectionHeader(s, "Loop", width)
+
+	glyph := g.LoopRunning
+	statusStyle := s.Warn
+	switch ls.Status {
+	case domain.LoopStatusDone:
+		glyph = g.LoopDone
+		statusStyle = s.Good
+	case domain.LoopStatusStopped:
+		glyph = g.LoopStopped
+		statusStyle = s.Hint
+	}
+
+	statusValue := statusStyle.Render(glyph + " " + string(ls.Status))
+	rows = append(rows, twoColumnRow(s, "Status", statusValue))
+
+	iterValue := s.Value.Render(fmt.Sprintf("%d / %d", ls.Iterations, ls.MaxIterations))
+	rows = append(rows, twoColumnRow(s, "Iterations", iterValue))
+
+	elapsed := time.Since(ls.StartedAt).Round(time.Second)
+	rows = append(rows, twoColumnRow(s, "Elapsed", s.Value.Render(elapsed.String())))
+
+	if ls.Criteria != "" {
+		valueW := twoColumnValueWidth(width)
+		rows = append(rows, twoColumnRow(s, "Criteria", s.Hint.Render(truncate(ls.Criteria, valueW))))
+	}
+
+	return append(rows, "")
 }
 
 // renderPRSection returns nil when no PR exists (still fetching or

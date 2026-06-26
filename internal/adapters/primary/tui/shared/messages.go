@@ -171,3 +171,25 @@ type OverseerPromptSentMsg struct {
 	SessionName string
 	Err         error
 }
+
+// OverseerCommandMsg is emitted by the chat panel when the user submits a
+// line that starts with '/'. The dashboard parses the raw text, resolves
+// session names against cachedSessions, and executes the command without
+// calling the LLM.
+type OverseerCommandMsg struct {
+	Raw string
+}
+
+// OverseerCommandResultMsg carries the outcome of an operator command back
+// to the chat panel, which renders it as a dimmed system message.
+type OverseerCommandResultMsg struct {
+	Text    string
+	IsError bool
+}
+
+// OverseerLoopStateChangedMsg is broadcast whenever the loops map in the
+// dashboard changes (loop started, tick, done, stopped). Listeners such as
+// sessiondetails and the session list use it to update their loop badges.
+type OverseerLoopStateChangedMsg struct {
+	Loops map[uuid.UUID]*domain.LoopState
+}

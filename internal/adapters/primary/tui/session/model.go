@@ -43,6 +43,7 @@ type sessionNode struct {
 	statusCode  string
 	updatedAt   time.Time
 	agentStatus domain.AgentStatusKind
+	loopStatus  *domain.LoopStatus // nil = no loop for this session
 }
 
 type Model struct {
@@ -58,6 +59,7 @@ type Model struct {
 	height         int
 	err            error
 	agentStatuses  map[uuid.UUID]domain.AgentStatus
+	loops          map[uuid.UUID]*domain.LoopState
 }
 
 func New(s *styles.Styles, service service.SessionService, labels []domain.Label) Model {
@@ -70,6 +72,7 @@ func New(s *styles.Styles, service service.SessionService, labels []domain.Label
 		groupingMode:  sessionGroupingProject,
 		projectNames:  map[uuid.UUID]string{},
 		agentStatuses: map[uuid.UUID]domain.AgentStatus{},
+		loops:         map[uuid.UUID]*domain.LoopState{},
 	}
 }
 
@@ -138,6 +141,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.agentStatuses = msg.Statuses
+		m.rebuildTree()
+		return m, nil
+	case shared.OverseerLoopStateChangedMsg:
+		m.loops = msg.Loops
 		m.rebuildTree()
 		return m, nil
 	case components.TreeSelectMsg[sessionNode]:
@@ -429,20 +436,20 @@ func (m Model) loadSessions() tea.Cmd {
 
 func (m Model) sessionTreeNodes() []components.TreeNode[sessionNode] {
 	if m.groupingMode == sessionGroupingNone {
-		return rawSessionNodes(m.sessions, m.styles.Glyphs, m.agentStatuses)
+		return rawSessionNodes(m.sessions, m.styles.Glyphs, m.agentStatuses, m.loops)
 	}
-	return projectSessionNodes(m.sessions, m.projectNames, m.styles.Glyphs, m.agentStatuses)
+	return projectSessionNodes(m.sessions, m.projectNames, m.styles.Glyphs, m.agentStatuses, m.loops)
 }
 
-func rawSessionNodes(sessions []domain.Session, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus) []components.TreeNode[sessionNode] {
+func rawSessionNodes(sessions []domain.Session, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus, loops map[uuid.UUID]*domain.LoopState) []components.TreeNode[sessionNode] {
 	nodes := make([]components.TreeNode[sessionNode], len(sessions))
 	for i, sess := range sessions {
-		nodes[i] = sessionTreeNode(sess, glyphs, statusKindFor(sess.ID, statuses))
+		nodes[i] = sessionTreeNode(sess, glyphs, statusKindFor(sess.ID, statuses), loopStatusFor(sess.ID, loops))
 	}
 	return nodes
 }
 
-func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]string, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus) []components.TreeNode[sessionNode] {
+func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]string, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus, loops map[uuid.UUID]*domain.LoopState) []components.TreeNode[sessionNode] {
 	grouped := make(map[uuid.UUID][]domain.Session)
 	ids := make([]uuid.UUID, 0)
 	for _, sess := range sessions {
@@ -460,7 +467,7 @@ func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]s
 		groupSessions := grouped[id]
 		children := make([]components.TreeNode[sessionNode], len(groupSessions))
 		for j, sess := range groupSessions {
-			children[j] = sessionTreeNode(sess, glyphs, statusKindFor(sess.ID, statuses))
+			children[j] = sessionTreeNode(sess, glyphs, statusKindFor(sess.ID, statuses), loopStatusFor(sess.ID, loops))
 		}
 		label := projectLabel(id, projectNames)
 		nodes[i] = components.TreeNode[sessionNode]{
@@ -489,7 +496,7 @@ func projectLabel(id uuid.UUID, names map[uuid.UUID]string) string {
 	return id.String()
 }
 
-func sessionTreeNode(sess domain.Session, glyphs styles.Glyphs, agentStatus domain.AgentStatusKind) components.TreeNode[sessionNode] {
+func sessionTreeNode(sess domain.Session, glyphs styles.Glyphs, agentStatus domain.AgentStatusKind, loopSt *domain.LoopStatus) components.TreeNode[sessionNode] {
 	label := sess.Name
 	if !sess.HasWorktree() {
 		label = glyphs.ProjectMode + " " + sess.Name
@@ -503,8 +510,17 @@ func sessionTreeNode(sess domain.Session, glyphs styles.Glyphs, agentStatus doma
 			statusCode:  sess.Label,
 			updatedAt:   sess.UpdatedAt,
 			agentStatus: agentStatus,
+			loopStatus:  loopSt,
 		},
 	}
+}
+
+func loopStatusFor(id uuid.UUID, loops map[uuid.UUID]*domain.LoopState) *domain.LoopStatus {
+	if ls, ok := loops[id]; ok {
+		s := ls.Status
+		return &s
+	}
+	return nil
 }
 
 const labelBadgeGap = 1
@@ -521,7 +537,11 @@ func renderSessionNode(s *styles.Styles, labels []domain.Label) components.TreeR
 		}
 
 		statusGlyph := s.Glyphs.AgentStatus(item.agentStatus)
-		body := prefix + statusGlyph + " " + item.label
+		loopGlyph := ""
+		if item.loopStatus != nil {
+			loopGlyph = " " + loopStatusGlyph(s.Glyphs, *item.loopStatus)
+		}
+		body := prefix + statusGlyph + " " + item.label + loopGlyph
 		badge := renderLabelBadge(s, item.statusCode, labels)
 		aux := shared.FormatRelativeDuration(time.Since(item.updatedAt))
 
@@ -584,4 +604,16 @@ func renderLabelBadge(s *styles.Styles, code string, labels []domain.Label) stri
 		}
 	}
 	return s.SessionLabel.Foreground(color).Render(text)
+}
+
+func loopStatusGlyph(g styles.Glyphs, status domain.LoopStatus) string {
+	switch status {
+	case domain.LoopStatusRunning:
+		return g.LoopRunning
+	case domain.LoopStatusDone:
+		return g.LoopDone
+	case domain.LoopStatusStopped:
+		return g.LoopStopped
+	}
+	return ""
 }

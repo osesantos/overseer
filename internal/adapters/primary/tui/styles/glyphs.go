@@ -28,6 +28,10 @@ type Glyphs struct {
 	StatusIdle    string
 	StatusDead    string
 	StatusUnknown string
+	// Loop glyphs — shown next to session rows and in the inspector.
+	LoopRunning string
+	LoopDone    string
+	LoopStopped string
 }
 
 func NewGlyphs(disableEmoji bool) Glyphs {
@@ -58,6 +62,9 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 			StatusIdle:    "○",
 			StatusDead:    "■",
 			StatusUnknown: "?",
+			LoopRunning:   "⟳",
+			LoopDone:      "✓",
+			LoopStopped:   "■",
 		}
 	}
 	return Glyphs{
@@ -86,6 +93,9 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 		StatusIdle:    "💤",
 		StatusDead:    "🟥",
 		StatusUnknown: "❓",
+		LoopRunning:   "🔄",
+		LoopDone:      "✅",
+		LoopStopped:   "⏹️",
 	}
 }
 

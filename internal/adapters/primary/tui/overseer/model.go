@@ -17,8 +17,10 @@ import (
 )
 
 const (
-	// inputPrompt is the prefix shown in the text input.
-	inputPrompt = "> "
+	// agentPrompt is the input prefix shown in Agent mode.
+	agentPrompt = "» "
+	// operatorPrompt is the input prefix shown in Operator mode (line starts with /).
+	operatorPrompt = "$ "
 	// inputHeight is the number of rows the text input row occupies.
 	inputHeight = 1
 	// borderFrameH is the vertical frame consumed by the panel border.
@@ -43,11 +45,9 @@ type SessionSnapshot struct {
 // the agent is processing. It is embedded directly in dashboard.Model and
 // becomes visible when the user presses ctrl+o.
 //
-// The panel itself never calls the OverseerService directly. On submit it
-// emits shared.OverseerSubmitMsg; the dashboard receives that message,
-// attaches a live session context snapshot, and fires the service command.
-// This avoids the stale-closure bug that arises when service/snapshot
-// references are captured at panel construction time.
+// The panel itself never calls OverseerService directly. On submit it emits
+// either OverseerSubmitMsg (agent mode) or OverseerCommandMsg (operator mode,
+// any line starting with '/'); the dashboard handles execution in both cases.
 type Model struct {
 	// history accumulates all chat messages for the viewport.
 	history []domain.OverseerMessage
@@ -64,8 +64,8 @@ type Model struct {
 // New constructs a Model.
 func New(s *styles.Styles) Model {
 	ti := textinput.New()
-	ti.Placeholder = "Ask the Overseer Agent…"
-	ti.Prompt = inputPrompt
+	ti.Placeholder = "Ask the Overseer Agent… or type /help for commands"
+	ti.Prompt = agentPrompt
 	ti.SetStyles(s.Form.Input)
 	ti.Focus()
 
@@ -86,7 +86,8 @@ func New(s *styles.Styles) Model {
 func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
-	m.input.SetWidth(width - len(inputPrompt) - borderFrameH)
+	// Prompt width depends on current mode; use the longer one to be safe.
+	m.input.SetWidth(width - len(operatorPrompt) - borderFrameH)
 
 	vpHeight := max(height-borderFrameH-inputHeight, 1)
 	m.viewport.SetWidth(width - borderFrameH)
@@ -108,8 +109,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "enter":
 			return m.submit()
 		}
+		// Update input first, then sync prompt prefix.
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
+		m.syncPrompt()
 		return m, cmd
 
 	case spinner.TickMsg:
@@ -145,8 +148,17 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			note = "Prompt sent to " + msg.SessionName + "."
 		}
 		m.appendMessage(domain.OverseerMessage{
-			Role:      domain.OverseerRoleAgent,
+			Role:      domain.OverseerRoleSystem,
 			Content:   note,
+			Timestamp: time.Now(),
+		})
+		return m, nil
+
+	case shared.OverseerCommandResultMsg:
+		m.thinking = false
+		m.appendMessage(domain.OverseerMessage{
+			Role:      domain.OverseerRoleSystem,
+			Content:   msg.Text,
 			Timestamp: time.Now(),
 		})
 		return m, nil
@@ -199,6 +211,8 @@ func (m *Model) refreshViewport() {
 		case domain.OverseerRoleAgent:
 			b.WriteString(s.Chat.AgentLabel.Render("Agent"))
 			b.WriteString(s.Chat.AgentText.Render(" " + msg.Content))
+		case domain.OverseerRoleSystem:
+			b.WriteString(s.Chat.SystemText.Render("  ○ " + msg.Content))
 		}
 		b.WriteByte('\n')
 	}
@@ -206,14 +220,42 @@ func (m *Model) refreshViewport() {
 	m.viewport.GotoBottom()
 }
 
-// submit reads the current input value, appends a user message, starts the
-// spinner, and emits OverseerSubmitMsg for the dashboard to handle.
+// syncPrompt updates the input prompt prefix based on the current input
+// value. Lines starting with '/' show the operator prompt; everything else
+// shows the agent prompt.
+func (m *Model) syncPrompt() {
+	if strings.HasPrefix(m.input.Value(), "/") {
+		m.input.Prompt = operatorPrompt
+	} else {
+		m.input.Prompt = agentPrompt
+	}
+}
+
+// submit reads the current input value and routes it to agent mode or
+// operator mode depending on whether the line starts with '/'.
 func (m Model) submit() (tea.Model, tea.Cmd) {
 	text := strings.TrimSpace(m.input.Value())
 	if text == "" {
 		return m, nil
 	}
 	m.input.SetValue("")
+	m.input.Prompt = agentPrompt // reset for next message
+
+	if strings.HasPrefix(text, "/") {
+		// Operator mode: emit the raw command; dashboard parses and executes.
+		m.appendMessage(domain.OverseerMessage{
+			Role:      domain.OverseerRoleUser,
+			Content:   text,
+			Timestamp: time.Now(),
+		})
+		m.thinking = true
+		return m, tea.Batch(
+			m.spinner.Tick,
+			shared.Emit(shared.OverseerCommandMsg{Raw: text}),
+		)
+	}
+
+	// Agent mode: existing LLM flow.
 	m.appendMessage(domain.OverseerMessage{
 		Role:      domain.OverseerRoleUser,
 		Content:   text,

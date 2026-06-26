@@ -108,6 +108,10 @@ type ChatStyles struct {
 	AgentLabel lipgloss.Style
 	// AgentText styles the body of agent messages.
 	AgentText lipgloss.Style
+	// SystemText styles operator-command feedback and loop notices.
+	// Rendered dimmer than agent/user text so it reads as infrastructure
+	// noise rather than conversational content.
+	SystemText lipgloss.Style
 	// ThinkingPrefix styles the spinner shown while the agent is thinking.
 	ThinkingPrefix lipgloss.Style
 	// ThinkingText styles the "thinking…" label beside the spinner.
@@ -414,6 +418,7 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 			UserText:       lipgloss.NewStyle().Foreground(theme.Text),
 			AgentLabel:     lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
 			AgentText:      lipgloss.NewStyle().Foreground(theme.Text),
+			SystemText:     lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
 			ThinkingPrefix: lipgloss.NewStyle().Foreground(theme.Accent),
 			ThinkingText:   lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
 		},

@@ -12,12 +12,14 @@ import (
 type OverseerRole string
 
 const (
-	OverseerRoleUser  OverseerRole = "user"
-	OverseerRoleAgent OverseerRole = "agent"
+	OverseerRoleUser   OverseerRole = "user"
+	OverseerRoleAgent  OverseerRole = "agent"
+	OverseerRoleSystem OverseerRole = "system" // operator command feedback, loop notices
 )
 
 // OverseerMessage is a single entry in the Overseer chat history. Role
-// disambiguates whether the user or the agent produced the content.
+// disambiguates whether the user, the agent, or the system produced the
+// content.
 type OverseerMessage struct {
 	Role      OverseerRole
 	Content   string
@@ -63,6 +65,40 @@ type OverseerSessionContext struct {
 	PaneOutput  string // last N lines of the agent pane, ANSI-stripped
 }
 
+// --- Loop types ---
+
+// LoopStatus describes where a background evaluation loop currently stands.
+type LoopStatus string
+
+const (
+	LoopStatusRunning LoopStatus = "running"
+	LoopStatusDone    LoopStatus = "done"
+	LoopStatusStopped LoopStatus = "stopped"
+)
+
+// LoopState tracks a single active or completed evaluation loop. The loop
+// periodically captures the session's agent pane and asks the Overseer LLM
+// whether the acceptance criteria have been met.
+type LoopState struct {
+	SessionID     uuid.UUID
+	SessionName   string
+	Criteria      string
+	Status        LoopStatus
+	Iterations    int
+	MaxIterations int
+	StartedAt     time.Time
+}
+
+// LoopEvaluation is the structured result of a single EvaluateLoop call.
+// When Done is false the LLM decided the criteria are not yet met and
+// produced a follow-up prompt to send to the session agent. When Done is
+// true the criteria have been met and Summary describes the outcome.
+type LoopEvaluation struct {
+	Done         bool
+	PromptToSend string // populated when Done=false
+	Summary      string // populated when Done=true
+}
+
 // OverseerAgentPort is the outbound port for the meta-agent backend.
 // Implementations invoke an LLM (e.g. `claude -p`) and return a structured
 // response. The context timeout controls the maximum wall-clock time allowed
@@ -72,6 +108,12 @@ type OverseerAgentPort interface {
 	// of all current sessions as context. Returns a parsed response
 	// containing plain text, an action, or both.
 	Chat(ctx context.Context, userMsg string, sessions []OverseerSessionContext) (OverseerResponse, error)
+
+	// EvaluateLoop checks whether the acceptance criteria are satisfied
+	// given the current paneOutput. When Done=false the returned
+	// PromptToSend should be forwarded to the session agent to make
+	// progress toward the goal. When Done=true the loop should terminate.
+	EvaluateLoop(ctx context.Context, criteria, paneOutput string) (LoopEvaluation, error)
 }
 
 // Overseer sentinel errors.
