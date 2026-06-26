@@ -108,8 +108,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "enter":
 			return m.submit()
+		case "up", "down", "pgup", "pgdown":
+			// Route scroll keys to the viewport; do not pass to text input.
+			var cmd tea.Cmd
+			m.viewport, cmd = m.viewport.Update(msg)
+			return m, cmd
 		}
-		// Update input first, then sync prompt prefix.
+		// All other keys go to the text input.
 		var cmd tea.Cmd
 		m.input, cmd = m.input.Update(msg)
 		m.syncPrompt()
@@ -198,8 +203,10 @@ func (m *Model) AppendMessage(msg domain.OverseerMessage) {
 	m.appendMessage(msg)
 }
 
-// refreshViewport re-renders the message history into the viewport and scrolls
-// to the bottom.
+// refreshViewport re-renders the message history into the viewport.
+// It scrolls to the bottom only when the viewport was already at the bottom
+// before the update, so a user who has scrolled up to read history is not
+// yanked back on every new message.
 func (m *Model) refreshViewport() {
 	s := m.styles
 	var b strings.Builder
@@ -216,8 +223,11 @@ func (m *Model) refreshViewport() {
 		}
 		b.WriteByte('\n')
 	}
+	atBottom := m.viewport.AtBottom()
 	m.viewport.SetContent(b.String())
-	m.viewport.GotoBottom()
+	if atBottom {
+		m.viewport.GotoBottom()
+	}
 }
 
 // syncPrompt updates the input prompt prefix based on the current input

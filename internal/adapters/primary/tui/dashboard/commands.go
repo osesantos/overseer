@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	loopCheckInterval = 30 * time.Second
+	loopCheckInterval = 10 * time.Second
 	loopMaxIterations = 20
 )
 
@@ -232,12 +232,12 @@ func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
 		StartedAt:     time.Now(),
 	}
 	m.loops[sess.ID] = ls
-	m.broadcastLoopState()
 
 	note := fmt.Sprintf("Loop started on %q — checking every %ds, max %d iterations.\nCriteria: %s",
 		sess.Name, int(loopCheckInterval.Seconds()), loopMaxIterations, criteria)
 	return m, tea.Batch(
 		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
+		m.broadcastLoopState(),
 		m.loopEvalCmd(*ls),
 	)
 }
@@ -255,8 +255,10 @@ func (m Model) cmdLoopStop(args []string) (tea.Model, tea.Cmd) {
 		return m.commandResult(fmt.Sprintf("no running loop found for %q", sess.Name), true)
 	}
 	ls.Status = domain.LoopStatusStopped
-	m.broadcastLoopState()
-	return m.commandResult(fmt.Sprintf("Loop stopped on %q after %d iteration(s).", sess.Name, ls.Iterations), false)
+	return m, tea.Batch(
+		m.broadcastLoopState(),
+		shared.Emit(shared.OverseerCommandResultMsg{Text: fmt.Sprintf("Loop stopped on %q after %d iteration(s).", sess.Name, ls.Iterations)}),
+	)
 }
 
 func (m Model) cmdLoopInfo(args []string) (tea.Model, tea.Cmd) {

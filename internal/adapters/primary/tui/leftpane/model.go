@@ -58,6 +58,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.sessions, cmd = shared.UpdateModel(m.sessions, typed)
 		return m, cmd
+	case shared.OverseerLoopStateChangedMsg:
+		// Forward to both: sessions (row badge) and sessionDetails (loop section).
+		return m, shared.Broadcast(typed,
+			shared.Forward(&m.sessions),
+			shared.Forward(&m.sessionDetails),
+		)
 	}
 
 	var cmd tea.Cmd

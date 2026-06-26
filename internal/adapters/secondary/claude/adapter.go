@@ -159,10 +159,12 @@ func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) strin
 }
 
 // buildLoopPrompt assembles the prompt used for loop evaluation calls.
+// The agent must reply with END (on its own line) when the criteria are met,
+// or with the next prompt to send to the session agent otherwise.
 func buildLoopPrompt(criteria, paneOutput string) string {
 	var b strings.Builder
 
-	b.WriteString("You are an evaluation agent. Your task is to determine whether an acceptance criterion has been met by inspecting the output of an AI coding session.\n\n")
+	b.WriteString("You are an evaluation agent. Your task is to determine whether an acceptance criterion has been met by inspecting the output of an AI coding session, and to guide the session agent toward the goal if it has not.\n\n")
 
 	b.WriteString("=== Acceptance Criteria ===\n")
 	b.WriteString(criteria)
@@ -177,15 +179,11 @@ func buildLoopPrompt(criteria, paneOutput string) string {
 	}
 
 	b.WriteString("\n=== Instructions ===\n")
-	b.WriteString("Respond with exactly one <loop> block containing a JSON object:\n\n")
-	b.WriteString("<loop>\n")
-	b.WriteString(`{"done": true/false, "prompt_to_send": "<optional follow-up prompt when done=false>", "summary": "<brief outcome summary when done=true>"}`)
-	b.WriteString("\n</loop>\n\n")
-	b.WriteString("Rules:\n")
-	b.WriteString("- Set done=true only when the acceptance criteria are clearly and unambiguously satisfied.\n")
-	b.WriteString("- When done=false, set prompt_to_send to a concrete instruction that will help the session agent make progress.\n")
-	b.WriteString("- When done=true, set summary to a one-sentence description of how the criteria were met.\n")
-	b.WriteString("- Do not include any text outside the <loop> block.\n")
+	b.WriteString("Reply with ONE of the following:\n\n")
+	b.WriteString("1. If the acceptance criteria are clearly and unambiguously satisfied, reply with exactly the word:\n")
+	b.WriteString("   END\n\n")
+	b.WriteString("2. If the criteria are NOT yet satisfied, reply with a single concrete instruction to send to the session agent to make progress toward the goal. Do NOT include the word END in this case.\n\n")
+	b.WriteString("Do not include any explanation or extra text — only END or the next instruction.\n")
 
 	return b.String()
 }
@@ -233,25 +231,17 @@ func parseResponse(raw string) (domain.OverseerResponse, error) {
 	return domain.OverseerResponse{Text: text, Action: action}, nil
 }
 
-// parseLoopResponse extracts the LoopEvaluation from Claude's raw stdout.
-// The response must contain exactly one <loop>…</loop> block. On parse
-// failure we assume the criteria are not yet met to avoid silently finishing
-// a loop prematurely.
+// parseLoopResponse interprets Claude's raw stdout for a loop evaluation.
+// If the trimmed output is exactly "END" (case-insensitive) the loop is
+// considered complete. Otherwise the entire trimmed output is treated as
+// the next prompt to send to the session agent.
 func parseLoopResponse(raw string) (domain.LoopEvaluation, error) {
-	match := loopFence.FindStringSubmatchIndex(raw)
-	if match == nil {
-		return domain.LoopEvaluation{}, fmt.Errorf("overseer: loop response missing <loop> block: %q", raw)
+	text := strings.TrimSpace(raw)
+	if text == "" {
+		return domain.LoopEvaluation{}, fmt.Errorf("overseer: empty loop evaluation response")
 	}
-
-	jsonStart, jsonEnd := match[2], match[3]
-	var rd rawLoopDecision
-	if err := json.Unmarshal([]byte(raw[jsonStart:jsonEnd]), &rd); err != nil {
-		return domain.LoopEvaluation{}, fmt.Errorf("overseer: loop response malformed JSON: %w", err)
+	if strings.ToUpper(text) == "END" {
+		return domain.LoopEvaluation{Done: true, Summary: "Acceptance criteria met."}, nil
 	}
-
-	return domain.LoopEvaluation{
-		Done:         rd.Done,
-		PromptToSend: rd.PromptToSend,
-		Summary:      rd.Summary,
-	}, nil
+	return domain.LoopEvaluation{Done: false, PromptToSend: text}, nil
 }

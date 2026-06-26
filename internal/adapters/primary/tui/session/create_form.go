@@ -488,7 +488,7 @@ func (m CreateFormModel) repoPickerHint() string {
 	if m.repoPicker.isPasteMode() {
 		return "Enter confirm · Ctrl+L back"
 	}
-	return "←/→ cycle · Ctrl+P paste path"
+	return "←/→ cycle · e paste path"
 }
 
 func (m CreateFormModel) KeyBindings() []key.Binding {
