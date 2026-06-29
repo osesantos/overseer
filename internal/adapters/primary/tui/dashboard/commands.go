@@ -235,12 +235,22 @@ func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
 	}
 	m.loops[sess.ID] = ls
 
+	// Build a kickoff prompt that tells the agent what to do and how to signal
+	// completion. The loop evaluator will watch for END in the pane output
+	// rather than sending a new directive on every iteration.
+	kickoff := criteria + "\n\nWhen you have finished this task, write the word END on its own line as your final message."
+
 	note := fmt.Sprintf("Loop started on %q — checking every %ds, max %d iterations.\nCriteria: %s",
 		sess.Name, int(loopCheckInterval.Seconds()), loopMaxIterations, criteria)
 	return m, tea.Batch(
 		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
 		m.broadcastLoopState(),
-		m.loopEvalCmd(*ls),
+		m.sendAgentPromptCmd(domain.OverseerAction{
+			SessionID:   sess.ID,
+			SessionName: sess.Name,
+			Prompt:      kickoff,
+		}),
+		loopNextTickCmd(*ls), // delay first eval so the kickoff lands before we check
 	)
 }
 

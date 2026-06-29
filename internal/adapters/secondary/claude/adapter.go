@@ -152,14 +152,14 @@ func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) strin
 }
 
 // buildLoopPrompt assembles the prompt used for loop evaluation calls.
-// The agent must reply with END (on its own line) when the criteria are met,
-// or with the next prompt to send to the session agent otherwise.
+// The evaluator watches for END in the pane output and otherwise defaults to
+// WAIT — only generating a new directive when the agent is clearly idle.
 func buildLoopPrompt(criteria, paneOutput string) string {
 	var b strings.Builder
 
-	b.WriteString("You are an evaluation agent. Your task is to determine whether an acceptance criterion has been met by inspecting the output of an AI coding session, and to guide the session agent toward the goal if it has not.\n\n")
+	b.WriteString("You are an evaluation agent monitoring a coding session. The session agent has already been given a task and told to write END when finished.\n\n")
 
-	b.WriteString("=== Acceptance Criteria ===\n")
+	b.WriteString("=== Task ===\n")
 	b.WriteString(criteria)
 	b.WriteString("\n\n")
 
@@ -172,13 +172,11 @@ func buildLoopPrompt(criteria, paneOutput string) string {
 	}
 
 	b.WriteString("\n=== Instructions ===\n")
-	b.WriteString("Reply with ONE of the following:\n\n")
-	b.WriteString("1. If the acceptance criteria are clearly and unambiguously satisfied, reply with exactly the word:\n")
-	b.WriteString("   END\n\n")
-	b.WriteString("2. If the session agent is actively executing — compiling, running tests, making changes, or producing output — and has NOT yet produced a clear question or prompt waiting for user input, reply with exactly the word:\n")
-	b.WriteString("   WAIT\n\n")
-	b.WriteString("3. If the criteria are NOT yet satisfied and the agent is idle or waiting for guidance, reply with a single concrete instruction to send to the session agent to make progress toward the goal. Do NOT include the words END or WAIT in this case.\n\n")
-	b.WriteString("Do not include any explanation or extra text — only END, WAIT, or the next instruction.\n")
+	b.WriteString("Reply with exactly one of:\n\n")
+	b.WriteString("END   — the session output contains the word END on its own line, OR the task is unambiguously complete.\n\n")
+	b.WriteString("WAIT  — the agent is actively working (running commands, compiling, writing files, producing output). This is the DEFAULT when the agent is busy or when you are unsure.\n\n")
+	b.WriteString("<instruction> — a single short directive, ONLY if the agent is completely idle and clearly needs a nudge to continue. Never send an instruction while the agent is still producing output.\n\n")
+	b.WriteString("Reply only with END, WAIT, or a short directive. No explanation.\n")
 
 	return b.String()
 }
