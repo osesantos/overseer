@@ -56,6 +56,18 @@ func newShellView(svc service.SessionService, s *styles.Styles, pollInterval tim
 	}
 }
 
+func newLoopView(svc service.SessionService, s *styles.Styles, pollInterval time.Duration) *streamView {
+	return &streamView{
+		kind:            viewKindAgent,
+		label:           "Loop",
+		previewKind:     service.PreviewKindAgent,
+		notReadyMessage: "Loop agent starting…",
+		service:         svc,
+		styles:          s,
+		pollInterval:    pollInterval,
+	}
+}
+
 func (v *streamView) Label() string { return v.label }
 
 func (v *streamView) Init() tea.Cmd {

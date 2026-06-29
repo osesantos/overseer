@@ -47,16 +47,3 @@ func (s *OverseerService) Chat(ctx context.Context, req OverseerChatRequest) (Ov
 	return OverseerChatResponse{Text: resp.Text, Action: resp.Action}, nil
 }
 
-// EvaluateLoop asks the underlying agent whether the acceptance criteria have
-// been met given the current pane output. It is called on every loop tick.
-func (s *OverseerService) EvaluateLoop(ctx context.Context, criteria, paneOutput string) (domain.LoopEvaluation, error) {
-	eval, err := s.agent.EvaluateLoop(ctx, criteria, paneOutput)
-	if err != nil {
-		return domain.LoopEvaluation{}, fmt.Errorf("overseer evaluate loop: %w", err)
-	}
-	s.logger.InfoContext(ctx, "overseer loop evaluated",
-		slog.Bool("done", eval.Done),
-		slog.Int("prompt_len", len(eval.PromptToSend)),
-	)
-	return eval, nil
-}

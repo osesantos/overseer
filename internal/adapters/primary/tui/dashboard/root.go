@@ -403,8 +403,37 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.OverseerCommandMsg:
 		// Operator mode: parse and execute the slash command.
 		return m.executeCommand(msg.Raw)
-	case overseerLoopEvalResultMsg:
-		return m.handleLoopEvalResult(msg)
+	case shared.LoopSessionCreatedMsg:
+		if msg.Err != nil {
+			errText := fmt.Sprintf("Failed to create loop session: %s", msg.Err)
+			return m, shared.Emit(shared.OverseerCommandResultMsg{Text: errText, IsError: true})
+		}
+		m.loops[msg.LoopState.SessionID] = msg.LoopState
+		note := fmt.Sprintf("Loop session %q created — checking every %ds, max %d iterations.",
+			msg.LoopSession.Name, int(loopCheckInterval.Seconds()), loopMaxIterations)
+		return m, tea.Batch(
+			shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
+			m.broadcastLoopState(),
+			loopNextTickCmd(*msg.LoopState),
+			m.loadSessionsCmd(),
+		)
+	case shared.LoopSessionDeletedMsg:
+		if msg.Err != nil {
+			errText := fmt.Sprintf("Failed to delete loop session: %s", msg.Err)
+			return m, tea.Batch(
+				shared.Emit(shared.OverseerCommandResultMsg{Text: errText, IsError: true}),
+				m.loadSessionsCmd(),
+			)
+		}
+		return m, m.loadSessionsCmd()
+	case shared.LoopSessionSelectedMsg:
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		var inspectorCmd tea.Cmd
+		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
+		return m, tea.Batch(cmd, inspectorCmd)
+	case shared.LoopPaneCapturedMsg:
+		return m.handleLoopPaneCaptured(msg)
 	case shared.OverseerChatResponseMsg:
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
@@ -438,7 +467,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if !ok || ls.Status != domain.LoopStatusRunning {
 			return m, nil // loop was stopped between tick and now
 		}
-		return m, m.loopEvalCmd(*ls)
+		return m, m.captureLoopPaneCmd(*ls)
 	}
 
 	if m.activePopup != popupNone {
@@ -974,73 +1003,55 @@ func fit(s *styles.Styles, content string, width, height int) string {
 	return s.Layout.Box.Width(width).Height(height).Render(content)
 }
 
-// handleLoopEvalResult processes the result of a single EvaluateLoop call.
-func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, tea.Cmd) {
-	ls := m.loops[msg.state.SessionID]
+// loadSessionsCmd triggers a fresh session list load which updates both
+// cachedSessions in the dashboard and the session tree in the left pane.
+func (m Model) loadSessionsCmd() tea.Cmd {
+	svc := m.sessionsService
+	return func() tea.Msg {
+		resp, err := svc.List(context.Background(), service.ListSessionsRequest{})
+		return shared.SessionsLoadedMsg{Sessions: resp.Sessions, Err: err}
+	}
+}
+
+// handleLoopPaneCaptured processes the captured pane content from a loop
+// session tick, scanning for the END sentinel and managing loop lifecycle.
+func (m Model) handleLoopPaneCaptured(msg shared.LoopPaneCapturedMsg) (tea.Model, tea.Cmd) {
+	ls := m.loops[msg.LoopState.SessionID]
 	if ls == nil || ls.Status != domain.LoopStatusRunning {
-		return m, nil // loop was stopped while the eval was in flight
+		return m, nil
 	}
 
-	if msg.err != nil {
-		ls.Iterations++
+	if msg.Err != nil {
 		ls.ConsecutiveErrors++
 		const maxConsecutiveErrors = 3
 		if ls.ConsecutiveErrors >= maxConsecutiveErrors {
 			ls.Status = domain.LoopStatusStopped
 			note := fmt.Sprintf(
-				"Loop on %q stopped after %d consecutive evaluation errors (iteration %d). "+
-					"The session may be waiting for user input.\nLast error: %s",
-				ls.SessionName, maxConsecutiveErrors, ls.Iterations, msg.err)
+				"Loop on %q stopped after %d consecutive capture errors.\nLast error: %s",
+				ls.SessionName, maxConsecutiveErrors, msg.Err)
 			return m, tea.Batch(
 				shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
 				m.broadcastLoopState(),
+				m.deleteLoopSessionCmd(*ls),
 			)
 		}
-		errMsg := fmt.Sprintf("Loop on %q — evaluation error (iteration %d): %s", ls.SessionName, ls.Iterations, msg.err)
-		return m, tea.Batch(
-			shared.Emit(shared.OverseerCommandResultMsg{Text: errMsg, IsError: true}),
-			loopNextTickCmd(*ls),
-		)
+		return m, loopNextTickCmd(*ls)
 	}
 
 	ls.ConsecutiveErrors = 0
 
-	if msg.eval.Done {
+	if domain.ScanForEnd(msg.Content) {
 		ls.Iterations++
 		ls.Status = domain.LoopStatusDone
-		note := fmt.Sprintf("Loop on %q completed after %d iteration(s).\n%s", ls.SessionName, ls.Iterations, msg.eval.Summary)
+		note := fmt.Sprintf("Loop on %q completed after %d iteration(s). Criteria met.", ls.SessionName, ls.Iterations)
 		return m, tea.Batch(
 			shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
 			m.broadcastLoopState(),
-			func() tea.Msg { return inspector.ForceRefreshMsg{} },
+			m.deleteLoopSessionCmd(*ls),
 		)
 	}
 
-	if msg.eval.AgentStillWorking {
-		// WAIT iterations do not count against MaxIterations.
-		ls.ConsecutiveWaits++
-		if ls.ConsecutiveWaits >= loopMaxConsecutiveWaits {
-			ls.Status = domain.LoopStatusStopped
-			note := fmt.Sprintf(
-				"Loop on %q stopped: agent was still working for %d consecutive iterations without requesting input.",
-				ls.SessionName, ls.ConsecutiveWaits)
-			return m, tea.Batch(
-				shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
-				m.broadcastLoopState(),
-			)
-		}
-		waitNote := fmt.Sprintf("Loop on %q — iteration %d/%d: agent is still working, waiting…",
-			ls.SessionName, ls.Iterations, ls.MaxIterations)
-		return m, tea.Batch(
-			shared.Emit(shared.OverseerCommandResultMsg{Text: waitNote}),
-			m.broadcastLoopState(),
-			loopNextTickCmd(*ls),
-		)
-	}
-
-	// Agent is waiting for input — count this as a real iteration.
 	ls.Iterations++
-	ls.ConsecutiveWaits = 0
 
 	if ls.Iterations >= ls.MaxIterations {
 		ls.Status = domain.LoopStatusStopped
@@ -1048,25 +1059,23 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 		return m, tea.Batch(
 			shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
 			m.broadcastLoopState(),
+			m.deleteLoopSessionCmd(*ls),
 		)
 	}
 
-	// Not done yet — send the suggested prompt and schedule next check.
+	// Stuck detection: if pane output hasn't changed since the last tick,
+	// send a nudge so the agent doesn't silently stall.
 	var cmds []tea.Cmd
-	if msg.eval.PromptToSend != "" {
+	if msg.Content != "" && msg.Content == ls.LastPaneOutput {
 		cmds = append(cmds, m.sendAgentPromptCmd(domain.OverseerAction{
-			SessionID:   ls.SessionID,
-			SessionName: ls.SessionName,
-			Prompt:      msg.eval.PromptToSend,
+			SessionID:   ls.LoopSessionID,
+			SessionName: ls.SessionName + "-loop",
+			Prompt:      "Please continue. Write END on its own line when done.",
 		}))
 	}
-	progress := fmt.Sprintf("Loop on %q — iteration %d/%d: criteria not yet met.",
-		ls.SessionName, ls.Iterations, ls.MaxIterations)
-	cmds = append(cmds,
-		shared.Emit(shared.OverseerCommandResultMsg{Text: progress}),
-		m.broadcastLoopState(),
-		loopNextTickCmd(*ls),
-	)
+	ls.LastPaneOutput = msg.Content
+
+	cmds = append(cmds, m.broadcastLoopState(), loopNextTickCmd(*ls))
 	return m, tea.Batch(cmds...)
 }
 

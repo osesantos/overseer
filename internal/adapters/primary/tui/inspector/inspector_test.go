@@ -46,12 +46,13 @@ func TestInspector_ToggleKey_CyclesForward(t *testing.T) {
 
 func TestInspector_ToggleKey_WrapsAround(t *testing.T) {
 	m := newTestModel(t)
-	for i := 0; i < 2; i++ {
+	// 3 views: Agent → Shell → Loop → Agent (wraps on 3rd press)
+	for i := 0; i < len(m.views); i++ {
 		updated, _ := m.Update(keyPress("tab"))
 		m = updated.(Model)
 	}
 	if got := m.views[m.activeIx].Label(); got != "Agent" {
-		t.Errorf("after 2x tab, active view label = %q, want %q", got, "Agent")
+		t.Errorf("after %dx tab, active view label = %q, want %q", len(m.views), got, "Agent")
 	}
 }
 

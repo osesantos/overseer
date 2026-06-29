@@ -35,11 +35,14 @@ type Model struct {
 	styles    *styles.Styles
 }
 
+const loopViewIx = 2
+
 func New(s *styles.Styles, sessionService service.SessionService, previewRefreshInterval time.Duration) Model {
 	return Model{
 		views: []View{
 			newAgentView(sessionService, s, previewRefreshInterval),
 			newShellView(sessionService, s, previewRefreshInterval),
+			newLoopView(sessionService, s, previewRefreshInterval),
 		},
 		activeIx: 0,
 		styles:   s,
@@ -52,6 +55,12 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
+	case shared.LoopSessionSelectedMsg:
+		m.sessionID = msg.Session.ID
+		m.activeIx = loopViewIx
+		m.views[loopViewIx].SetSession(msg.Session.ID)
+		return m, m.views[m.activeIx].Init()
+
 	case shared.SessionSelectedMsg:
 		m.sessionID = msg.Session.ID
 		m.activeIx = 0

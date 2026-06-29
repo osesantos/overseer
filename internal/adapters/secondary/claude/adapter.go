@@ -69,23 +69,6 @@ func (a *Adapter) Chat(ctx context.Context, userMsg string, sessions []domain.Ov
 	return parseResponse(raw)
 }
 
-// EvaluateLoop asks Claude whether the acceptance criteria have been met
-// given the current pane output. The response is expected to contain a
-// <loop>{"done":bool,...}</loop> block.
-func (a *Adapter) EvaluateLoop(ctx context.Context, criteria, paneOutput string) (domain.LoopEvaluation, error) {
-	prompt := buildLoopPrompt(criteria, paneOutput)
-
-	a.logger.Debug("overseer: invoking claude for loop eval", slog.Int("prompt_len", len(prompt)))
-
-	raw, err := a.run(ctx, prompt)
-	if err != nil {
-		return domain.LoopEvaluation{}, err
-	}
-
-	a.logger.Debug("overseer: claude loop eval replied", slog.Int("response_len", len(raw)))
-	return parseLoopResponse(raw)
-}
-
 // run executes `claude -p --dangerously-skip-permissions <prompt>` and returns
 // stdout. The skip-permissions flag is required because the subprocess runs
 // detached from the controlling TTY (Setsid: true); without it Claude Code
@@ -151,36 +134,6 @@ func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) strin
 	return b.String()
 }
 
-// buildLoopPrompt assembles the prompt used for loop evaluation calls.
-// The evaluator watches for END in the pane output and otherwise defaults to
-// WAIT — only generating a new directive when the agent is clearly idle.
-func buildLoopPrompt(criteria, paneOutput string) string {
-	var b strings.Builder
-
-	b.WriteString("You are an evaluation agent monitoring a coding session. The session agent has already been given a task and told to write END when finished.\n\n")
-
-	b.WriteString("=== Task ===\n")
-	b.WriteString(criteria)
-	b.WriteString("\n\n")
-
-	b.WriteString("=== Session Output ===\n")
-	if paneOutput == "" {
-		b.WriteString("(no output available)\n")
-	} else {
-		b.WriteString(paneOutput)
-		b.WriteByte('\n')
-	}
-
-	b.WriteString("\n=== Instructions ===\n")
-	b.WriteString("Reply with exactly one of:\n\n")
-	b.WriteString("END   — the session output contains the word END on its own line, OR the task is unambiguously complete.\n\n")
-	b.WriteString("WAIT  — the agent is actively working (running commands, compiling, writing files, producing output). This is the DEFAULT when the agent is busy or when you are unsure.\n\n")
-	b.WriteString("<instruction> — a single short directive, ONLY if the agent is completely idle and clearly needs a nudge to continue. Never send an instruction while the agent is still producing output.\n\n")
-	b.WriteString("Reply only with END, WAIT, or a short directive. No explanation.\n")
-
-	return b.String()
-}
-
 // parseResponse extracts the human-readable text and optional action from
 // Claude's raw stdout. The <action>…</action> block (if any) is stripped from
 // the returned Text.
@@ -224,21 +177,3 @@ func parseResponse(raw string) (domain.OverseerResponse, error) {
 	return domain.OverseerResponse{Text: text, Action: action}, nil
 }
 
-// parseLoopResponse interprets Claude's raw stdout for a loop evaluation.
-// "END" (case-insensitive, trimmed) signals the criteria are met.
-// "WAIT" signals the session agent is still actively working.
-// Anything else is treated as the next prompt to send to the session agent.
-func parseLoopResponse(raw string) (domain.LoopEvaluation, error) {
-	text := strings.TrimSpace(raw)
-	if text == "" {
-		return domain.LoopEvaluation{}, fmt.Errorf("overseer: empty loop evaluation response")
-	}
-	upper := strings.ToUpper(text)
-	if upper == "END" {
-		return domain.LoopEvaluation{Done: true, Summary: "Acceptance criteria met."}, nil
-	}
-	if upper == "WAIT" {
-		return domain.LoopEvaluation{AgentStillWorking: true}, nil
-	}
-	return domain.LoopEvaluation{Done: false, PromptToSend: text}, nil
-}

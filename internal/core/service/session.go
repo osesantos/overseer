@@ -237,6 +237,60 @@ func (s *SessionService) assignNextOrderForProject(ctx context.Context, sess dom
 	return nextOrder, nil
 }
 
+// --- CreateLoopSession ---
+
+// CreateLoopSessionRequest carries the source session identity and the project
+// the loop session will live in.
+type CreateLoopSessionRequest struct {
+	SourceSessionID   uuid.UUID
+	SourceSessionName string
+	ProjectID         uuid.UUID
+}
+
+// CreateLoopSessionResponse carries the new loop session.
+type CreateLoopSessionResponse struct {
+	LoopSession domain.Session
+}
+
+// CreateLoopSession spins up a dedicated Mode 2 session named
+// <SourceSessionName>-loop that runs claude --dangerously-skip-permissions.
+// The loop machinery owns the session; it is deleted when the loop ends.
+func (s *SessionService) CreateLoopSession(ctx context.Context, req CreateLoopSessionRequest) (CreateLoopSessionResponse, error) {
+	loopName := req.SourceSessionName + "-loop"
+	sess, err := domain.NewSession(loopName, req.ProjectID)
+	if err != nil {
+		return CreateLoopSessionResponse{}, err
+	}
+	if err := sess.AssignAgentCommand("claude --dangerously-skip-permissions"); err != nil {
+		return CreateLoopSessionResponse{}, err
+	}
+	if err := sess.AssignAgentType(domain.AgentTypeLoopChat); err != nil {
+		return CreateLoopSessionResponse{}, err
+	}
+
+	project, err := s.projects.Get(ctx, req.ProjectID)
+	if err != nil {
+		return CreateLoopSessionResponse{}, fmt.Errorf("lookup project: %w", err)
+	}
+
+	nextOrder, err := s.assignNextOrderForProject(ctx, sess)
+	if err != nil {
+		return CreateLoopSessionResponse{}, err
+	}
+	sess.Order = nextOrder
+
+	sess, err = s.spinUpTmuxAndPersist(ctx, sess, project)
+	if err != nil {
+		return CreateLoopSessionResponse{}, err
+	}
+
+	s.logger.InfoContext(ctx, "loop session created",
+		slog.String("loop_session_id", sess.ID.String()),
+		slog.String("loop_session_name", sess.Name),
+	)
+	return CreateLoopSessionResponse{LoopSession: sess}, nil
+}
+
 // --- Rename ---
 
 type RenameSessionRequest struct {

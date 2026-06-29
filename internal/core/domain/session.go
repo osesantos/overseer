@@ -70,6 +70,10 @@ func NewSession(name string, projectID uuid.UUID) (Session, error) {
 	}, nil
 }
 
+// IsLoopSession reports whether this session is an automatically-created loop
+// execution session (name ends with "-loop").
+func (s Session) IsLoopSession() bool { return strings.HasSuffix(s.Name, "-loop") }
+
 // HasWorktree reports whether the session is a Mode 1 (worktree) session.
 // Mode 2 (project) sessions return false; their working directory lives at
 // the project's path.

@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -77,32 +78,31 @@ const (
 )
 
 // LoopState tracks a single active or completed evaluation loop. The loop
-// periodically captures the session's agent pane and asks the Overseer LLM
-// whether the acceptance criteria have been met.
+// periodically captures the loop session's agent pane and scans for the END
+// sentinel to determine when the task is complete.
 type LoopState struct {
-	SessionID         uuid.UUID
+	SessionID         uuid.UUID // source session the loop was started on
 	SessionName       string
+	LoopSessionID     uuid.UUID // ID of the dedicated <name>-loop session
 	Criteria          string
 	Status            LoopStatus
 	Iterations        int
 	MaxIterations     int
 	StartedAt         time.Time
-	ConsecutiveErrors int // reset to 0 on any successful evaluation
-	ConsecutiveWaits  int // incremented when evaluator signals WAIT; reset when agent produces normal output
+	ConsecutiveErrors int    // reset to 0 on any successful pane capture
+	LastPaneOutput    string // last captured pane content, used for stuck detection
 }
 
-// LoopEvaluation is the structured result of a single EvaluateLoop call.
-// When Done is false the LLM decided the criteria are not yet met and
-// produced a follow-up prompt to send to the session agent. When Done is
-// true the criteria have been met and Summary describes the outcome.
-// AgentStillWorking is set when the evaluator explicitly signals that the
-// session agent is mid-task (WAIT sentinel) — in that case PromptToSend is
-// empty and the loop should wait without interrupting the agent.
-type LoopEvaluation struct {
-	Done              bool
-	PromptToSend      string // populated when Done=false and AgentStillWorking=false
-	Summary           string // populated when Done=true
-	AgentStillWorking bool   // evaluator signalled WAIT — agent is busy, do not interrupt
+// ScanForEnd reports whether paneOutput contains "END" on its own line
+// (case-insensitive, whitespace-trimmed). This is the sentinel the loop
+// agent writes to signal task completion without any LLM evaluation call.
+func ScanForEnd(paneOutput string) bool {
+	for _, line := range strings.Split(paneOutput, "\n") {
+		if strings.TrimSpace(strings.ToUpper(line)) == "END" {
+			return true
+		}
+	}
+	return false
 }
 
 // OverseerAgentPort is the outbound port for the meta-agent backend.
@@ -114,12 +114,6 @@ type OverseerAgentPort interface {
 	// of all current sessions as context. Returns a parsed response
 	// containing plain text, an action, or both.
 	Chat(ctx context.Context, userMsg string, sessions []OverseerSessionContext) (OverseerResponse, error)
-
-	// EvaluateLoop checks whether the acceptance criteria are satisfied
-	// given the current paneOutput. When Done=false the returned
-	// PromptToSend should be forwarded to the session agent to make
-	// progress toward the goal. When Done=true the loop should terminate.
-	EvaluateLoop(ctx context.Context, criteria, paneOutput string) (LoopEvaluation, error)
 }
 
 // Overseer sentinel errors.

@@ -18,19 +18,10 @@ import (
 const (
 	loopCheckInterval      = 5 * time.Second
 	loopMaxIterations      = 40
-	loopMaxConsecutiveWaits = 8 // stop if the agent is still working for this many consecutive iterations
 	overseerRequestTimeout = 60 * time.Second
 )
 
-// overseerLoopEvalResultMsg carries the result of a single EvaluateLoop
-// call. It is an unexported dashboard-internal message.
-type overseerLoopEvalResultMsg struct {
-	state domain.LoopState // copy of state at eval time
-	eval  domain.LoopEvaluation
-	err   error
-}
-
-// overseerLoopNextTickMsg triggers the next evaluation in a loop's polling
+// overseerLoopNextTickMsg triggers the next pane capture in a loop's polling
 // chain. It is unexported and only handled by the dashboard.
 type overseerLoopNextTickMsg struct {
 	sessionID string // string so tea.Tick closure can capture it cheaply
@@ -209,9 +200,6 @@ func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
 	}
 
 	// /loop <session> <criteria…>
-	if m.overseerService == nil {
-		return m.commandResult("overseer agent is not configured", true)
-	}
 	sess, criteria, ok := matchSession(args, m.cachedSessions)
 	if !ok {
 		return m.commandResult(fmt.Sprintf("no session found matching %q", strings.Join(args, " ")), true)
@@ -219,39 +207,91 @@ func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
 	if strings.TrimSpace(criteria) == "" {
 		return m.commandResult("usage: /loop <session> <criteria…>", true)
 	}
+	if sess.IsLoopSession() {
+		return m.commandResult("cannot start a loop on a loop session", true)
+	}
 
 	if existing, running := m.loops[sess.ID]; running && existing.Status == domain.LoopStatusRunning {
 		return m.commandResult(fmt.Sprintf("a loop is already running on %q — use /loop stop %s first", sess.Name, sess.Name), true)
 	}
 
-	ls := &domain.LoopState{
-		SessionID:     sess.ID,
-		SessionName:   sess.Name,
-		Criteria:      criteria,
-		Status:        domain.LoopStatusRunning,
-		Iterations:    0,
-		MaxIterations: loopMaxIterations,
-		StartedAt:     time.Now(),
-	}
-	m.loops[sess.ID] = ls
-
-	// Build a kickoff prompt that tells the agent what to do and how to signal
-	// completion. The loop evaluator will watch for END in the pane output
-	// rather than sending a new directive on every iteration.
-	kickoff := criteria + "\n\nWhen you have finished this task, write the word END on its own line as your final message."
-
-	note := fmt.Sprintf("Loop started on %q — checking every %ds, max %d iterations.\nCriteria: %s",
-		sess.Name, int(loopCheckInterval.Seconds()), loopMaxIterations, criteria)
+	note := fmt.Sprintf("Starting loop on %q — creating dedicated session…\nCriteria: %s", sess.Name, criteria)
 	return m, tea.Batch(
 		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
-		m.broadcastLoopState(),
-		m.sendAgentPromptCmd(domain.OverseerAction{
-			SessionID:   sess.ID,
-			SessionName: sess.Name,
-			Prompt:      kickoff,
-		}),
-		loopNextTickCmd(*ls), // delay first eval so the kickoff lands before we check
+		m.createLoopSessionCmd(sess, criteria),
 	)
+}
+
+// createLoopSessionCmd creates the dedicated <name>-loop session, sends the
+// kickoff prompt, and returns a LoopSessionCreatedMsg.
+func (m Model) createLoopSessionCmd(sess domain.Session, criteria string) tea.Cmd {
+	svc := m.sessionsService
+	return func() tea.Msg {
+		ctx := context.Background()
+		resp, err := svc.CreateLoopSession(ctx, service.CreateLoopSessionRequest{
+			SourceSessionID:   sess.ID,
+			SourceSessionName: sess.Name,
+			ProjectID:         sess.ProjectID,
+		})
+		if err != nil {
+			return shared.LoopSessionCreatedMsg{Err: err}
+		}
+
+		ls := &domain.LoopState{
+			SessionID:     sess.ID,
+			SessionName:   sess.Name,
+			LoopSessionID: resp.LoopSession.ID,
+			Criteria:      criteria,
+			Status:        domain.LoopStatusRunning,
+			MaxIterations: loopMaxIterations,
+			StartedAt:     time.Now(),
+		}
+
+		kickoff := criteria + "\n\nWhen you have finished this task, write the word END on its own line as your final message."
+		_, _ = svc.SendAgentPrompt(ctx, service.SendAgentPromptRequest{
+			ID:     resp.LoopSession.ID,
+			Prompt: kickoff,
+		})
+
+		return shared.LoopSessionCreatedMsg{LoopSession: resp.LoopSession, LoopState: ls}
+	}
+}
+
+// captureLoopPaneCmd captures the loop session's agent pane without any LLM
+// call and returns a LoopPaneCapturedMsg.
+func (m Model) captureLoopPaneCmd(ls domain.LoopState) tea.Cmd {
+	svc := m.sessionsService
+	return func() tea.Msg {
+		resp, err := svc.PreviewSession(context.Background(), service.PreviewSessionRequest{
+			ID:   ls.LoopSessionID,
+			Kind: service.PreviewKindAgent,
+		})
+		content := ""
+		if err == nil && resp.SessionReady {
+			content = resp.Content
+		}
+		return shared.LoopPaneCapturedMsg{LoopState: ls, Content: content, Err: err}
+	}
+}
+
+// deleteLoopSessionCmd kills the loop session's agent tmux pane, then removes
+// the session row from storage. Returns a LoopSessionDeletedMsg.
+func (m Model) deleteLoopSessionCmd(ls domain.LoopState) tea.Cmd {
+	svc := m.sessionsService
+	sourceID := ls.SessionID
+	loopID := ls.LoopSessionID
+	if loopID == uuid.Nil {
+		return shared.Emit(shared.LoopSessionDeletedMsg{SourceSessionID: sourceID})
+	}
+	return func() tea.Msg {
+		ctx := context.Background()
+		_, _ = svc.KillPreviewSession(ctx, service.KillPreviewSessionRequest{
+			ID:   loopID,
+			Kind: service.PreviewKindAgent,
+		})
+		_, err := svc.Delete(ctx, service.DeleteSessionRequest{ID: loopID})
+		return shared.LoopSessionDeletedMsg{SourceSessionID: sourceID, Err: err}
+	}
 }
 
 func (m Model) cmdLoopStop(args []string) (tea.Model, tea.Cmd) {
@@ -267,9 +307,11 @@ func (m Model) cmdLoopStop(args []string) (tea.Model, tea.Cmd) {
 		return m.commandResult(fmt.Sprintf("no running loop found for %q", sess.Name), true)
 	}
 	ls.Status = domain.LoopStatusStopped
+	note := fmt.Sprintf("Loop stopped on %q after %d iteration(s).", sess.Name, ls.Iterations)
 	return m, tea.Batch(
 		m.broadcastLoopState(),
-		shared.Emit(shared.OverseerCommandResultMsg{Text: fmt.Sprintf("Loop stopped on %q after %d iteration(s).", sess.Name, ls.Iterations)}),
+		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
+		m.deleteLoopSessionCmd(*ls),
 	)
 }
 
@@ -291,32 +333,7 @@ func (m Model) cmdLoopInfo(args []string) (tea.Model, tea.Cmd) {
 	return m.commandResult(info, false)
 }
 
-// loopEvalCmd builds the async Cmd that captures the session's pane and
-// calls EvaluateLoop. The evaluation result is returned as an
-// overseerLoopEvalResultMsg.
-func (m *Model) loopEvalCmd(ls domain.LoopState) tea.Cmd {
-	svc := m.overseerService
-	sessSvc := m.sessionsService
-	return shared.RequestWithTimeout(
-		overseerRequestTimeout,
-		func(ctx context.Context) (domain.LoopEvaluation, error) {
-			resp, err := sessSvc.PreviewSession(ctx, service.PreviewSessionRequest{
-				ID:   ls.SessionID,
-				Kind: service.PreviewKindAgent,
-			})
-			pane := ""
-			if err == nil && resp.SessionReady {
-				pane = truncateLines(resp.Content, 80)
-			}
-			return svc.EvaluateLoop(ctx, ls.Criteria, pane)
-		},
-		func(eval domain.LoopEvaluation, err error) tea.Msg {
-			return overseerLoopEvalResultMsg{state: ls, eval: eval, err: err}
-		},
-	)
-}
-
-// loopNextTickCmd schedules the next evaluation for a loop after the
+// loopNextTickCmd schedules the next pane capture for a loop after the
 // configured interval.
 func loopNextTickCmd(ls domain.LoopState) tea.Cmd {
 	return tea.Tick(loopCheckInterval, func(time.Time) tea.Msg {
