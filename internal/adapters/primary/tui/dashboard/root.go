@@ -974,25 +974,6 @@ func fit(s *styles.Styles, content string, width, height int) string {
 	return s.Layout.Box.Width(width).Height(height).Render(content)
 }
 
-// promptLooksLikeInputRequest returns true when the evaluator's suggested
-// prompt contains a question or input-request phrase, indicating the session
-// agent is waiting for user guidance rather than actively executing.
-func promptLooksLikeInputRequest(s string) bool {
-	if strings.Contains(s, "?") {
-		return true
-	}
-	lower := strings.ToLower(s)
-	for _, phrase := range []string{
-		"would you like", "should i", "do you want",
-		"please provide", "let me know", "can you", "could you",
-	} {
-		if strings.Contains(lower, phrase) {
-			return true
-		}
-	}
-	return false
-}
-
 // handleLoopEvalResult processes the result of a single EvaluateLoop call.
 func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, tea.Cmd) {
 	ls := m.loops[msg.state.SessionID]
@@ -1035,14 +1016,7 @@ func (m Model) handleLoopEvalResult(msg overseerLoopEvalResultMsg) (tea.Model, t
 		)
 	}
 
-	// Detect whether the session agent is still actively working and should
-	// not be interrupted. Triggered by an explicit WAIT from the evaluator,
-	// or when the suggested prompt is a directive rather than a question
-	// (heuristic: no question mark or input-request phrase).
-	agentStillWorking := msg.eval.AgentStillWorking ||
-		(msg.eval.PromptToSend != "" && !promptLooksLikeInputRequest(msg.eval.PromptToSend))
-
-	if agentStillWorking {
+	if msg.eval.AgentStillWorking {
 		// WAIT iterations do not count against MaxIterations.
 		ls.ConsecutiveWaits++
 		if ls.ConsecutiveWaits >= loopMaxConsecutiveWaits {
