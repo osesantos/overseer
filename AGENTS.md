@@ -21,7 +21,7 @@ Key capabilities:
 - Agent-status detection (idle / running / waiting / dead) per session
 - Overseer chat panel — an LLM meta-agent (Claude Code) that can control sessions
 - Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`
-- Background evaluation loops (`/loop <session> <criteria>`) with 10s polling
+- Background evaluation loops (`/loop <session> <criteria>`) — runs `claude -p` in the session's working directory; 5s interval between iterations; up to 40 iterations
 
 ---
 
@@ -131,7 +131,8 @@ overseer/
 Pure Go structs and interfaces. No I/O. Defines:
 - `Session`, `Project`, `Label` aggregates
 - Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `OverseerAgentPort`
-- Overseer types: `LoopState`, `LoopEvaluation`, `OverseerMessage`, `OverseerAction`
+- Overseer types: `LoopState`, `LoopStatus`, `OverseerMessage`, `OverseerAction`, `OverseerSessionContext`
+- `ScanForEnd(paneOutput string) bool` — detects the `END` sentinel in loop task output (domain-layer utility)
 - `InferAgentType(agentCommand string) AgentType` — maps a legacy session's agent command string to a typed `AgentType` (lives in `domain/agent_type.go`)
 - Sentinel errors: `ErrTmuxSessionNotFound`, `ErrOverseerAgentNotFound`, etc.
 
@@ -146,7 +147,7 @@ Root Bubble Tea model. Owns:
 - All pane layout and sizing (`root.go`)
 - All global key bindings (`bindings.go`)
 - Operator slash-command execution (`commands.go`)
-- Background loop management (`commands.go`: `loopEvalCmd`, `handleLoopEvalResult`)
+- Background loop management (`commands.go`: `startLoopTaskCmd`, `handleLoopTaskCompleted`)
 
 ### `internal/adapters/primary/tui/overseer`
 Chat panel model. Handles:
@@ -160,9 +161,8 @@ Right-pane preview with generation-counter-based polling (prevents chain doublin
 
 ### `internal/adapters/secondary/claude`
 Implements `OverseerAgentPort`. Invokes `claude -p <prompt>` as a subprocess.
-- `Chat`: parses `<action>{...}</action>` fence for structured actions
-- `EvaluateLoop`: detects plain-text `END` sentinel to signal loop completion
-- Both calls use `overseerRequestTimeout = 60s` (via `shared.RequestWithTimeout`) rather than the default 30s `shared.Request` timeout, because LLM subprocess calls routinely take longer than 30 seconds
+- `Chat`: parses `<action>{...}</action>` fence for structured actions; uses `overseerRequestTimeout = 60s` because LLM calls routinely exceed 30s
+- `RunLoopTask`: runs `claude -p --dangerously-skip-permissions <criteria>` in the session's working directory and returns raw stdout; no timeout (subprocess runs until `claude` exits naturally); the dashboard scans output with `domain.ScanForEnd` to detect task completion
 
 ---
 

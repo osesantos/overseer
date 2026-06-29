@@ -345,7 +345,7 @@ Attaches directly to the project's working directory:
 
 ## Overseer Agent Loop
 
-The `/loop` command starts a background evaluation loop that repeatedly checks a session's agent pane output against your acceptance criteria and sends follow-up prompts until the goal is reached — or a safety limit is hit.
+The `/loop` command starts a background evaluation loop that runs `claude -p` directly in the session's working directory until the task is complete — or a safety limit is hit.
 
 ### Starting a loop
 
@@ -354,11 +354,11 @@ The `/loop` command starts a background evaluation loop that repeatedly checks a
 ```
 
 Overseer will:
-1. Immediately capture the session's agent pane.
-2. Ask the Claude meta-agent whether the criteria are met.
-3. If **not met**: send the agent's suggested follow-up prompt to the session and wait 10 seconds.
-4. If **met**: the agent replies `END` and the loop stops automatically.
-5. Repeat up to **20 iterations** (safety cap).
+1. Run `claude -p --dangerously-skip-permissions` in the session's working directory with your criteria as the task.
+2. Automatically append the sentinel instruction: "When you have finished this task, write the word END on its own line as your final message."
+3. If **`END` is found in the output**: the loop stops and marks the task done.
+4. If **not done**: wait 5 seconds, then run again.
+5. Repeat up to **40 iterations** (safety cap). Stops early after 3 consecutive errors.
 
 ### Loop status
 
