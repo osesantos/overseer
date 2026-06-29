@@ -184,6 +184,14 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 	return m.commandResult(help, false)
 }
 
+// loopTaskCompletedMsg carries the result of a single `claude -p` loop task
+// invocation. It is internal to the dashboard package.
+type loopTaskCompletedMsg struct {
+	sessionID uuid.UUID
+	output    string
+	err       error
+}
+
 // --- /loop ---
 
 func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
@@ -199,6 +207,10 @@ func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
 		return m.cmdLoopInfo(args[1:])
 	}
 
+	if m.overseerService == nil {
+		return m.commandResult("loop requires the Claude CLI — add claude to PATH", true)
+	}
+
 	// /loop <session> <criteria…>
 	sess, criteria, ok := matchSession(args, m.cachedSessions)
 	if !ok {
@@ -207,91 +219,67 @@ func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
 	if strings.TrimSpace(criteria) == "" {
 		return m.commandResult("usage: /loop <session> <criteria…>", true)
 	}
-	if sess.IsLoopSession() {
-		return m.commandResult("cannot start a loop on a loop session", true)
-	}
 
 	if existing, running := m.loops[sess.ID]; running && existing.Status == domain.LoopStatusRunning {
 		return m.commandResult(fmt.Sprintf("a loop is already running on %q — use /loop stop %s first", sess.Name, sess.Name), true)
 	}
 
-	note := fmt.Sprintf("Starting loop on %q — creating dedicated session…\nCriteria: %s", sess.Name, criteria)
+	ls := &domain.LoopState{
+		SessionID:     sess.ID,
+		SessionName:   sess.Name,
+		Criteria:      criteria,
+		Status:        domain.LoopStatusRunning,
+		MaxIterations: loopMaxIterations,
+		StartedAt:     time.Now(),
+	}
+	m.loops[sess.ID] = ls
+
+	note := fmt.Sprintf("Starting loop on %q — running claude -p in the background.\nCriteria: %s", sess.Name, criteria)
 	return m, tea.Batch(
 		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
-		m.createLoopSessionCmd(sess, criteria),
+		shared.Emit(shared.LoopStartedMsg{SourceSession: sess}),
+		m.broadcastLoopState(),
+		m.startLoopTaskCmd(*ls),
 	)
 }
 
-// createLoopSessionCmd creates the dedicated <name>-loop session, sends the
-// kickoff prompt, and returns a LoopSessionCreatedMsg.
-func (m Model) createLoopSessionCmd(sess domain.Session, criteria string) tea.Cmd {
-	svc := m.sessionsService
+// startLoopTaskCmd runs `claude -p --dangerously-skip-permissions <criteria>`
+// in the source session's working directory as a non-interactive subprocess.
+// Returns a loopTaskCompletedMsg when the process exits.
+func (m Model) startLoopTaskCmd(ls domain.LoopState) tea.Cmd {
+	svc := m.overseerService
+	workDir := m.sessionWorkDir(ls.SessionID)
+	criteria := ls.Criteria + "\n\nWhen you have finished this task, write the word END on its own line as your final message."
 	return func() tea.Msg {
-		ctx := context.Background()
-		resp, err := svc.CreateLoopSession(ctx, service.CreateLoopSessionRequest{
-			SourceSessionID:   sess.ID,
-			SourceSessionName: sess.Name,
-			ProjectID:         sess.ProjectID,
+		resp, err := svc.RunLoopTask(context.Background(), service.RunLoopTaskRequest{
+			WorkDir:  workDir,
+			Criteria: criteria,
 		})
-		if err != nil {
-			return shared.LoopSessionCreatedMsg{Err: err}
+		output := ""
+		if err == nil {
+			output = resp.Output
 		}
-
-		ls := &domain.LoopState{
-			SessionID:     sess.ID,
-			SessionName:   sess.Name,
-			LoopSessionID: resp.LoopSession.ID,
-			Criteria:      criteria,
-			Status:        domain.LoopStatusRunning,
-			MaxIterations: loopMaxIterations,
-			StartedAt:     time.Now(),
-		}
-
-		kickoff := criteria + "\n\nWhen you have finished this task, write the word END on its own line as your final message."
-		_, _ = svc.SendAgentPrompt(ctx, service.SendAgentPromptRequest{
-			ID:     resp.LoopSession.ID,
-			Prompt: kickoff,
-		})
-
-		return shared.LoopSessionCreatedMsg{LoopSession: resp.LoopSession, LoopState: ls}
+		return loopTaskCompletedMsg{sessionID: ls.SessionID, output: output, err: err}
 	}
 }
 
-// captureLoopPaneCmd captures the loop session's agent pane without any LLM
-// call and returns a LoopPaneCapturedMsg.
-func (m Model) captureLoopPaneCmd(ls domain.LoopState) tea.Cmd {
-	svc := m.sessionsService
-	return func() tea.Msg {
-		resp, err := svc.PreviewSession(context.Background(), service.PreviewSessionRequest{
-			ID:   ls.LoopSessionID,
-			Kind: service.PreviewKindAgent,
-		})
-		content := ""
-		if err == nil && resp.SessionReady {
-			content = resp.Content
+// sessionWorkDir resolves the working directory for a session: the worktree
+// path for Mode 1 sessions or the project path for Mode 2 sessions.
+func (m Model) sessionWorkDir(sessionID uuid.UUID) string {
+	for _, sess := range m.cachedSessions {
+		if sess.ID != sessionID {
+			continue
 		}
-		return shared.LoopPaneCapturedMsg{LoopState: ls, Content: content, Err: err}
+		if sess.HasWorktree() {
+			return sess.WorktreePath
+		}
+		for _, p := range m.cachedProjects {
+			if p.ID == sess.ProjectID {
+				return p.Path
+			}
+		}
 	}
-}
-
-// deleteLoopSessionCmd kills the loop session's agent tmux pane, then removes
-// the session row from storage. Returns a LoopSessionDeletedMsg.
-func (m Model) deleteLoopSessionCmd(ls domain.LoopState) tea.Cmd {
-	svc := m.sessionsService
-	sourceID := ls.SessionID
-	loopID := ls.LoopSessionID
-	if loopID == uuid.Nil {
-		return shared.Emit(shared.LoopSessionDeletedMsg{SourceSessionID: sourceID})
-	}
-	return func() tea.Msg {
-		ctx := context.Background()
-		_, _ = svc.KillPreviewSession(ctx, service.KillPreviewSessionRequest{
-			ID:   loopID,
-			Kind: service.PreviewKindAgent,
-		})
-		_, err := svc.Delete(ctx, service.DeleteSessionRequest{ID: loopID})
-		return shared.LoopSessionDeletedMsg{SourceSessionID: sourceID, Err: err}
-	}
+	return ""
 }
 
 func (m Model) cmdLoopStop(args []string) (tea.Model, tea.Cmd) {
@@ -311,7 +299,7 @@ func (m Model) cmdLoopStop(args []string) (tea.Model, tea.Cmd) {
 	return m, tea.Batch(
 		m.broadcastLoopState(),
 		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
-		m.deleteLoopSessionCmd(*ls),
+		shared.Emit(shared.LoopOutputUpdatedMsg{SessionID: sess.ID, Content: "Loop stopped."}),
 	)
 }
 

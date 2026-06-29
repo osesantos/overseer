@@ -194,31 +194,17 @@ type OverseerLoopStateChangedMsg struct {
 	Loops map[uuid.UUID]*domain.LoopState
 }
 
-// LoopSessionCreatedMsg is emitted once the dedicated <name>-loop session has
-// been created and the kickoff prompt has been sent.
-type LoopSessionCreatedMsg struct {
-	LoopSession domain.Session
-	LoopState   *domain.LoopState
-	Err         error
+// LoopStartedMsg is emitted by the dashboard when a /loop command successfully
+// initialises. The inspector switches to the "Loop" tab and clears its content
+// on receipt.
+type LoopStartedMsg struct {
+	SourceSession domain.Session
 }
 
-// LoopSessionDeletedMsg is emitted after the loop session has been removed
-// from storage (on done, stop, or error).
-type LoopSessionDeletedMsg struct {
-	SourceSessionID uuid.UUID
-	Err             error
-}
-
-// LoopSessionSelectedMsg is emitted when the user selects a loop session in
-// the session list. The inspector switches to the "Loop" tab on receipt.
-type LoopSessionSelectedMsg struct {
-	Session domain.Session
-}
-
-// LoopPaneCapturedMsg carries the captured pane content from the loop
-// session's agent pane on each polling tick.
-type LoopPaneCapturedMsg struct {
-	LoopState domain.LoopState
+// LoopOutputUpdatedMsg is emitted by the dashboard after each `claude -p` task
+// run completes (success or terminal failure). The inspector's Loop tab
+// displays Content as the latest output.
+type LoopOutputUpdatedMsg struct {
+	SessionID uuid.UUID
 	Content   string
-	Err       error
 }

@@ -25,8 +25,3 @@ func InferAgentType(agentCommand string) AgentType {
 	return AgentTypeUnknown
 }
 
-// AgentTypeLoopChat marks sessions created automatically as the execution
-// vehicle for a /loop command. They run claude --dangerously-skip-permissions
-// and are managed entirely by the loop machinery; no status detector is
-// registered for this type.
-const AgentTypeLoopChat AgentType = "loop-chat"

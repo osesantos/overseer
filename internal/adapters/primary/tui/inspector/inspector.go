@@ -42,7 +42,7 @@ func New(s *styles.Styles, sessionService service.SessionService, previewRefresh
 		views: []View{
 			newAgentView(sessionService, s, previewRefreshInterval),
 			newShellView(sessionService, s, previewRefreshInterval),
-			newLoopView(sessionService, s, previewRefreshInterval),
+			newLoopView(s),
 		},
 		activeIx: 0,
 		styles:   s,
@@ -55,11 +55,16 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case shared.LoopSessionSelectedMsg:
-		m.sessionID = msg.Session.ID
+	case shared.LoopStartedMsg:
 		m.activeIx = loopViewIx
-		m.views[loopViewIx].SetSession(msg.Session.ID)
-		return m, m.views[m.activeIx].Init()
+		updated, _ := m.views[loopViewIx].Update(loopViewContentMsg{content: "Loop agent running…"})
+		m.views[loopViewIx] = updated
+		return m, nil
+
+	case shared.LoopOutputUpdatedMsg:
+		updated, _ := m.views[loopViewIx].Update(loopViewContentMsg{content: msg.Content})
+		m.views[loopViewIx] = updated
+		return m, nil
 
 	case shared.SessionSelectedMsg:
 		m.sessionID = msg.Session.ID

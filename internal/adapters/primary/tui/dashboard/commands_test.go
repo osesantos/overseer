@@ -124,19 +124,17 @@ func TestExecuteCommand_UnknownCommand_ReturnsErrorResult(t *testing.T) {
 	}
 }
 
-// --- handleLoopPaneCaptured ---
+// --- handleLoopTaskCompleted ---
 
 func newTestModel(sessID uuid.UUID, ls *domain.LoopState) Model {
 	loops := map[uuid.UUID]*domain.LoopState{sessID: ls}
 	return Model{loops: loops}
 }
 
-func TestHandleLoopPaneCaptured_EndSentinel_CompletesLoop(t *testing.T) {
+func TestHandleLoopTaskCompleted_EndSentinel_CompletesLoop(t *testing.T) {
 	sessID := uuid.New()
-	loopSessionID := uuid.New()
 	ls := &domain.LoopState{
 		SessionID:     sessID,
-		LoopSessionID: loopSessionID,
 		SessionName:   "my-session",
 		Status:        domain.LoopStatusRunning,
 		Iterations:    2,
@@ -144,26 +142,27 @@ func TestHandleLoopPaneCaptured_EndSentinel_CompletesLoop(t *testing.T) {
 		StartedAt:     time.Now(),
 	}
 	m := newTestModel(sessID, ls)
-	msg := shared.LoopPaneCapturedMsg{
-		LoopState: *ls,
-		Content:   "I finished the task.\nEND\n",
+	msg := loopTaskCompletedMsg{
+		sessionID: sessID,
+		output:    "I finished the task.\nEND\n",
 	}
-	_, cmd := m.handleLoopPaneCaptured(msg)
+	_, cmd := m.handleLoopTaskCompleted(msg)
 
 	if ls.Status != domain.LoopStatusDone {
 		t.Errorf("Status = %s, want done", ls.Status)
+	}
+	if ls.Iterations != 3 {
+		t.Errorf("Iterations = %d, want 3", ls.Iterations)
 	}
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd")
 	}
 }
 
-func TestHandleLoopPaneCaptured_ErrorBranch_SchedulesNextTick(t *testing.T) {
+func TestHandleLoopTaskCompleted_ErrorBranch_SchedulesNextTick(t *testing.T) {
 	sessID := uuid.New()
-	loopSessionID := uuid.New()
 	ls := &domain.LoopState{
 		SessionID:         sessID,
-		LoopSessionID:     loopSessionID,
 		SessionName:       "my-session",
 		Status:            domain.LoopStatusRunning,
 		Iterations:        0,
@@ -172,11 +171,11 @@ func TestHandleLoopPaneCaptured_ErrorBranch_SchedulesNextTick(t *testing.T) {
 		StartedAt:         time.Now(),
 	}
 	m := newTestModel(sessID, ls)
-	msg := shared.LoopPaneCapturedMsg{
-		LoopState: *ls,
-		Err:       errSentinel("capture failed"),
+	msg := loopTaskCompletedMsg{
+		sessionID: sessID,
+		err:       errSentinel("task failed"),
 	}
-	_, cmd := m.handleLoopPaneCaptured(msg)
+	_, cmd := m.handleLoopTaskCompleted(msg)
 
 	if ls.Status == domain.LoopStatusStopped {
 		t.Error("single error should not stop the loop")
@@ -186,12 +185,10 @@ func TestHandleLoopPaneCaptured_ErrorBranch_SchedulesNextTick(t *testing.T) {
 	}
 }
 
-func TestHandleLoopPaneCaptured_MaxConsecutiveErrors_StopsLoop(t *testing.T) {
+func TestHandleLoopTaskCompleted_MaxConsecutiveErrors_StopsLoop(t *testing.T) {
 	sessID := uuid.New()
-	loopSessionID := uuid.New()
 	ls := &domain.LoopState{
 		SessionID:         sessID,
-		LoopSessionID:     loopSessionID,
 		SessionName:       "my-session",
 		Status:            domain.LoopStatusRunning,
 		Iterations:        5,
@@ -200,11 +197,11 @@ func TestHandleLoopPaneCaptured_MaxConsecutiveErrors_StopsLoop(t *testing.T) {
 		StartedAt:         time.Now(),
 	}
 	m := newTestModel(sessID, ls)
-	msg := shared.LoopPaneCapturedMsg{
-		LoopState: *ls,
-		Err:       errSentinel("persistent failure"),
+	msg := loopTaskCompletedMsg{
+		sessionID: sessID,
+		err:       errSentinel("persistent failure"),
 	}
-	_, cmd := m.handleLoopPaneCaptured(msg)
+	_, cmd := m.handleLoopTaskCompleted(msg)
 
 	if ls.Status != domain.LoopStatusStopped {
 		t.Errorf("Status = %s, want stopped after 3 consecutive errors", ls.Status)
@@ -214,12 +211,10 @@ func TestHandleLoopPaneCaptured_MaxConsecutiveErrors_StopsLoop(t *testing.T) {
 	}
 }
 
-func TestHandleLoopPaneCaptured_MaxIterations_StopsLoop(t *testing.T) {
+func TestHandleLoopTaskCompleted_MaxIterations_StopsLoop(t *testing.T) {
 	sessID := uuid.New()
-	loopSessionID := uuid.New()
 	ls := &domain.LoopState{
 		SessionID:     sessID,
-		LoopSessionID: loopSessionID,
 		SessionName:   "my-session",
 		Status:        domain.LoopStatusRunning,
 		Iterations:    9, // will become 10 == MaxIterations
@@ -227,11 +222,11 @@ func TestHandleLoopPaneCaptured_MaxIterations_StopsLoop(t *testing.T) {
 		StartedAt:     time.Now(),
 	}
 	m := newTestModel(sessID, ls)
-	msg := shared.LoopPaneCapturedMsg{
-		LoopState: *ls,
-		Content:   "still working...",
+	msg := loopTaskCompletedMsg{
+		sessionID: sessID,
+		output:    "still working...",
 	}
-	_, cmd := m.handleLoopPaneCaptured(msg)
+	_, cmd := m.handleLoopTaskCompleted(msg)
 
 	if ls.Status != domain.LoopStatusStopped {
 		t.Errorf("Status = %s, want stopped", ls.Status)
@@ -241,12 +236,10 @@ func TestHandleLoopPaneCaptured_MaxIterations_StopsLoop(t *testing.T) {
 	}
 }
 
-func TestHandleLoopPaneCaptured_NormalTick_SchedulesNextTick(t *testing.T) {
+func TestHandleLoopTaskCompleted_NormalTick_SchedulesNextTick(t *testing.T) {
 	sessID := uuid.New()
-	loopSessionID := uuid.New()
 	ls := &domain.LoopState{
 		SessionID:     sessID,
-		LoopSessionID: loopSessionID,
 		SessionName:   "my-session",
 		Status:        domain.LoopStatusRunning,
 		Iterations:    1,
@@ -254,11 +247,11 @@ func TestHandleLoopPaneCaptured_NormalTick_SchedulesNextTick(t *testing.T) {
 		StartedAt:     time.Now(),
 	}
 	m := newTestModel(sessID, ls)
-	msg := shared.LoopPaneCapturedMsg{
-		LoopState: *ls,
-		Content:   "working on it",
+	msg := loopTaskCompletedMsg{
+		sessionID: sessID,
+		output:    "working on it",
 	}
-	_, cmd := m.handleLoopPaneCaptured(msg)
+	_, cmd := m.handleLoopTaskCompleted(msg)
 
 	if ls.Status != domain.LoopStatusRunning {
 		t.Errorf("Status = %s, want still running", ls.Status)
@@ -271,18 +264,18 @@ func TestHandleLoopPaneCaptured_NormalTick_SchedulesNextTick(t *testing.T) {
 	}
 }
 
-func TestHandleLoopPaneCaptured_StoppedLoop_Ignored(t *testing.T) {
+func TestHandleLoopTaskCompleted_StoppedLoop_Ignored(t *testing.T) {
 	sessID := uuid.New()
 	ls := &domain.LoopState{
 		SessionID: sessID,
 		Status:    domain.LoopStatusStopped,
 	}
 	m := newTestModel(sessID, ls)
-	msg := shared.LoopPaneCapturedMsg{
-		LoopState: *ls,
-		Content:   "END",
+	msg := loopTaskCompletedMsg{
+		sessionID: sessID,
+		output:    "END",
 	}
-	_, cmd := m.handleLoopPaneCaptured(msg)
+	_, cmd := m.handleLoopTaskCompleted(msg)
 
 	if cmd != nil {
 		t.Fatal("expected nil cmd for already-stopped loop")

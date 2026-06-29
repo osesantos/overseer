@@ -78,19 +78,17 @@ const (
 )
 
 // LoopState tracks a single active or completed evaluation loop. The loop
-// periodically captures the loop session's agent pane and scans for the END
-// sentinel to determine when the task is complete.
+// periodically runs `claude -p --dangerously-skip-permissions` in the source
+// session's working directory and scans stdout for the END sentinel.
 type LoopState struct {
 	SessionID         uuid.UUID // source session the loop was started on
 	SessionName       string
-	LoopSessionID     uuid.UUID // ID of the dedicated <name>-loop session
 	Criteria          string
 	Status            LoopStatus
 	Iterations        int
 	MaxIterations     int
 	StartedAt         time.Time
-	ConsecutiveErrors int    // reset to 0 on any successful pane capture
-	LastPaneOutput    string // last captured pane content, used for stuck detection
+	ConsecutiveErrors int // reset to 0 on any successful task run
 }
 
 // ScanForEnd reports whether paneOutput contains "END" on its own line
@@ -114,6 +112,12 @@ type OverseerAgentPort interface {
 	// of all current sessions as context. Returns a parsed response
 	// containing plain text, an action, or both.
 	Chat(ctx context.Context, userMsg string, sessions []OverseerSessionContext) (OverseerResponse, error)
+
+	// RunLoopTask runs `claude -p --dangerously-skip-permissions <criteria>` in
+	// workDir as a non-interactive subprocess. Returns the combined stdout
+	// output. The caller appends an END-sentinel instruction to criteria before
+	// passing it here.
+	RunLoopTask(ctx context.Context, workDir, criteria string) (string, error)
 }
 
 // Overseer sentinel errors.

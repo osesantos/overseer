@@ -103,9 +103,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		first := m.sessions[0]
 		m.tree = m.tree.SelectID("session:" + first.ID.String())
-		if first.IsLoopSession() {
-			return m, shared.Emit(shared.LoopSessionSelectedMsg{Session: first})
-		}
 		return m, shared.Emit(shared.SessionSelectedMsg{Session: first})
 	case shared.SessionReorderedMsg:
 		if msg.Err != nil {
@@ -153,9 +150,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case components.TreeSelectMsg[sessionNode]:
 		if msg.Item.kind == sessionNodeSession {
 			if sess, ok := m.findSession(msg.Item.sessionID); ok {
-				if sess.IsLoopSession() {
-					return m, shared.Emit(shared.LoopSessionSelectedMsg{Session: sess})
-				}
 				return m, shared.Emit(shared.SessionSelectedMsg{Session: sess})
 			}
 		}
@@ -225,12 +219,6 @@ func (m Model) requestDeleteSelected() tea.Cmd {
 	}
 	for _, sess := range m.sessions {
 		if sess.ID == id {
-			if sess.IsLoopSession() {
-				return shared.Emit(shared.OverseerCommandResultMsg{
-					Text:    "Use /loop stop <session> to stop a loop session.",
-					IsError: true,
-				})
-			}
 			return shared.Emit(shared.SessionDeleteRequestedMsg{Session: sess})
 		}
 	}
@@ -327,9 +315,6 @@ func (m Model) translateTreeSelection(cmd tea.Cmd) tea.Cmd {
 	cur, ok := m.tree.Selected()
 	if ok && cur.kind == sessionNodeSession {
 		if sess, ok := m.findSession(cur.sessionID); ok {
-			if sess.IsLoopSession() {
-				return shared.Emit(shared.LoopSessionSelectedMsg{Session: sess})
-			}
 			return shared.Emit(shared.SessionSelectedMsg{Session: sess})
 		}
 	}
@@ -513,9 +498,7 @@ func projectLabel(id uuid.UUID, names map[uuid.UUID]string) string {
 
 func sessionTreeNode(sess domain.Session, glyphs styles.Glyphs, agentStatus domain.AgentStatusKind, loopSt *domain.LoopStatus) components.TreeNode[sessionNode] {
 	label := sess.Name
-	if sess.IsLoopSession() {
-		label = glyphs.LoopRunning + " " + sess.Name
-	} else if !sess.HasWorktree() {
+	if !sess.HasWorktree() {
 		label = glyphs.ProjectMode + " " + sess.Name
 	}
 	return components.TreeNode[sessionNode]{

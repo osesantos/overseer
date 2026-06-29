@@ -64,10 +64,12 @@ func TestInspector_SessionSelectedMsg_PropagatesToAllViews(t *testing.T) {
 	if m.sessionID != id {
 		t.Errorf("model sessionID = %v, want %v", m.sessionID, id)
 	}
+	// Only stream views (Agent, Shell) receive the session ID via SetSession.
+	// The loop view (index 2) is content-driven and ignores SetSession.
 	for i, v := range m.views {
 		sv, ok := v.(*streamView)
 		if !ok {
-			t.Fatalf("view[%d] is %T, want *streamView", i, v)
+			continue // loopView at index 2 — not a streamView, skip
 		}
 		if sv.sessionID != id {
 			t.Errorf("view[%d] sessionID = %v, want %v", i, sv.sessionID, id)
@@ -161,8 +163,13 @@ func TestInspector_SessionSelectionClearedMsg_ResetsAllViews(t *testing.T) {
 	id := uuid.New()
 	updated, _ := m.Update(shared.SessionSelectedMsg{Session: domain.Session{ID: id}})
 	m = updated.(Model)
-	for i := range m.views {
-		sv := m.views[i].(*streamView)
+	// Seed stale content only in the stream views (Agent, Shell).
+	for i, v := range m.views {
+		sv, ok := v.(*streamView)
+		if !ok {
+			continue // loopView at index 2 — skip
+		}
+		_ = i
 		sv.content = "stale-content"
 		sv.ready = true
 	}
@@ -177,7 +184,10 @@ func TestInspector_SessionSelectionClearedMsg_ResetsAllViews(t *testing.T) {
 		t.Errorf("model sessionID = %v, want uuid.Nil", m.sessionID)
 	}
 	for i, v := range m.views {
-		sv := v.(*streamView)
+		sv, ok := v.(*streamView)
+		if !ok {
+			continue // loopView — not reset by session clear
+		}
 		if sv.sessionID != uuid.Nil {
 			t.Errorf("view[%d] sessionID = %v, want uuid.Nil", i, sv.sessionID)
 		}
