@@ -544,7 +544,7 @@ func renderSessionNode(s *styles.Styles, labels []domain.Label) components.TreeR
 			if focused {
 				return s.ListRow.Selected.Render(body)
 			}
-			return statusRowStyle(s).Render(body)
+			return s.ListRow.Normal.Render(body)
 		}
 
 		fillerSpaces := strings.Repeat(" ", filler)
@@ -556,13 +556,8 @@ func renderSessionNode(s *styles.Styles, labels []domain.Label) components.TreeR
 			right := s.ListRow.AuxSelected.Render(auxGapSpaces + aux)
 			return left + right
 		}
-		rowStyle := statusRowStyle(s)
-		return rowStyle.Render(body) + fillerSpaces + badgeGapSpaces + badge + auxGapSpaces + s.ListRow.Aux.Render(aux)
+		return s.ListRow.Normal.Render(body) + fillerSpaces + badgeGapSpaces + badge + auxGapSpaces + s.ListRow.Aux.Render(aux)
 	}
-}
-
-func statusRowStyle(s *styles.Styles) lipgloss.Style {
-	return s.ListRow.Normal
 }
 
 var staleLabelColor = lipgloss.Color("#9CA3AF")

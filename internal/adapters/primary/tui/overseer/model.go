@@ -9,7 +9,6 @@ import (
 	"charm.land/bubbles/v2/textinput"
 	"charm.land/bubbles/v2/viewport"
 	tea "charm.land/bubbletea/v2"
-	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -198,12 +197,6 @@ func (m *Model) appendMessage(msg domain.OverseerMessage) {
 	m.refreshViewport()
 }
 
-// AppendMessage is the exported version used by the dashboard to inject
-// system notices (e.g. after a confirmation is accepted).
-func (m *Model) AppendMessage(msg domain.OverseerMessage) {
-	m.appendMessage(msg)
-}
-
 // refreshViewport re-renders the message history into the viewport.
 // It scrolls to the bottom only when the viewport was already at the bottom
 // before the update, so a user who has scrolled up to read history is not
@@ -279,8 +272,3 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	)
 }
 
-// panelBorder returns a copy of the focused border style sized to the given
-// outer dimensions. Exported for tests.
-func panelBorder(s *styles.Styles, width, height int) lipgloss.Style {
-	return s.Border.Focused.Width(width - borderFrameH).Height(height - borderFrameH)
-}
