@@ -24,7 +24,6 @@ type Model struct {
 	prCache         map[uuid.UUID]shared.PRStatusUpdatedMsg
 	projectBranches map[uuid.UUID]string
 	projectNames    map[uuid.UUID]string
-	loops           map[uuid.UUID]*domain.LoopState
 }
 
 func New(s *styles.Styles) Model {
@@ -33,7 +32,6 @@ func New(s *styles.Styles) Model {
 		prCache:         make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
 		projectBranches: make(map[uuid.UUID]string),
 		projectNames:    make(map[uuid.UUID]string),
-		loops:           make(map[uuid.UUID]*domain.LoopState),
 	}
 }
 
@@ -58,8 +56,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.projectBranches[msg.ProjectID] = msg.Branch
 		}
-	case shared.OverseerLoopStateChangedMsg:
-		m.loops = msg.Loops
 	}
 	return m, nil
 }

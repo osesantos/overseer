@@ -3,7 +3,6 @@ package domain
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -15,7 +14,7 @@ type OverseerRole string
 const (
 	OverseerRoleUser   OverseerRole = "user"
 	OverseerRoleAgent  OverseerRole = "agent"
-	OverseerRoleSystem OverseerRole = "system" // operator command feedback, loop notices
+	OverseerRoleSystem OverseerRole = "system" // operator command feedback
 )
 
 // OverseerMessage is a single entry in the Overseer chat history. Role
@@ -66,43 +65,6 @@ type OverseerSessionContext struct {
 	PaneOutput  string // last N lines of the agent pane, ANSI-stripped
 }
 
-// --- Loop types ---
-
-// LoopStatus describes where a background evaluation loop currently stands.
-type LoopStatus string
-
-const (
-	LoopStatusRunning LoopStatus = "running"
-	LoopStatusDone    LoopStatus = "done"
-	LoopStatusStopped LoopStatus = "stopped"
-)
-
-// LoopState tracks a single active or completed evaluation loop. The loop
-// periodically runs `claude -p --dangerously-skip-permissions` in the source
-// session's working directory and scans stdout for the END sentinel.
-type LoopState struct {
-	SessionID         uuid.UUID // source session the loop was started on
-	SessionName       string
-	Criteria          string
-	Status            LoopStatus
-	Iterations        int
-	MaxIterations     int
-	StartedAt         time.Time
-	ConsecutiveErrors int // reset to 0 on any successful task run
-}
-
-// ScanForEnd reports whether paneOutput contains "END" on its own line
-// (case-insensitive, whitespace-trimmed). This is the sentinel the loop
-// agent writes to signal task completion without any LLM evaluation call.
-func ScanForEnd(paneOutput string) bool {
-	for _, line := range strings.Split(paneOutput, "\n") {
-		if strings.TrimSpace(strings.ToUpper(line)) == "END" {
-			return true
-		}
-	}
-	return false
-}
-
 // OverseerAgentPort is the outbound port for the meta-agent backend.
 // Implementations invoke an LLM (e.g. `claude -p`) and return a structured
 // response. The context timeout controls the maximum wall-clock time allowed
@@ -112,12 +74,6 @@ type OverseerAgentPort interface {
 	// of all current sessions as context. Returns a parsed response
 	// containing plain text, an action, or both.
 	Chat(ctx context.Context, userMsg string, sessions []OverseerSessionContext) (OverseerResponse, error)
-
-	// RunLoopTask runs `claude -p --dangerously-skip-permissions <criteria>` in
-	// workDir as a non-interactive subprocess. Returns the combined stdout
-	// output. The caller appends an END-sentinel instruction to criteria before
-	// passing it here.
-	RunLoopTask(ctx context.Context, workDir, criteria string) (string, error)
 }
 
 // Overseer sentinel errors.

@@ -3,9 +3,6 @@ package dashboard
 import (
 	"strings"
 	"testing"
-	"time"
-
-	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/core/domain"
@@ -81,7 +78,6 @@ func TestParseCommand(t *testing.T) {
 	}{
 		{"/send alpha hello world", "send", []string{"alpha", "hello", "world"}},
 		{"/HELP", "help", nil},
-		{"/loop stop mysess", "loop", []string{"stop", "mysess"}},
 		{"  /list  ", "list", nil},
 		{"/new", "new", nil},
 	}
@@ -107,7 +103,7 @@ func TestParseCommand(t *testing.T) {
 // --- executeCommand routing ---
 
 func TestExecuteCommand_UnknownCommand_ReturnsErrorResult(t *testing.T) {
-	m := Model{loops: make(map[uuid.UUID]*domain.LoopState)}
+	m := Model{}
 	_, cmd := m.executeCommand("/unknowncmd")
 	if cmd == nil {
 		t.Fatal("expected non-nil cmd for unknown command")
@@ -123,166 +119,3 @@ func TestExecuteCommand_UnknownCommand_ReturnsErrorResult(t *testing.T) {
 		t.Errorf("text %q should mention 'unknown command'", msg.Text)
 	}
 }
-
-// --- handleLoopTaskCompleted ---
-
-func newTestModel(sessID uuid.UUID, ls *domain.LoopState) Model {
-	loops := map[uuid.UUID]*domain.LoopState{sessID: ls}
-	return Model{loops: loops}
-}
-
-func TestHandleLoopTaskCompleted_EndSentinel_CompletesLoop(t *testing.T) {
-	sessID := uuid.New()
-	ls := &domain.LoopState{
-		SessionID:     sessID,
-		SessionName:   "my-session",
-		Status:        domain.LoopStatusRunning,
-		Iterations:    2,
-		MaxIterations: 10,
-		StartedAt:     time.Now(),
-	}
-	m := newTestModel(sessID, ls)
-	msg := loopTaskCompletedMsg{
-		sessionID: sessID,
-		output:    "I finished the task.\nEND\n",
-	}
-	_, cmd := m.handleLoopTaskCompleted(msg)
-
-	if ls.Status != domain.LoopStatusDone {
-		t.Errorf("Status = %s, want done", ls.Status)
-	}
-	if ls.Iterations != 3 {
-		t.Errorf("Iterations = %d, want 3", ls.Iterations)
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
-	}
-}
-
-func TestHandleLoopTaskCompleted_ErrorBranch_SchedulesNextTick(t *testing.T) {
-	sessID := uuid.New()
-	ls := &domain.LoopState{
-		SessionID:         sessID,
-		SessionName:       "my-session",
-		Status:            domain.LoopStatusRunning,
-		Iterations:        0,
-		MaxIterations:     10,
-		ConsecutiveErrors: 0,
-		StartedAt:         time.Now(),
-	}
-	m := newTestModel(sessID, ls)
-	msg := loopTaskCompletedMsg{
-		sessionID: sessID,
-		err:       errSentinel("task failed"),
-	}
-	_, cmd := m.handleLoopTaskCompleted(msg)
-
-	if ls.Status == domain.LoopStatusStopped {
-		t.Error("single error should not stop the loop")
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd to schedule next tick")
-	}
-}
-
-func TestHandleLoopTaskCompleted_MaxConsecutiveErrors_StopsLoop(t *testing.T) {
-	sessID := uuid.New()
-	ls := &domain.LoopState{
-		SessionID:         sessID,
-		SessionName:       "my-session",
-		Status:            domain.LoopStatusRunning,
-		Iterations:        5,
-		MaxIterations:     20,
-		ConsecutiveErrors: 2, // one more will hit the max of 3
-		StartedAt:         time.Now(),
-	}
-	m := newTestModel(sessID, ls)
-	msg := loopTaskCompletedMsg{
-		sessionID: sessID,
-		err:       errSentinel("persistent failure"),
-	}
-	_, cmd := m.handleLoopTaskCompleted(msg)
-
-	if ls.Status != domain.LoopStatusStopped {
-		t.Errorf("Status = %s, want stopped after 3 consecutive errors", ls.Status)
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
-	}
-}
-
-func TestHandleLoopTaskCompleted_MaxIterations_StopsLoop(t *testing.T) {
-	sessID := uuid.New()
-	ls := &domain.LoopState{
-		SessionID:     sessID,
-		SessionName:   "my-session",
-		Status:        domain.LoopStatusRunning,
-		Iterations:    9, // will become 10 == MaxIterations
-		MaxIterations: 10,
-		StartedAt:     time.Now(),
-	}
-	m := newTestModel(sessID, ls)
-	msg := loopTaskCompletedMsg{
-		sessionID: sessID,
-		output:    "still working...",
-	}
-	_, cmd := m.handleLoopTaskCompleted(msg)
-
-	if ls.Status != domain.LoopStatusStopped {
-		t.Errorf("Status = %s, want stopped", ls.Status)
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd")
-	}
-}
-
-func TestHandleLoopTaskCompleted_NormalTick_SchedulesNextTick(t *testing.T) {
-	sessID := uuid.New()
-	ls := &domain.LoopState{
-		SessionID:     sessID,
-		SessionName:   "my-session",
-		Status:        domain.LoopStatusRunning,
-		Iterations:    1,
-		MaxIterations: 10,
-		StartedAt:     time.Now(),
-	}
-	m := newTestModel(sessID, ls)
-	msg := loopTaskCompletedMsg{
-		sessionID: sessID,
-		output:    "working on it",
-	}
-	_, cmd := m.handleLoopTaskCompleted(msg)
-
-	if ls.Status != domain.LoopStatusRunning {
-		t.Errorf("Status = %s, want still running", ls.Status)
-	}
-	if ls.Iterations != 2 {
-		t.Errorf("Iterations = %d, want 2", ls.Iterations)
-	}
-	if cmd == nil {
-		t.Fatal("expected non-nil cmd for next tick")
-	}
-}
-
-func TestHandleLoopTaskCompleted_StoppedLoop_Ignored(t *testing.T) {
-	sessID := uuid.New()
-	ls := &domain.LoopState{
-		SessionID: sessID,
-		Status:    domain.LoopStatusStopped,
-	}
-	m := newTestModel(sessID, ls)
-	msg := loopTaskCompletedMsg{
-		sessionID: sessID,
-		output:    "END",
-	}
-	_, cmd := m.handleLoopTaskCompleted(msg)
-
-	if cmd != nil {
-		t.Fatal("expected nil cmd for already-stopped loop")
-	}
-}
-
-// errSentinel is a minimal error type for tests.
-type errSentinel string
-
-func (e errSentinel) Error() string { return string(e) }

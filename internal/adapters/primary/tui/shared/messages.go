@@ -187,24 +187,3 @@ type OverseerCommandResultMsg struct {
 	IsError bool
 }
 
-// OverseerLoopStateChangedMsg is broadcast whenever the loops map in the
-// dashboard changes (loop started, tick, done, stopped). Listeners such as
-// sessiondetails and the session list use it to update their loop badges.
-type OverseerLoopStateChangedMsg struct {
-	Loops map[uuid.UUID]*domain.LoopState
-}
-
-// LoopStartedMsg is emitted by the dashboard when a /loop command successfully
-// initialises. The inspector switches to the "Loop" tab and clears its content
-// on receipt.
-type LoopStartedMsg struct {
-	SourceSession domain.Session
-}
-
-// LoopOutputUpdatedMsg is emitted by the dashboard after each `claude -p` task
-// run completes (success or terminal failure). The inspector's Loop tab
-// displays Content as the latest output.
-type LoopOutputUpdatedMsg struct {
-	SessionID uuid.UUID
-	Content   string
-}

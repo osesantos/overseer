@@ -7,7 +7,6 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
-	"github.com/google/uuid"
 
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -16,16 +15,8 @@ import (
 )
 
 const (
-	loopCheckInterval      = 5 * time.Second
-	loopMaxIterations      = 40
 	overseerRequestTimeout = 60 * time.Second
 )
-
-// overseerLoopNextTickMsg triggers the next pane capture in a loop's polling
-// chain. It is unexported and only handled by the dashboard.
-type overseerLoopNextTickMsg struct {
-	sessionID string // string so tea.Tick closure can capture it cheaply
-}
 
 // executeCommand parses the raw slash-command emitted by the chat panel and
 // routes it to the appropriate handler. The returned (tea.Model, tea.Cmd)
@@ -44,8 +35,6 @@ func (m Model) executeCommand(raw string) (tea.Model, tea.Cmd) {
 		return m.cmdList()
 	case "help":
 		return m.cmdHelp()
-	case "loop":
-		return m.cmdLoop(args)
 	default:
 		return m.commandResult(fmt.Sprintf("unknown command %q — type /help for a list of commands", name), true)
 	}
@@ -156,11 +145,7 @@ func (m Model) cmdList() (tea.Model, tea.Cmd) {
 		if st, ok := m.agentStatuses[sess.ID]; ok {
 			status = st.Kind
 		}
-		loopNote := ""
-		if ls, ok := m.loops[sess.ID]; ok && ls.Status == domain.LoopStatusRunning {
-			loopNote = " ⟳"
-		}
-		fmt.Fprintf(&b, "  • %s  [%s]%s\n", sess.Name, string(status), loopNote)
+		fmt.Fprintf(&b, "  • %s  [%s]\n", sess.Name, string(status))
 	}
 	return m.commandResult(strings.TrimRight(b.String(), "\n"), false)
 }
@@ -174,170 +159,11 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 		"  /delete <session>               — open the delete-session dialog",
 		"  /new                            — open the new-session dialog",
 		"  /list                           — list all sessions",
-		"  /loop <session> <criteria…>     — start an evaluation loop",
-		"  /loop stop <session>            — stop a running loop",
-		"  /loop info <session>            — show loop status",
 		"  /help                           — show this help",
 		"",
 		"Agent mode: type anything without a leading / to chat with the Overseer Agent.",
 	}, "\n")
 	return m.commandResult(help, false)
-}
-
-// loopTaskCompletedMsg carries the result of a single `claude -p` loop task
-// invocation. It is internal to the dashboard package.
-type loopTaskCompletedMsg struct {
-	sessionID uuid.UUID
-	output    string
-	err       error
-}
-
-// --- /loop ---
-
-func (m Model) cmdLoop(args []string) (tea.Model, tea.Cmd) {
-	if len(args) == 0 {
-		return m.commandResult("usage: /loop <session> <criteria…>  |  /loop stop <session>  |  /loop info <session>", true)
-	}
-
-	subCmd := strings.ToLower(args[0])
-	switch subCmd {
-	case "stop":
-		return m.cmdLoopStop(args[1:])
-	case "info":
-		return m.cmdLoopInfo(args[1:])
-	}
-
-	if m.overseerService == nil {
-		return m.commandResult("loop requires the Claude CLI — add claude to PATH", true)
-	}
-
-	// /loop <session> <criteria…>
-	sess, criteria, ok := matchSession(args, m.cachedSessions)
-	if !ok {
-		return m.commandResult(fmt.Sprintf("no session found matching %q", strings.Join(args, " ")), true)
-	}
-	if strings.TrimSpace(criteria) == "" {
-		return m.commandResult("usage: /loop <session> <criteria…>", true)
-	}
-
-	if existing, running := m.loops[sess.ID]; running && existing.Status == domain.LoopStatusRunning {
-		return m.commandResult(fmt.Sprintf("a loop is already running on %q — use /loop stop %s first", sess.Name, sess.Name), true)
-	}
-
-	ls := &domain.LoopState{
-		SessionID:     sess.ID,
-		SessionName:   sess.Name,
-		Criteria:      criteria,
-		Status:        domain.LoopStatusRunning,
-		MaxIterations: loopMaxIterations,
-		StartedAt:     time.Now(),
-	}
-	m.loops[sess.ID] = ls
-
-	note := fmt.Sprintf("Starting loop on %q — running claude -p in the background.\nCriteria: %s", sess.Name, criteria)
-	return m, tea.Batch(
-		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
-		shared.Emit(shared.LoopStartedMsg{SourceSession: sess}),
-		m.broadcastLoopState(),
-		m.startLoopTaskCmd(*ls),
-	)
-}
-
-// startLoopTaskCmd runs `claude -p --dangerously-skip-permissions <criteria>`
-// in the source session's working directory as a non-interactive subprocess.
-// Returns a loopTaskCompletedMsg when the process exits.
-func (m Model) startLoopTaskCmd(ls domain.LoopState) tea.Cmd {
-	svc := m.overseerService
-	workDir := m.sessionWorkDir(ls.SessionID)
-	criteria := ls.Criteria + "\n\nWhen you have finished this task, write the word END on its own line as your final message."
-	return func() tea.Msg {
-		resp, err := svc.RunLoopTask(context.Background(), service.RunLoopTaskRequest{
-			WorkDir:  workDir,
-			Criteria: criteria,
-		})
-		output := ""
-		if err == nil {
-			output = resp.Output
-		}
-		return loopTaskCompletedMsg{sessionID: ls.SessionID, output: output, err: err}
-	}
-}
-
-// sessionWorkDir resolves the working directory for a session: the worktree
-// path for Mode 1 sessions or the project path for Mode 2 sessions.
-func (m Model) sessionWorkDir(sessionID uuid.UUID) string {
-	for _, sess := range m.cachedSessions {
-		if sess.ID != sessionID {
-			continue
-		}
-		if sess.HasWorktree() {
-			return sess.WorktreePath
-		}
-		for _, p := range m.cachedProjects {
-			if p.ID == sess.ProjectID {
-				return p.Path
-			}
-		}
-	}
-	return ""
-}
-
-func (m Model) cmdLoopStop(args []string) (tea.Model, tea.Cmd) {
-	if len(args) == 0 {
-		return m.commandResult("usage: /loop stop <session>", true)
-	}
-	sess, _, ok := matchSession(args, m.cachedSessions)
-	if !ok {
-		return m.commandResult(fmt.Sprintf("no session found matching %q", strings.Join(args, " ")), true)
-	}
-	ls, exists := m.loops[sess.ID]
-	if !exists || ls.Status != domain.LoopStatusRunning {
-		return m.commandResult(fmt.Sprintf("no running loop found for %q", sess.Name), true)
-	}
-	ls.Status = domain.LoopStatusStopped
-	note := fmt.Sprintf("Loop stopped on %q after %d iteration(s).", sess.Name, ls.Iterations)
-	return m, tea.Batch(
-		m.broadcastLoopState(),
-		shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
-		shared.Emit(shared.LoopOutputUpdatedMsg{SessionID: sess.ID, Content: "Loop stopped."}),
-	)
-}
-
-func (m Model) cmdLoopInfo(args []string) (tea.Model, tea.Cmd) {
-	if len(args) == 0 {
-		return m.commandResult("usage: /loop info <session>", true)
-	}
-	sess, _, ok := matchSession(args, m.cachedSessions)
-	if !ok {
-		return m.commandResult(fmt.Sprintf("no session found matching %q", strings.Join(args, " ")), true)
-	}
-	ls, exists := m.loops[sess.ID]
-	if !exists {
-		return m.commandResult(fmt.Sprintf("no loop found for %q", sess.Name), false)
-	}
-	elapsed := time.Since(ls.StartedAt).Round(time.Second)
-	info := fmt.Sprintf("Loop on %q — status: %s, iterations: %d/%d, running for: %s\nCriteria: %s",
-		sess.Name, string(ls.Status), ls.Iterations, ls.MaxIterations, elapsed, ls.Criteria)
-	return m.commandResult(info, false)
-}
-
-// loopNextTickCmd schedules the next pane capture for a loop after the
-// configured interval.
-func loopNextTickCmd(ls domain.LoopState) tea.Cmd {
-	return tea.Tick(loopCheckInterval, func(time.Time) tea.Msg {
-		return overseerLoopNextTickMsg{sessionID: ls.SessionID.String()}
-	})
-}
-
-// broadcastLoopState copies the current loops map into an
-// OverseerLoopStateChangedMsg. Callers must call this whenever m.loops
-// changes so sessiondetails and the session list stay up to date.
-func (m *Model) broadcastLoopState() tea.Cmd {
-	cp := make(map[uuid.UUID]*domain.LoopState, len(m.loops))
-	for k, v := range m.loops {
-		cp[k] = v
-	}
-	return shared.Emit(shared.OverseerLoopStateChangedMsg{Loops: cp})
 }
 
 // matchSession tries to find a session whose name matches the longest prefix

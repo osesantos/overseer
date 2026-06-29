@@ -69,30 +69,14 @@ func (a *Adapter) Chat(ctx context.Context, userMsg string, sessions []domain.Ov
 	return parseResponse(raw)
 }
 
-// RunLoopTask runs `claude -p --dangerously-skip-permissions <criteria>` in
-// workDir as a non-interactive subprocess and returns stdout. workDir is set
-// as the subprocess working directory so the agent operates in the source
-// session's project context.
-func (a *Adapter) RunLoopTask(ctx context.Context, workDir, criteria string) (string, error) {
-	return a.runInDir(ctx, workDir, criteria)
-}
-
 // run executes `claude -p --dangerously-skip-permissions <prompt>` and returns
 // stdout. The skip-permissions flag is required because the subprocess runs
 // detached from the controlling TTY (Setsid: true); without it Claude Code
 // shows an allow/refuse permission dialog that defaults to refuse when no
 // TTY is present, silently producing empty output.
 func (a *Adapter) run(ctx context.Context, prompt string) (string, error) {
-	return a.runInDir(ctx, "", prompt)
-}
-
-// runInDir is the shared subprocess launcher. dir sets cmd.Dir when non-empty.
-func (a *Adapter) runInDir(ctx context.Context, dir, prompt string) (string, error) {
 	cmd := exec.CommandContext(ctx, a.claudeBin, "-p", "--dangerously-skip-permissions", prompt)
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
-	if dir != "" {
-		cmd.Dir = dir
-	}
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

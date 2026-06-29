@@ -46,7 +46,7 @@ func TestInspector_ToggleKey_CyclesForward(t *testing.T) {
 
 func TestInspector_ToggleKey_WrapsAround(t *testing.T) {
 	m := newTestModel(t)
-	// 3 views: Agent → Shell → Loop → Agent (wraps on 3rd press)
+	// 2 views: Agent → Shell → Agent (wraps on 2nd press)
 	for i := 0; i < len(m.views); i++ {
 		updated, _ := m.Update(keyPress("tab"))
 		m = updated.(Model)
@@ -64,12 +64,11 @@ func TestInspector_SessionSelectedMsg_PropagatesToAllViews(t *testing.T) {
 	if m.sessionID != id {
 		t.Errorf("model sessionID = %v, want %v", m.sessionID, id)
 	}
-	// Only stream views (Agent, Shell) receive the session ID via SetSession.
-	// The loop view (index 2) is content-driven and ignores SetSession.
+	// Both views (Agent, Shell) receive the session ID via SetSession.
 	for i, v := range m.views {
 		sv, ok := v.(*streamView)
 		if !ok {
-			continue // loopView at index 2 — not a streamView, skip
+			continue
 		}
 		if sv.sessionID != id {
 			t.Errorf("view[%d] sessionID = %v, want %v", i, sv.sessionID, id)
@@ -163,13 +162,12 @@ func TestInspector_SessionSelectionClearedMsg_ResetsAllViews(t *testing.T) {
 	id := uuid.New()
 	updated, _ := m.Update(shared.SessionSelectedMsg{Session: domain.Session{ID: id}})
 	m = updated.(Model)
-	// Seed stale content only in the stream views (Agent, Shell).
-	for i, v := range m.views {
+	// Seed stale content in the stream views (Agent, Shell).
+	for _, v := range m.views {
 		sv, ok := v.(*streamView)
 		if !ok {
-			continue // loopView at index 2 — skip
+			continue
 		}
-		_ = i
 		sv.content = "stale-content"
 		sv.ready = true
 	}
@@ -186,7 +184,7 @@ func TestInspector_SessionSelectionClearedMsg_ResetsAllViews(t *testing.T) {
 	for i, v := range m.views {
 		sv, ok := v.(*streamView)
 		if !ok {
-			continue // loopView — not reset by session clear
+			continue
 		}
 		if sv.sessionID != uuid.Nil {
 			t.Errorf("view[%d] sessionID = %v, want uuid.Nil", i, sv.sessionID)

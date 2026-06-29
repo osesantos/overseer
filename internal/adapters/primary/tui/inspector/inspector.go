@@ -22,7 +22,7 @@ var (
 )
 
 // Model is the dashboard's right panel. It owns a fixed list of preview views
-// (Agent, Shell, …) rendered as a tab strip on top of the active view's body.
+// (Agent, Shell) rendered as a tab strip on top of the active view's body.
 // Only the active view polls; views become quiescent when inactive because
 // the inspector stops forwarding messages to them.
 type Model struct {
@@ -35,14 +35,11 @@ type Model struct {
 	styles    *styles.Styles
 }
 
-const loopViewIx = 2
-
 func New(s *styles.Styles, sessionService service.SessionService, previewRefreshInterval time.Duration) Model {
 	return Model{
 		views: []View{
 			newAgentView(sessionService, s, previewRefreshInterval),
 			newShellView(sessionService, s, previewRefreshInterval),
-			newLoopView(s),
 		},
 		activeIx: 0,
 		styles:   s,
@@ -55,17 +52,6 @@ func (m Model) Init() tea.Cmd {
 
 func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
-	case shared.LoopStartedMsg:
-		m.activeIx = loopViewIx
-		updated, _ := m.views[loopViewIx].Update(loopViewContentMsg{content: "Loop agent running…"})
-		m.views[loopViewIx] = updated
-		return m, nil
-
-	case shared.LoopOutputUpdatedMsg:
-		updated, _ := m.views[loopViewIx].Update(loopViewContentMsg{content: msg.Content})
-		m.views[loopViewIx] = updated
-		return m, nil
-
 	case shared.SessionSelectedMsg:
 		m.sessionID = msg.Session.ID
 		m.activeIx = 0

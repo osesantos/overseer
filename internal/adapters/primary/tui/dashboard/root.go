@@ -89,8 +89,6 @@ type Model struct {
 	chatPanel        overseerui.Model
 	overseerConfirm  overseerui.ConfirmModel
 	chatPanelVisible bool
-	// loops tracks active and completed evaluation loops keyed by session ID.
-	loops map[uuid.UUID]*domain.LoopState
 
 	width           int
 	height          int
@@ -145,7 +143,6 @@ func New(
 		discoveryPaths:          discoveryPaths,
 		discovering:             len(discoveryPaths) > 0,
 		chatPanel:               overseerui.New(styles),
-		loops:                   make(map[uuid.UUID]*domain.LoopState),
 	}
 	return m
 }
@@ -403,16 +400,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.OverseerCommandMsg:
 		// Operator mode: parse and execute the slash command.
 		return m.executeCommand(msg.Raw)
-	case loopTaskCompletedMsg:
-		return m.handleLoopTaskCompleted(msg)
-	case shared.LoopStartedMsg:
-		var inspectorCmd tea.Cmd
-		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
-		return m, inspectorCmd
-	case shared.LoopOutputUpdatedMsg:
-		var inspectorCmd tea.Cmd
-		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
-		return m, inspectorCmd
 	case shared.OverseerChatResponseMsg:
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
@@ -441,12 +428,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
 		return m, cmd
-	case overseerLoopNextTickMsg:
-		ls, ok := m.loops[uuidMustParse(msg.sessionID)]
-		if !ok || ls.Status != domain.LoopStatusRunning {
-			return m, nil // loop was stopped between tick and now
-		}
-		return m, m.startLoopTaskCmd(*ls)
 	}
 
 	if m.activePopup != popupNone {
@@ -982,67 +963,3 @@ func fit(s *styles.Styles, content string, width, height int) string {
 	return s.Layout.Box.Width(width).Height(height).Render(content)
 }
 
-// handleLoopTaskCompleted processes the result of a single `claude -p` loop
-// task invocation, scanning output for the END sentinel and managing lifecycle.
-func (m Model) handleLoopTaskCompleted(msg loopTaskCompletedMsg) (tea.Model, tea.Cmd) {
-	ls := m.loops[msg.sessionID]
-	if ls == nil || ls.Status != domain.LoopStatusRunning {
-		return m, nil
-	}
-
-	if msg.err != nil {
-		ls.ConsecutiveErrors++
-		const maxConsecutiveErrors = 3
-		if ls.ConsecutiveErrors >= maxConsecutiveErrors {
-			ls.Status = domain.LoopStatusStopped
-			note := fmt.Sprintf(
-				"Loop on %q stopped after %d consecutive errors.\nLast error: %s",
-				ls.SessionName, maxConsecutiveErrors, msg.err)
-			return m, tea.Batch(
-				shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
-				shared.Emit(shared.LoopOutputUpdatedMsg{SessionID: msg.sessionID, Content: "Loop stopped: " + msg.err.Error()}),
-				m.broadcastLoopState(),
-			)
-		}
-		return m, loopNextTickCmd(*ls)
-	}
-
-	ls.ConsecutiveErrors = 0
-	ls.Iterations++
-
-	if domain.ScanForEnd(msg.output) {
-		ls.Status = domain.LoopStatusDone
-		note := fmt.Sprintf("Loop on %q completed after %d iteration(s). Criteria met.", ls.SessionName, ls.Iterations)
-		return m, tea.Batch(
-			shared.Emit(shared.OverseerCommandResultMsg{Text: note}),
-			shared.Emit(shared.LoopOutputUpdatedMsg{SessionID: msg.sessionID, Content: msg.output}),
-			m.broadcastLoopState(),
-		)
-	}
-
-	if ls.Iterations >= ls.MaxIterations {
-		ls.Status = domain.LoopStatusStopped
-		note := fmt.Sprintf("Loop on %q stopped: max iterations (%d) reached without criteria being met.", ls.SessionName, ls.MaxIterations)
-		return m, tea.Batch(
-			shared.Emit(shared.OverseerCommandResultMsg{Text: note, IsError: true}),
-			shared.Emit(shared.LoopOutputUpdatedMsg{SessionID: msg.sessionID, Content: msg.output}),
-			m.broadcastLoopState(),
-		)
-	}
-
-	return m, tea.Batch(
-		shared.Emit(shared.LoopOutputUpdatedMsg{SessionID: msg.sessionID, Content: msg.output}),
-		m.broadcastLoopState(),
-		loopNextTickCmd(*ls),
-	)
-}
-
-// uuidMustParse parses a UUID string; panics on invalid input. Only called
-// with UUIDs we serialised ourselves (loop session IDs).
-func uuidMustParse(s string) uuid.UUID {
-	id, err := uuid.Parse(s)
-	if err != nil {
-		panic("overseer: invalid loop session UUID: " + s)
-	}
-	return id
-}
