@@ -236,6 +236,81 @@ func seedRepoWithRemote(t *testing.T) string {
 	return repo
 }
 
+func TestAdapter_PullBranch_WithRemote_FastForwards(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+
+	// Create a bare upstream, a primary clone (the repo under test), and a
+	// second clone that simulates another developer pushing new work.
+	upstream := t.TempDir()
+	if out, err := exec.Command("git", "init", "--bare", "-q", "-b", "main", upstream).CombinedOutput(); err != nil {
+		t.Fatalf("git init --bare: %v\n%s", err, out)
+	}
+
+	setupClone := func(dir string, remote string) {
+		cmds := [][]string{
+			{"init", "-q", "-b", "main"},
+			{"config", "user.email", "test@overseer.local"},
+			{"config", "user.name", "Overseer Test"},
+			{"commit", "--allow-empty", "-q", "-m", "init"},
+			{"remote", "add", "origin", remote},
+			{"push", "-q", "origin", "main"},
+		}
+		for _, args := range cmds {
+			if out, err := exec.Command("git", append([]string{"-C", dir}, args...)...).CombinedOutput(); err != nil {
+				t.Fatalf("git %v: %v\n%s", args, err, out)
+			}
+		}
+	}
+
+	repo := t.TempDir()
+	setupClone(repo, upstream)
+
+	// Second clone pushes a new commit to origin, simulating remote work.
+	other := t.TempDir()
+	otherCmds := [][]string{
+		{"init", "-q", "-b", "main"},
+		{"config", "user.email", "test@overseer.local"},
+		{"config", "user.name", "Overseer Test"},
+		{"remote", "add", "origin", upstream},
+		{"fetch", "-q", "origin"},
+		{"checkout", "-q", "-b", "main", "--track", "origin/main"},
+		{"commit", "--allow-empty", "-q", "-m", "remote work"},
+		{"push", "-q", "origin", "main"},
+	}
+	for _, args := range otherCmds {
+		if out, err := exec.Command("git", append([]string{"-C", other}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v in other clone: %v\n%s", args, err, out)
+		}
+	}
+
+	localBefore, _ := exec.Command("git", "-C", repo, "rev-parse", "main").Output()
+
+	if err := a.PullBranch(context.Background(), repo, "main"); err != nil {
+		t.Fatalf("PullBranch() error = %v", err)
+	}
+
+	localAfter, _ := exec.Command("git", "-C", repo, "rev-parse", "main").Output()
+	if string(localBefore) == string(localAfter) {
+		t.Fatal("PullBranch() did not advance local main; expected local to move forward after remote commit")
+	}
+}
+
+func TestAdapter_PullBranch_NoRemote_ReturnsError(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	repo := seedRepo(t) // no origin configured
+
+	err = a.PullBranch(context.Background(), repo, "main")
+	if err == nil {
+		t.Fatal("PullBranch() error = nil, want non-nil for repo with no remote")
+	}
+}
+
 func TestAdapter_ListBranches_LocalRepo_ReturnsHEADBranchAsLocal(t *testing.T) {
 	a, err := git.New(discardLogger())
 	if err != nil {

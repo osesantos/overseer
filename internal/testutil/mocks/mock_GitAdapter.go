@@ -370,6 +370,65 @@ func (_c *MockGitAdapter_ListBranches_Call) RunAndReturn(run func(ctx context.Co
 	return _c
 }
 
+// PullBranch provides a mock function for the type MockGitAdapter
+func (_mock *MockGitAdapter) PullBranch(ctx context.Context, repoPath string, branch string) error {
+	ret := _mock.Called(ctx, repoPath, branch)
+
+	if len(ret) == 0 {
+		panic("no return value specified for PullBranch")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, string) error); ok {
+		r0 = returnFunc(ctx, repoPath, branch)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockGitAdapter_PullBranch_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'PullBranch'
+type MockGitAdapter_PullBranch_Call struct {
+	*mock.Call
+}
+
+// PullBranch is a helper method to define mock.On call
+//   - ctx context.Context
+//   - repoPath string
+//   - branch string
+func (_e *MockGitAdapter_Expecter) PullBranch(ctx interface{}, repoPath interface{}, branch interface{}) *MockGitAdapter_PullBranch_Call {
+	return &MockGitAdapter_PullBranch_Call{Call: _e.mock.On("PullBranch", ctx, repoPath, branch)}
+}
+
+func (_c *MockGitAdapter_PullBranch_Call) Run(run func(ctx context.Context, repoPath string, branch string)) *MockGitAdapter_PullBranch_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 string
+		if args[2] != nil {
+			arg2 = args[2].(string)
+		}
+		run(arg0, arg1, arg2)
+	})
+	return _c
+}
+
+func (_c *MockGitAdapter_PullBranch_Call) Return(err error) *MockGitAdapter_PullBranch_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockGitAdapter_PullBranch_Call) RunAndReturn(run func(ctx context.Context, repoPath string, branch string) error) *MockGitAdapter_PullBranch_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // RemoveWorktree provides a mock function for the type MockGitAdapter
 func (_mock *MockGitAdapter) RemoveWorktree(ctx context.Context, repoPath string, worktreePath string) error {
 	ret := _mock.Called(ctx, repoPath, worktreePath)

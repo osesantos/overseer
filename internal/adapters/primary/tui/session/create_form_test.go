@@ -128,6 +128,7 @@ func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
 	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
 	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, overseer.Path, "feat/foo").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "feat/foo", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()

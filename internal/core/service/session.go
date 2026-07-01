@@ -141,6 +141,10 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 	sess.Order = nextOrder
 
 	if sess.HasWorktree() {
+		if err := s.git.PullBranch(ctx, project.Path, resolvedBaseBranch); err != nil {
+			s.logger.Warn("could not pull base branch before forking; worktree may be outdated",
+				"base_branch", resolvedBaseBranch, "err", err)
+		}
 		if err := s.git.CreateWorktree(ctx, project.Path, resolvedBaseBranch, sess.Branch, sess.WorktreePath); err != nil {
 			return CreateSessionResponse{}, fmt.Errorf("create git worktree: %w", err)
 		}

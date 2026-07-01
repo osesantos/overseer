@@ -47,6 +47,30 @@ func (a *Adapter) CreateWorktree(_ context.Context, repoPath, baseBranch, featur
 	return nil
 }
 
+// PullBranch fast-forwards branch from origin so that a worktree forked from
+// it starts at the latest remote tip. When branch is currently checked out in
+// repoPath we use `git pull --ff-only origin <branch>`, which is the only
+// way git allows updating a checked-out branch. When branch is NOT checked
+// out we use `git fetch origin <branch>:<branch>` to update the ref directly
+// without touching the work tree.
+func (a *Adapter) PullBranch(_ context.Context, repoPath, branch string) error {
+	head, err := a.runIn(repoPath, "rev-parse", "--abbrev-ref", "HEAD")
+	if err != nil {
+		return fmt.Errorf("git: pull branch %q (resolve HEAD): %w", branch, err)
+	}
+	var pullErr error
+	if strings.TrimSpace(head) == branch {
+		_, pullErr = a.runIn(repoPath, "pull", "--ff-only", "origin", branch)
+	} else {
+		_, pullErr = a.runIn(repoPath, "fetch", "origin", branch+":"+branch)
+	}
+	if pullErr != nil {
+		return fmt.Errorf("git: pull branch %q: %w", branch, pullErr)
+	}
+	a.logger.Debug("git branch pulled from origin", "repo", repoPath, "branch", branch)
+	return nil
+}
+
 func (a *Adapter) RemoveWorktree(_ context.Context, repoPath, worktreePath string) error {
 	if _, err := a.runIn(repoPath, "worktree", "remove", "--force", worktreePath); err != nil {
 		return fmt.Errorf("git: remove worktree %q: %w", worktreePath, err)

@@ -80,6 +80,7 @@ func TestSessionService_Create_WorktreeMode_HappyPath(t *testing.T) {
 
 	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
@@ -177,6 +178,7 @@ func TestSessionService_Create_WorktreeMode_EmptyBaseBranch_ResolvesProjectDefau
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("trunk", nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "trunk").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "trunk", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
@@ -222,6 +224,7 @@ func TestSessionService_Create_WorktreeMode_UsesUserProvidedBranch(t *testing.T)
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", "my-feature", mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
@@ -257,6 +260,7 @@ func TestSessionService_Create_WorktreeMode_BlankBranchGeneratesDefault(t *testi
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
@@ -303,6 +307,7 @@ func TestSessionService_Create_DuplicateNameAcrossProjectsAllowed(t *testing.T) 
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{existing}, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
@@ -330,6 +335,7 @@ func TestSessionService_Create_OrderIncrement(t *testing.T) {
 	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
 	repo.EXPECT().List(mock.Anything).
 		Return([]domain.Session{first, second, otherProject}, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-gamma", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-gamma-agent", nil).Once()
@@ -360,6 +366,7 @@ func TestSessionService_Create_AgentTmuxErrorKillsShellAndPropagates(t *testing.
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-alpha", nil).Once()
@@ -381,6 +388,7 @@ func TestSessionService_Create_TmuxError(t *testing.T) {
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("", tmuxErr).Once()
 
@@ -398,6 +406,7 @@ func TestSessionService_Create_GitError(t *testing.T) {
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(gitErr).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
@@ -405,6 +414,26 @@ func TestSessionService_Create_GitError(t *testing.T) {
 
 	if !errors.Is(err, gitErr) {
 		t.Fatalf("Create() error = %v, want wrapped %v", err, gitErr)
+	}
+}
+
+func TestSessionService_Create_WorktreeMode_PullFails_ContinuesWithWorktreeCreation(t *testing.T) {
+	projID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(errors.New("no remote configured")).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	_, err := svc.Create(context.Background(), worktreeCreateReq("alpha", projID, "main"))
+
+	if err != nil {
+		t.Fatalf("Create() error = %v, want nil (pull failure is best-effort)", err)
 	}
 }
 
@@ -427,6 +456,7 @@ func TestSessionService_Create_WithAgentCommand(t *testing.T) {
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-alpha", nil).Once()
@@ -481,6 +511,7 @@ func TestSessionService_Create_WithEditorCommand(t *testing.T) {
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-alpha", nil).Once()
@@ -519,6 +550,7 @@ func TestCreateSession_CapturesAgentTypeFromLauncher(t *testing.T) {
 	repo, projects, tmux, git := newSessionMocks(t)
 	repoPath := expectProjectLookup(t, projects, projID, "overseer")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-alpha", nil).Once()

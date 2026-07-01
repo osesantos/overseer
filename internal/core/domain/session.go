@@ -251,6 +251,11 @@ type GitAdapter interface {
 	// repoPath. Used by Mode 2 sessions to surface the project's live
 	// branch without persisting it.
 	CurrentBranch(ctx context.Context, repoPath string) (string, error)
+	// PullBranch fast-forwards branch from origin so that a worktree forked
+	// from it starts at the latest remote tip. Returns an error when the
+	// fetch fails (e.g. no remote, network error, non-fast-forward); callers
+	// decide whether to treat the error as fatal or best-effort.
+	PullBranch(ctx context.Context, repoPath, branch string) error
 }
 
 // Session sentinel errors.
