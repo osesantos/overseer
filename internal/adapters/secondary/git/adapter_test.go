@@ -108,6 +108,20 @@ func TestAdapter_RemoveWorktreeRemovesIt(t *testing.T) {
 	}
 }
 
+func TestAdapter_RemoveWorktree_AlreadyGone_ReturnsSentinel(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	repo := seedRepo(t)
+	worktree := filepath.Join(t.TempDir(), "wt-never-registered")
+
+	err = a.RemoveWorktree(context.Background(), repo, worktree)
+	if !errors.Is(err, domain.ErrGitWorktreeNotFound) {
+		t.Fatalf("RemoveWorktree() error = %v, want wrapped %v", err, domain.ErrGitWorktreeNotFound)
+	}
+}
+
 func TestAdapter_IsGitRepoReturnsNilForRealRepo(t *testing.T) {
 	a, err := git.New(discardLogger())
 	if err != nil {

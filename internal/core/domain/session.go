@@ -235,6 +235,8 @@ type GitAdapter interface {
 	CreateWorktree(ctx context.Context, repoPath, baseBranch, featureBranch, worktreePath string) error
 	// RemoveWorktree removes the worktree at worktreePath from the repository
 	// rooted at repoPath. Implementations may force-remove uncommitted changes.
+	// Returns ErrGitWorktreeNotFound if worktreePath is not a registered
+	// worktree (e.g. already removed by a previous, interrupted delete).
 	RemoveWorktree(ctx context.Context, repoPath, worktreePath string) error
 	// IsGitRepo reports whether path is the root of a git working tree.
 	IsGitRepo(ctx context.Context, path string) error
@@ -257,6 +259,11 @@ type GitAdapter interface {
 	// decide whether to treat the error as fatal or best-effort.
 	PullBranch(ctx context.Context, repoPath, branch string) error
 }
+
+// ErrGitWorktreeNotFound is returned by RemoveWorktree when worktreePath is
+// not a registered git worktree — e.g. it was already removed by a previous,
+// interrupted delete.
+var ErrGitWorktreeNotFound = errors.New("git worktree not found")
 
 // Session sentinel errors.
 var (

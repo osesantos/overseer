@@ -760,9 +760,10 @@ type DeleteSessionResponse struct{}
 //  1. If the session has a worktree (Mode 1), the path is verified to live
 //     inside paths.WorktreeRoot() (defence in depth against a tampered DB
 //     row) and the git worktree is removed. Mode 2 sessions skip git
-//     entirely. If the owning project no longer exists in the repository,
-//     git removal is skipped with a warning — the rest of the teardown
-//     still proceeds.
+//     entirely. If the owning project no longer exists in the repository, or
+//     the worktree was already removed by a prior interrupted delete, git
+//     removal is skipped with a warning — the rest of the teardown still
+//     proceeds.
 //  2. The associated tmux session is killed, if it still exists. A missing
 //     tmux session is not an error: the user may have killed it manually or
 //     the tmux server may have restarted.
@@ -818,6 +819,13 @@ func (s *SessionService) removeWorktreeForSession(ctx context.Context, sess doma
 		return fmt.Errorf("lookup project: %w", err)
 	}
 	if err := s.git.RemoveWorktree(ctx, project.Path, sess.WorktreePath); err != nil {
+		if errors.Is(err, domain.ErrGitWorktreeNotFound) {
+			s.logger.WarnContext(ctx, "git worktree already gone, nothing to remove",
+				slog.String("session_id", sess.ID.String()),
+				slog.String("worktree_path", sess.WorktreePath),
+			)
+			return nil
+		}
 		return fmt.Errorf("remove git worktree: %w", err)
 	}
 	return nil

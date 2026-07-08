@@ -1275,6 +1275,34 @@ func TestSessionService_Delete_TmuxSessionAlreadyGone_StillDeletes(t *testing.T)
 	}
 }
 
+func TestSessionService_Delete_GitWorktreeAlreadyGone_StillDeletes(t *testing.T) {
+	pinWorktreeRoot(t)
+	overseerID := uuid.New()
+	sess := testutil.MakeSessionWithWorktree(
+		"alpha",
+		overseerID,
+		paths.NewResolver("").SessionWorktreePath(uuid.New()),
+		"overseer/alpha",
+	)
+	repo, projects, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	project := testutil.MakeProject("/repo/overseer", "overseer")
+	project.ID = overseerID
+	projects.EXPECT().Get(mock.Anything, overseerID).Return(project, nil).Once()
+	git.EXPECT().RemoveWorktree(mock.Anything, "/repo/overseer", sess.WorktreePath).
+		Return(domain.ErrGitWorktreeNotFound).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	_, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("Delete() error = %v, want nil when git worktree is already gone", err)
+	}
+}
+
 func TestSessionService_OpenEditor_WorktreeSession_LaunchesAtWorktree(t *testing.T) {
 	worktreePath := t.TempDir()
 	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")

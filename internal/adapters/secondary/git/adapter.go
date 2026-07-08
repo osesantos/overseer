@@ -185,6 +185,10 @@ func appendParsedBranches(dst []domain.BranchInfo, stdout string, scope domain.B
 
 var errGitNotARepo = errors.New("git: not a repository")
 
+// run executes git and translates known stderr patterns into sentinel
+// errors. "is not a working tree" is `git worktree remove`'s message when
+// worktreePath was already removed (e.g. by a prior, interrupted delete) —
+// callers treat that the same as "nothing to remove", not a hard failure.
 func (a *Adapter) runIn(repoPath string, args ...string) (string, error) {
 	full := append([]string{"-C", repoPath}, args...)
 	cmd := exec.Command(a.gitBin, full...)
@@ -196,10 +200,14 @@ func (a *Adapter) runIn(repoPath string, args ...string) (string, error) {
 	var exitErr *exec.ExitError
 	if errors.As(err, &exitErr) {
 		stderr := strings.TrimSpace(string(exitErr.Stderr))
-		if strings.Contains(stderr, "not a git repository") || strings.Contains(stderr, "cannot change to") {
+		switch {
+		case strings.Contains(stderr, "not a git repository"), strings.Contains(stderr, "cannot change to"):
 			return "", errGitNotARepo
+		case strings.Contains(stderr, "is not a working tree"):
+			return "", domain.ErrGitWorktreeNotFound
+		default:
+			return "", fmt.Errorf("%w: %s", err, stderr)
 		}
-		return "", fmt.Errorf("%w: %s", err, stderr)
 	}
 	return "", err
 }
