@@ -93,7 +93,7 @@ func (a *Adapter) GetSession(_ context.Context, tmuxID string) (domain.TmuxSessi
 func (a *Adapter) ListSessions(_ context.Context) ([]domain.TmuxSession, error) {
 	stdout, err := a.run("list-sessions", "-F", sessionFormat)
 	if err != nil {
-		if errors.Is(err, errTmuxNoServer) {
+		if errors.Is(err, domain.ErrTmuxSessionNotFound) {
 			return []domain.TmuxSession{}, nil
 		}
 		return nil, fmt.Errorf("tmux: list sessions: %w", err)
@@ -233,12 +233,15 @@ func (a *Adapter) SendText(_ context.Context, tmuxID string, text string) error 
 	return nil
 }
 
-// errTmuxNoServer is returned by run when tmux reports that no server is running.
-var errTmuxNoServer = errors.New("tmux: no server running")
-
 // run executes the tmux binary with the given arguments, returning stdout.
-// "can't find session" stderr is mapped to domain.ErrTmuxSessionNotFound; "no server
-// running" is mapped to errTmuxNoServer so callers can distinguish empty state from failure.
+// "can't find session"/"can't find pane"/"can't find window" (session gone),
+// "no server running" (stale socket left behind by a crashed/killed server —
+// ECONNREFUSED), and "error connecting to" (socket path missing entirely —
+// ENOENT, e.g. after a reboot clears the socket directory) are all mapped to
+// domain.ErrTmuxSessionNotFound: whatever the reason we can't reach the named
+// session, no caller needs to distinguish "the server is gone" from "this one
+// session was killed" — both should be treated as "nothing to act on" rather
+// than a hard failure.
 //
 // Setsid detaches every non-interactive subprocess from the controlling terminal so
 // that tmux cannot write "[detached (from session ...)]" notifications to the user's
@@ -257,10 +260,10 @@ func (a *Adapter) run(args ...string) (string, error) {
 		switch {
 		case strings.Contains(stderr, "can't find session"),
 			strings.Contains(stderr, "can't find pane"),
-			strings.Contains(stderr, "can't find window"):
+			strings.Contains(stderr, "can't find window"),
+			strings.Contains(stderr, "no server running"),
+			strings.Contains(stderr, "error connecting to"):
 			return "", domain.ErrTmuxSessionNotFound
-		case strings.Contains(stderr, "no server running"):
-			return "", errTmuxNoServer
 		default:
 			return "", fmt.Errorf("%w: %s", err, stderr)
 		}

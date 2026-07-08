@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -286,5 +288,58 @@ func TestIntegration_Adapter_ResizeWindow_UnknownReturnsNotFound(t *testing.T) {
 	err := a.ResizeWindow(context.Background(), uniqueSessionName(t), 80, 24)
 	if !errors.Is(err, domain.ErrTmuxSessionNotFound) {
 		t.Errorf("ResizeWindow() unknown error = %v, want %v", err, domain.ErrTmuxSessionNotFound)
+	}
+}
+
+// TestIntegration_Adapter_SocketMissing_ReturnsSessionNotFound reproduces the
+// state left behind when a Mac reboots and the per-boot socket directory
+// (e.g. under a fresh $TMPDIR/tmux-<uid>/) never gets recreated: tmux reports
+// "error connecting to ... (No such file or directory)" rather than "can't
+// find session". Without this mapping, deleting a session whose tmux server
+// never came back after a reboot fails instead of cleaning up the zombie row.
+func TestIntegration_Adapter_SocketMissing_ReturnsSessionNotFound(t *testing.T) {
+	a := newAdapter(t)
+	t.Setenv("TMUX_TMPDIR", t.TempDir())
+
+	_, err := a.GetSession(context.Background(), uniqueSessionName(t))
+	if !errors.Is(err, domain.ErrTmuxSessionNotFound) {
+		t.Errorf("GetSession() with missing socket dir error = %v, want %v", err, domain.ErrTmuxSessionNotFound)
+	}
+}
+
+// TestIntegration_Adapter_StaleSocket_ReturnsSessionNotFound reproduces the
+// state left behind when the tmux server process dies (e.g. killed by a
+// reboot) but its socket file survives on disk: tmux reports "no server
+// running on ..." rather than "can't find session". Without this mapping,
+// deleting a session against a stale socket fails instead of cleaning up the
+// zombie row.
+func TestIntegration_Adapter_StaleSocket_ReturnsSessionNotFound(t *testing.T) {
+	a := newAdapter(t)
+	// AF_UNIX socket paths are capped at ~104 bytes on Darwin, so this uses a
+	// short os.MkdirTemp path directly rather than t.TempDir(), whose path
+	// embeds the (long) test name and would overflow the limit.
+	tmuxTmpDir, err := os.MkdirTemp("", "ov-tmux")
+	if err != nil {
+		t.Fatalf("MkdirTemp() error = %v", err)
+	}
+	t.Cleanup(func() { _ = os.RemoveAll(tmuxTmpDir) })
+	t.Setenv("TMUX_TMPDIR", tmuxTmpDir)
+
+	socketDir := filepath.Join(tmuxTmpDir, fmt.Sprintf("tmux-%d", os.Getuid()))
+	if err := os.Mkdir(socketDir, 0o700); err != nil {
+		t.Fatalf("Mkdir(socketDir) error = %v", err)
+	}
+	listener, err := net.ListenUnix("unix", &net.UnixAddr{Name: filepath.Join(socketDir, "default"), Net: "unix"})
+	if err != nil {
+		t.Fatalf("ListenUnix() error = %v", err)
+	}
+	listener.SetUnlinkOnClose(false)
+	if err := listener.Close(); err != nil {
+		t.Fatalf("listener.Close() error = %v", err)
+	}
+
+	_, err = a.GetSession(context.Background(), uniqueSessionName(t))
+	if !errors.Is(err, domain.ErrTmuxSessionNotFound) {
+		t.Errorf("GetSession() with stale socket error = %v, want %v", err, domain.ErrTmuxSessionNotFound)
 	}
 }
