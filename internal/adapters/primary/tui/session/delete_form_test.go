@@ -62,6 +62,7 @@ func TestDeleteForm_EnterAlsoConfirms(t *testing.T) {
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(makeTmuxSession(sess.ID.String()), nil).Once()
 	tmux.EXPECT().KillSession(mock.Anything, sess.ID.String()).Return(nil).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	form := NewDeleteForm(styles.New(), svc, sess)
@@ -94,6 +95,7 @@ func TestDeleteForm_YConfirmCallsServiceAndEmitsDeletedMsg(t *testing.T) {
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(makeTmuxSession(sess.ID.String()), nil).Once()
 	tmux.EXPECT().KillSession(mock.Anything, sess.ID.String()).Return(nil).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	form := NewDeleteForm(styles.New(), svc, sess)

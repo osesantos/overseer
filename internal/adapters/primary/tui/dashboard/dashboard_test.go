@@ -28,9 +28,8 @@ func newTestDashboard(t *testing.T) Model {
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	defaultEditor, _ := domain.NewEditor("VSCode", "code")
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, defaultEditor, slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 
 	return New(
@@ -40,7 +39,6 @@ func newTestDashboard(t *testing.T) Model {
 		nil, // overseerService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
-		[]domain.Editor{defaultEditor},
 		domain.DefaultLabels,
 		60, 15,
 		500*time.Millisecond,
@@ -180,9 +178,8 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	defaultEditor, _ := domain.NewEditor("VSCode", "code")
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, defaultEditor, slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 
 	return New(
@@ -192,7 +189,6 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		nil, // overseerService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
-		[]domain.Editor{defaultEditor},
 		domain.DefaultLabels,
 		60, 15,
 		500*time.Millisecond,

@@ -43,7 +43,6 @@ func TestCreateForm_TabCyclesThroughWorktreeFields(t *testing.T) {
 		fieldBaseBranchPicker,
 		fieldNewBranch,
 		fieldLauncher,
-		fieldEditor,
 		fieldName,
 	}
 	for i, want := range wantSequence {
@@ -64,7 +63,6 @@ func TestCreateForm_TabSkipsWorktreeFieldsWhenToggleOff(t *testing.T) {
 		fieldRepository,
 		fieldCreateWorktreeToggle,
 		fieldLauncher,
-		fieldEditor,
 		fieldName,
 	}
 	for i, want := range wantSequence {
@@ -100,7 +98,7 @@ func TestCreateForm_SubmitProjectMode_SendsCreateWorktreeFalseAndNoBranch(t *tes
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, nil, nil, testLaunchers(t), testEditors(t), 100)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, nil, nil, testLaunchers(t), 100)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	form = updated.(CreateFormModel)
@@ -142,7 +140,7 @@ func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
 			{Name: "main", Scope: domain.BranchScopeLocal},
 		},
 	}
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, branches, nil, testLaunchers(t), testEditors(t), 100)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, branches, nil, testLaunchers(t), 100)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
@@ -200,7 +198,7 @@ func TestCreateForm_ViewContainsToggleAndCoreLabels(t *testing.T) {
 	form := newCreateFormForTest(t, nil)
 
 	view := form.View().Content
-	for _, want := range []string{"Name", "Repository", "Create worktree?", "Launcher", "Editor"} {
+	for _, want := range []string{"Name", "Repository", "Create worktree?", "Launcher"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() missing %q label: %q", want, view)
 		}
@@ -238,7 +236,7 @@ func newCreateFormForTest(t *testing.T, projects []domain.Project) CreateFormMod
 	t.Helper()
 	svc, _, _, _, _ := newCreateFormSessionServiceWithMocks(t)
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	return NewCreateForm(styles.New(), svc, projectsSvc, projects, uuid.Nil, nil, nil, testLaunchers(t), testEditors(t), 100)
+	return NewCreateForm(styles.New(), svc, projectsSvc, projects, uuid.Nil, nil, nil, testLaunchers(t), 100)
 }
 
 func newCreateFormSessionService(t *testing.T) service.SessionService {
@@ -254,8 +252,17 @@ func newCreateFormSessionServiceWithMocks(t *testing.T) (service.SessionService,
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	defaultEditor, _ := domain.NewEditor("VSCode", "code")
-	return *service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, defaultEditor, slog.Default()), repo, projects, tmux, git
+	return *service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo, projects, tmux, git
+}
+
+// expectAgentAndEditorTmuxGone stubs the session-service Delete teardown's
+// inspection of the -agent and -editor tmux sessions when they no longer
+// exist, keeping shell-only teardown expectations focused on the shell.
+func expectAgentAndEditorTmuxGone(tmux *mocks.MockTmuxAdapter, baseID string) {
+	tmux.EXPECT().GetSession(mock.Anything, baseID+"-agent").
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	tmux.EXPECT().GetSession(mock.Anything, baseID+"-editor").
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
 }
 
 func newProjectsServiceWithMocks(t *testing.T) (service.ProjectService, *mocks.MockProjectRepository) {
@@ -276,19 +283,6 @@ func testLaunchers(t *testing.T) []domain.Launcher {
 		t.Fatalf("NewLauncher Claude Code: %v", err)
 	}
 	return []domain.Launcher{opencode, claude}
-}
-
-func testEditors(t *testing.T) []domain.Editor {
-	t.Helper()
-	vscode, err := domain.NewEditor("VSCode", "code")
-	if err != nil {
-		t.Fatalf("NewEditor VSCode: %v", err)
-	}
-	cursor, err := domain.NewEditor("Cursor", "cursor")
-	if err != nil {
-		t.Fatalf("NewEditor Cursor: %v", err)
-	}
-	return []domain.Editor{vscode, cursor}
 }
 
 func formKeyPress(value string) tea.KeyPressMsg {

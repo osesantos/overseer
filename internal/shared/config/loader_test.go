@@ -120,14 +120,11 @@ func TestLoad_DefaultsApplyWhenAgentStatusSectionMissing(t *testing.T) {
 	}
 }
 
-func TestDefault_ShipsVSCodeEditor(t *testing.T) {
+func TestDefault_ShipsNvimEditorCommand(t *testing.T) {
 	cfg := config.Default()
 
-	if len(cfg.Editors) != 1 {
-		t.Fatalf("Editors: want 1 entry, got %d", len(cfg.Editors))
-	}
-	if cfg.Editors[0].DisplayName != "VSCode (default)" || cfg.Editors[0].Command != "code" {
-		t.Errorf("Editors[0]: want {VSCode (default), code}, got %+v", cfg.Editors[0])
+	if cfg.EditorCommand != "nvim" {
+		t.Errorf("EditorCommand: want nvim, got %q", cfg.EditorCommand)
 	}
 }
 
@@ -153,8 +150,8 @@ func TestLoad_MissingFile_ReturnsDefaults(t *testing.T) {
 	if len(cfg.Launchers) != len(def.Launchers) {
 		t.Errorf("Launchers length: want %d, got %d", len(def.Launchers), len(cfg.Launchers))
 	}
-	if len(cfg.Editors) != len(def.Editors) {
-		t.Errorf("Editors length: want %d, got %d", len(def.Editors), len(cfg.Editors))
+	if cfg.EditorCommand != def.EditorCommand {
+		t.Errorf("EditorCommand: want %q, got %q", def.EditorCommand, cfg.EditorCommand)
 	}
 }
 
@@ -298,11 +295,7 @@ launchers:
   - displayName: Plain Bash
     command: bash
     agentType: opencode
-editors:
-  - displayName: Cursor
-    command: cursor
-  - displayName: Neovim
-    command: nvim
+editorCommand: cursor --wait
 `
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
@@ -343,17 +336,8 @@ editors:
 	if cfg.Launchers[3].DisplayName != "Plain Bash" || cfg.Launchers[3].Command != "bash" {
 		t.Errorf("Launchers[3]: want {Plain Bash, bash}, got %+v", cfg.Launchers[3])
 	}
-	if len(cfg.Editors) != 3 {
-		t.Fatalf("Editors: want 3 entries, got %d", len(cfg.Editors))
-	}
-	if cfg.Editors[0].DisplayName != "VSCode (default)" || cfg.Editors[0].Command != "code" {
-		t.Errorf("Editors[0]: want {VSCode (default), code}, got %+v", cfg.Editors[0])
-	}
-	if cfg.Editors[1].DisplayName != "Cursor" || cfg.Editors[1].Command != "cursor" {
-		t.Errorf("Editors[1]: want {Cursor, cursor}, got %+v", cfg.Editors[1])
-	}
-	if cfg.Editors[2].DisplayName != "Neovim" || cfg.Editors[2].Command != "nvim" {
-		t.Errorf("Editors[2]: want {Neovim, nvim}, got %+v", cfg.Editors[2])
+	if cfg.EditorCommand != "cursor --wait" {
+		t.Errorf("EditorCommand: want %q, got %q", "cursor --wait", cfg.EditorCommand)
 	}
 }
 
@@ -432,25 +416,25 @@ func TestLoad_LauncherMissingCommand_RejectedWithInvalidInput(t *testing.T) {
 	}
 }
 
-func TestLoad_ExplicitEmptyEditors_KeepsDefaults(t *testing.T) {
+func TestLoad_EditorCommandKey_OverridesDefault(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 
-	content := "editors: []\n"
+	content := "editorCommand: hx\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
 	cfg, err := config.Load(path)
 	if err != nil {
-		t.Fatalf("explicit empty editors should load cleanly, got: %v", err)
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cfg.Editors) != 1 {
-		t.Errorf("Editors: want 1 default, got %d", len(cfg.Editors))
+	if cfg.EditorCommand != "hx" {
+		t.Errorf("EditorCommand: want hx, got %q", cfg.EditorCommand)
 	}
 }
 
-func TestLoad_EditorFieldOmitted_KeepsDefaults(t *testing.T) {
+func TestLoad_EditorCommandOmitted_FallsBackToNvim(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 
@@ -463,29 +447,26 @@ func TestLoad_EditorFieldOmitted_KeepsDefaults(t *testing.T) {
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if len(cfg.Editors) != 1 {
-		t.Errorf("Editors: omitting field should preserve 1 default, got %d", len(cfg.Editors))
+	if cfg.EditorCommand != "nvim" {
+		t.Errorf("EditorCommand: omitting field should fall back to nvim, got %q", cfg.EditorCommand)
 	}
 }
 
-func TestLoad_EditorMissingCommand_RejectedWithInvalidInput(t *testing.T) {
+func TestLoad_EditorCommandBlank_FallsBackToNvim(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")
 
-	content := `editors:
-  - displayName: NoCommand
-    command: ""
-`
+	content := "editorCommand: \"   \"\n"
 	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
-	_, err := config.Load(path)
-	if err == nil {
-		t.Fatal("expected error for empty editor command, got nil")
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
 	}
-	if !errs.Is(err, errs.ErrInvalidInput) {
-		t.Errorf("expected ErrInvalidInput in error chain, got: %v", err)
+	if cfg.EditorCommand != "nvim" {
+		t.Errorf("EditorCommand: blank should fall back to nvim, got %q", cfg.EditorCommand)
 	}
 }
 
@@ -539,46 +520,6 @@ func TestDomainLaunchers_InvalidEntry_ReturnsInvalidInput(t *testing.T) {
 	}
 
 	_, err := cfg.DomainLaunchers()
-	if err == nil {
-		t.Fatal("expected error for empty display name, got nil")
-	}
-	if !errs.Is(err, errs.ErrInvalidInput) {
-		t.Errorf("expected ErrInvalidInput in error chain, got: %v", err)
-	}
-}
-
-func TestDomainEditors_ConvertsValidEntries(t *testing.T) {
-	cfg := config.Config{
-		Editors: []config.EditorConfig{
-			{DisplayName: "VSCode", Command: "code"},
-			{DisplayName: "Cursor", Command: "cursor --wait"},
-		},
-	}
-
-	got, err := cfg.DomainEditors()
-	if err != nil {
-		t.Fatalf("DomainEditors() error = %v", err)
-	}
-	if len(got) != 2 {
-		t.Fatalf("DomainEditors() length = %d, want 2", len(got))
-	}
-	if got[0].DisplayName != "VSCode" || got[0].Command != "code" {
-		t.Errorf("DomainEditors()[0] = %+v, want {VSCode, code}", got[0])
-	}
-	if got[1].DisplayName != "Cursor" || got[1].Command != "cursor --wait" {
-		t.Errorf("DomainEditors()[1] = %+v, want {Cursor, cursor --wait}", got[1])
-	}
-}
-
-func TestDomainEditors_InvalidEntry_ReturnsInvalidInput(t *testing.T) {
-	cfg := config.Config{
-		Editors: []config.EditorConfig{
-			{DisplayName: "OK", Command: "ok"},
-			{DisplayName: "", Command: "x"},
-		},
-	}
-
-	_, err := cfg.DomainEditors()
 	if err == nil {
 		t.Fatal("expected error for empty display name, got nil")
 	}

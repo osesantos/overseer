@@ -18,24 +18,22 @@ import (
 )
 
 type CreateFormModel struct {
-	nameInput                textinput.Model
-	repoPicker               repoPicker
-	createWorktree           bool
-	baseBranchPicker         branchPicker
-	newBranchInput           textinput.Model
-	branchesByProject        map[uuid.UUID][]domain.BranchInfo
-	defaultBranchByProject   map[uuid.UUID]string
-	launchers                []domain.Launcher
-	launcherIdx              int
-	editors                  []domain.Editor
-	editorIdx                int
-	focusOrder               []formField
-	focusIdx                 int
-	errMsg                   string
-	sessionsService          service.SessionService
-	projectsService          service.ProjectService
-	styles                   *styles.Styles
-	contentWidth             int
+	nameInput              textinput.Model
+	repoPicker             repoPicker
+	createWorktree         bool
+	baseBranchPicker       branchPicker
+	newBranchInput         textinput.Model
+	branchesByProject      map[uuid.UUID][]domain.BranchInfo
+	defaultBranchByProject map[uuid.UUID]string
+	launchers              []domain.Launcher
+	launcherIdx            int
+	focusOrder             []formField
+	focusIdx               int
+	errMsg                 string
+	sessionsService        service.SessionService
+	projectsService        service.ProjectService
+	styles                 *styles.Styles
+	contentWidth           int
 }
 
 type formField int
@@ -47,7 +45,6 @@ const (
 	fieldBaseBranchPicker
 	fieldNewBranch
 	fieldLauncher
-	fieldEditor
 )
 
 func NewCreateForm(
@@ -59,7 +56,6 @@ func NewCreateForm(
 	branchesByProject map[uuid.UUID][]domain.BranchInfo,
 	defaultBranchByProject map[uuid.UUID]string,
 	launchers []domain.Launcher,
-	editors []domain.Editor,
 	terminalWidth int,
 ) CreateFormModel {
 	contentWidth := formContentWidth(terminalWidth)
@@ -97,7 +93,6 @@ func NewCreateForm(
 		branchesByProject:      branchesByProject,
 		defaultBranchByProject: defaultBranchByProject,
 		launchers:              launchers,
-		editors:                editors,
 		sessionsService:        sessionsService,
 		projectsService:        projectsService,
 		styles:                 s,
@@ -174,15 +169,6 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.cycleLauncher(-1)
 				return m, nil
 			}
-		case fieldEditor:
-			if key.Matches(msg, popupSelectorNextKeyBinding) {
-				m.cycleEditor(1)
-				return m, nil
-			}
-			if key.Matches(msg, popupSelectorPrevKeyBinding) {
-				m.cycleEditor(-1)
-				return m, nil
-			}
 		}
 
 	case shared.SessionCreateErrMsg:
@@ -240,7 +226,7 @@ func (m *CreateFormModel) rebuildFocusOrder() {
 	if m.createWorktree {
 		order = append(order, fieldBaseBranchPicker, fieldNewBranch)
 	}
-	order = append(order, fieldLauncher, fieldEditor)
+	order = append(order, fieldLauncher)
 	m.focusOrder = order
 	if m.focusIdx >= len(order) {
 		m.focusIdx = 0
@@ -315,14 +301,6 @@ func (m *CreateFormModel) cycleLauncher(direction int) {
 	m.launcherIdx = ((m.launcherIdx+direction)%choices + choices) % choices
 }
 
-func (m *CreateFormModel) cycleEditor(direction int) {
-	choices := len(m.editors)
-	if choices == 0 {
-		return
-	}
-	m.editorIdx = ((m.editorIdx+direction)%choices + choices) % choices
-}
-
 func (m CreateFormModel) resolvedAgentCommand() string {
 	if len(m.launchers) == 0 {
 		return ""
@@ -335,13 +313,6 @@ func (m CreateFormModel) resolvedAgentType() domain.AgentType {
 		return ""
 	}
 	return m.launchers[m.launcherIdx].AgentType
-}
-
-func (m CreateFormModel) resolvedEditorCommand() string {
-	if len(m.editors) == 0 {
-		return ""
-	}
-	return m.editors[m.editorIdx].Command
 }
 
 func (m CreateFormModel) confirmPastedPath() (tea.Model, tea.Cmd) {
@@ -383,7 +354,6 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		ProjectID:      selection.Project.ID,
 		CreateWorktree: m.createWorktree,
 		AgentCommand:   m.resolvedAgentCommand(),
-		EditorCommand:  m.resolvedEditorCommand(),
 		AgentType:      m.resolvedAgentType(),
 	}
 	if m.createWorktree {
@@ -429,9 +399,6 @@ func (m CreateFormModel) View() tea.View {
 		"",
 		renderField(m.styles, m.labelStyle(fieldLauncher), "Launcher", m.launcherSelectorView()),
 		renderFieldHint(m.styles, "←/→ cycle launchers"),
-		"",
-		renderField(m.styles, m.labelStyle(fieldEditor), "Editor", m.editorSelectorView()),
-		renderFieldHint(m.styles, "←/→ cycle editors"),
 	)
 
 	if m.errMsg != "" {
@@ -468,17 +435,6 @@ func (m CreateFormModel) launcherSelectorView() string {
 	}
 	name := m.launchers[m.launcherIdx].DisplayName
 	if m.currentField() == fieldLauncher {
-		return modalListRow(m.styles, true).Render("< " + name + " >")
-	}
-	return modalListRow(m.styles, false).Render("  " + name + "  ")
-}
-
-func (m CreateFormModel) editorSelectorView() string {
-	if len(m.editors) == 0 {
-		return modalListRow(m.styles, false).Render("  (no editors configured)  ")
-	}
-	name := m.editors[m.editorIdx].DisplayName
-	if m.currentField() == fieldEditor {
 		return modalListRow(m.styles, true).Render("< " + name + " >")
 	}
 	return modalListRow(m.styles, false).Render("  " + name + "  ")

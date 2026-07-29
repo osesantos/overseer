@@ -24,13 +24,14 @@ type SessionService struct {
 	git             domain.GitAdapter
 	pathsResolver   paths.Resolver
 	defaultLauncher domain.Launcher
-	defaultEditor   domain.Editor
+	editorCommand   string
 	logger          *slog.Logger
 }
 
 // NewSessionService wires the session use-cases. defaultLauncher is used by
 // AttachAgent when a session's AgentCommand is empty (pre-launcher sessions);
-// defaultEditor plays the same role for OpenEditor and Session.EditorCommand.
+// editorCommand is the single editor launched by AttachEditor, falling back to
+// "nvim" when empty.
 func NewSessionService(
 	repo domain.SessionRepository,
 	projects domain.ProjectRepository,
@@ -38,7 +39,7 @@ func NewSessionService(
 	git domain.GitAdapter,
 	resolver paths.Resolver,
 	defaultLauncher domain.Launcher,
-	defaultEditor domain.Editor,
+	editorCommand string,
 	logger *slog.Logger,
 ) *SessionService {
 	return &SessionService{
@@ -48,7 +49,7 @@ func NewSessionService(
 		git:             git,
 		pathsResolver:   resolver,
 		defaultLauncher: defaultLauncher,
-		defaultEditor:   defaultEditor,
+		editorCommand:   editorCommand,
 		logger:          logger,
 	}
 }
@@ -62,7 +63,6 @@ type CreateSessionRequest struct {
 	BaseBranch     string
 	Branch         string
 	AgentCommand   string
-	EditorCommand  string
 	AgentType      domain.AgentType
 }
 
@@ -91,12 +91,6 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 
 	if req.AgentCommand != "" {
 		if err := sess.AssignAgentCommand(req.AgentCommand); err != nil {
-			return CreateSessionResponse{}, err
-		}
-	}
-
-	if req.EditorCommand != "" {
-		if err := sess.AssignEditorCommand(req.EditorCommand); err != nil {
 			return CreateSessionResponse{}, err
 		}
 	}
@@ -544,62 +538,48 @@ func (s *SessionService) AttachAgent(ctx context.Context, req AttachAgentRequest
 	return AttachAgentResponse{Command: cmd}, nil
 }
 
-// --- OpenEditor ---
+// --- AttachEditor ---
 
-type OpenEditorRequest struct {
+type AttachEditorRequest struct {
 	ID uuid.UUID
 }
 
-type OpenEditorResponse struct {
+type AttachEditorResponse struct {
 	Command *exec.Cmd
 }
 
-// OpenEditor launches the configured editor at the session's working
-// directory as a detached background process: the TUI keeps running, no
-// alt-screen flash.
-//
-// The returned *exec.Cmd has already been Start()ed — do NOT call Start/Run
-// on it again; it is exposed only for observability. A goroutine Wait()s on
-// the child to reap it.
-//
-// exec.Command, NOT exec.CommandContext, so the editor outlives ctx.
-// Terminal editors (vim/nvim/helix) are NOT supported by this fire-and-forget
-// model — they need the terminal we never release.
-func (s *SessionService) OpenEditor(ctx context.Context, req OpenEditorRequest) (OpenEditorResponse, error) {
+// AttachEditor prepares an attach into the session's dedicated editor tmux
+// session (<uuid>-editor), lazily creating it running the configured editor
+// (falling back to "nvim" when unset) rooted at the session's working
+// directory. Like AttachShell/AttachAgent it returns a runnable *exec.Cmd the
+// TUI hands to tea.ExecProcess; the editor tab persists afterwards so a
+// subsequent Enter re-attaches into the same nvim.
+func (s *SessionService) AttachEditor(ctx context.Context, req AttachEditorRequest) (AttachEditorResponse, error) {
 	sess, err := s.repo.Get(ctx, req.ID)
 	if err != nil {
-		return OpenEditorResponse{}, err
+		return AttachEditorResponse{}, err
 	}
 
-	editorCmd := sess.EditorCommand
+	editorCmd := strings.TrimSpace(s.editorCommand)
 	if editorCmd == "" {
-		editorCmd = s.defaultEditor.Command
+		editorCmd = defaultEditorCommand
 	}
-	if editorCmd == "" {
-		return OpenEditorResponse{}, domain.ErrSessionNoEditorCommandAvailable
+	editorTmuxID := sess.ID.String() + tmuxSessionSuffix(PreviewKindEditor)
+	if err := s.ensureTmuxSession(ctx, editorTmuxID, sess, editorCmd+" ."); err != nil {
+		return AttachEditorResponse{}, err
 	}
 
-	workDir, err := s.resolveSessionWorkingDir(ctx, sess)
+	cmd, err := s.tmux.AttachCommand(ctx, editorTmuxID)
 	if err != nil {
-		return OpenEditorResponse{}, err
+		return AttachEditorResponse{}, fmt.Errorf("attach tmux session: %w", err)
 	}
 
-	parts := strings.Fields(editorCmd)
-	args := append(parts[1:], workDir)
-	cmd := exec.Command(parts[0], args...)
-	cmd.Dir = workDir
-
-	if err := cmd.Start(); err != nil {
-		return OpenEditorResponse{}, fmt.Errorf("start editor: %w", err)
-	}
-	go func() { _ = cmd.Wait() }()
-
-	s.logger.InfoContext(ctx, "editor launched",
-		slog.String("id", sess.ID.String()),
-		slog.String("editor", parts[0]),
-		slog.String("dir", workDir),
+	s.logger.InfoContext(ctx, "editor attach prepared",
+		slog.String("id", editorTmuxID),
+		slog.String("editor_command", editorCmd),
 	)
-	return OpenEditorResponse{Command: cmd}, nil
+
+	return AttachEditorResponse{Command: cmd}, nil
 }
 
 // --- SendAgentEnter ---
@@ -668,7 +648,31 @@ type PreviewKind int
 const (
 	PreviewKindShell PreviewKind = iota
 	PreviewKindAgent
+	PreviewKindEditor
 )
+
+// defaultEditorCommand is the editor run in a session's Editor tmux session
+// when no editorCommand is configured.
+const defaultEditorCommand = "nvim"
+
+const (
+	tmuxSuffixAgent  = "-agent"
+	tmuxSuffixEditor = "-editor"
+)
+
+// tmuxSessionSuffix maps a PreviewKind to the suffix appended to a session's
+// UUID to form its backing tmux session name. The shell pane uses the bare
+// UUID (empty suffix); the agent and editor panes append "-agent"/"-editor".
+func tmuxSessionSuffix(kind PreviewKind) string {
+	switch kind {
+	case PreviewKindAgent:
+		return tmuxSuffixAgent
+	case PreviewKindEditor:
+		return tmuxSuffixEditor
+	default:
+		return ""
+	}
+}
 
 type PreviewSessionRequest struct {
 	ID     uuid.UUID
@@ -692,10 +696,7 @@ func (s *SessionService) PreviewSession(ctx context.Context, req PreviewSessionR
 		return PreviewSessionResponse{}, err
 	}
 
-	tmuxID := sess.ID.String()
-	if req.Kind == PreviewKindAgent {
-		tmuxID += "-agent"
-	}
+	tmuxID := sess.ID.String() + tmuxSessionSuffix(req.Kind)
 
 	if req.Width > 0 && req.Height > 0 {
 		if err := s.tmux.ResizeWindow(ctx, tmuxID, req.Width, req.Height); err != nil {
@@ -731,10 +732,7 @@ func (s *SessionService) KillPreviewSession(ctx context.Context, req KillPreview
 		return KillPreviewSessionResponse{}, err
 	}
 
-	tmuxID := sess.ID.String()
-	if req.Kind == PreviewKindAgent {
-		tmuxID += "-agent"
-	}
+	tmuxID := sess.ID.String() + tmuxSessionSuffix(req.Kind)
 
 	if err := s.killTmuxIfExists(ctx, tmuxID); err != nil {
 		return KillPreviewSessionResponse{}, fmt.Errorf("kill preview session: %w", err)
@@ -764,9 +762,9 @@ type DeleteSessionResponse struct{}
 //     the worktree was already removed by a prior interrupted delete, git
 //     removal is skipped with a warning — the rest of the teardown still
 //     proceeds.
-//  2. The associated tmux session is killed, if it still exists. A missing
-//     tmux session is not an error: the user may have killed it manually or
-//     the tmux server may have restarted.
+//  2. All three backing tmux sessions (shell, -agent, -editor) are killed, if
+//     they still exist. A missing tmux session is not an error: the user may
+//     have killed it manually or the tmux server may have restarted.
 //  3. The session row is deleted from the repository last, so any failure in
 //     steps 1 or 2 leaves a retriable session row instead of an orphaned
 //     worktree or tmux session paired with no DB record.
@@ -790,8 +788,17 @@ func (s *SessionService) Delete(ctx context.Context, req DeleteSessionRequest) (
 		}
 	}
 
-	if err := s.killTmuxIfExists(ctx, sess.ID.String()); err != nil {
-		return DeleteSessionResponse{}, err
+	// Tear down all three backing tmux sessions: the shell (bare UUID), the
+	// agent (-agent) and the editor (-editor). A missing session is not an
+	// error (killTmuxIfExists no-ops), so partially-created sessions clean up.
+	for _, tmuxID := range []string{
+		sess.ID.String(),
+		sess.ID.String() + tmuxSuffixAgent,
+		sess.ID.String() + tmuxSuffixEditor,
+	} {
+		if err := s.killTmuxIfExists(ctx, tmuxID); err != nil {
+			return DeleteSessionResponse{}, err
+		}
 	}
 
 	if err := s.repo.Delete(ctx, sess.ID); err != nil {

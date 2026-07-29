@@ -44,6 +44,16 @@ func newSessionMocks(t *testing.T) (*mocks.MockSessionRepository, *mocks.MockPro
 		mocks.NewMockGitAdapter(t)
 }
 
+// expectAgentAndEditorTmuxGone stubs the Delete teardown's inspection of the
+// -agent and -editor tmux sessions when they no longer exist, so the shell-only
+// teardown expectations in a test stay focused on the shell session.
+func expectAgentAndEditorTmuxGone(tmux *mocks.MockTmuxAdapter, baseID string) {
+	tmux.EXPECT().GetSession(mock.Anything, baseID+"-agent").
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	tmux.EXPECT().GetSession(mock.Anything, baseID+"-editor").
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+}
+
 func newTestSessionService(
 	repo domain.SessionRepository,
 	projects domain.ProjectRepository,
@@ -52,8 +62,7 @@ func newTestSessionService(
 	logger *slog.Logger,
 ) *SessionService {
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	editor, _ := domain.NewEditor("True", "true")
-	return NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), launcher, editor, logger)
+	return NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), launcher, "nvim", logger)
 }
 
 func expectProjectLookup(t *testing.T, projects *mocks.MockProjectRepository, projectID uuid.UUID, name string) string {
@@ -506,45 +515,6 @@ func TestSessionService_Create_RejectsInvalidAgentCommand(t *testing.T) {
 	}
 }
 
-func TestSessionService_Create_WithEditorCommand(t *testing.T) {
-	projID := uuid.New()
-	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
-	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
-	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
-		Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").
-		Return("tmux-alpha-agent", nil).Once()
-
-	var savedSession domain.Session
-	repo.EXPECT().Save(mock.Anything, mock.Anything).
-		Run(func(_ context.Context, s domain.Session) { savedSession = s }).
-		Return(nil).Once()
-	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
-
-	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.Create(context.Background(), CreateSessionRequest{
-		Name:           "alpha",
-		ProjectID:      projID,
-		CreateWorktree: true,
-		BaseBranch:     "main",
-		AgentCommand:   "opencode",
-		EditorCommand:  "cursor",
-	})
-
-	if err != nil {
-		t.Fatalf("Create() error = %v", err)
-	}
-	if resp.Session.EditorCommand != "cursor" {
-		t.Fatalf("Create() Session.EditorCommand = %q, want %q", resp.Session.EditorCommand, "cursor")
-	}
-	if savedSession.EditorCommand != "cursor" {
-		t.Fatalf("SessionRepository.Save session.EditorCommand = %q, want %q", savedSession.EditorCommand, "cursor")
-	}
-}
-
 func TestCreateSession_CapturesAgentTypeFromLauncher(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
@@ -584,22 +554,6 @@ func TestCreateSession_CapturesAgentTypeFromLauncher(t *testing.T) {
 	}
 }
 
-func TestSessionService_Create_RejectsInvalidEditorCommand(t *testing.T) {
-	repo, projects, tmux, git := newSessionMocks(t)
-	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-
-	_, err := svc.Create(context.Background(), CreateSessionRequest{
-		Name:           "alpha",
-		ProjectID:      uuid.New(),
-		CreateWorktree: true,
-		BaseBranch:     "main",
-		EditorCommand:  "   ",
-	})
-
-	if !errors.Is(err, domain.ErrSessionEmptyEditorCommand) {
-		t.Fatalf("Create() error = %v, want %v", err, domain.ErrSessionEmptyEditorCommand)
-	}
-}
 
 func TestSessionService_Rename_HappyPath(t *testing.T) {
 	original := testutil.MakeSession("alpha", uuid.New())
@@ -1051,8 +1005,7 @@ func TestSessionService_AttachAgent_NoSessionCommandAndNoDefaultLauncher_Returns
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
 
-	editor, _ := domain.NewEditor("VSCode", "code")
-	svc := NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), domain.Launcher{}, editor, testLogger())
+	svc := NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), domain.Launcher{}, "nvim", testLogger())
 	_, err := svc.AttachAgent(context.Background(), AttachAgentRequest{ID: sess.ID})
 
 	if !errors.Is(err, domain.ErrSessionNoAgentCommandAvailable) {
@@ -1194,9 +1147,18 @@ func TestSessionService_Delete_HappyPath_WorktreeSession(t *testing.T) {
 	project.ID = overseerID
 	projects.EXPECT().Get(mock.Anything, overseerID).Return(project, nil).Once()
 	git.EXPECT().RemoveWorktree(mock.Anything, "/repo/overseer", sess.WorktreePath).Return(nil).Once()
+	agentTmuxID := sess.ID.String() + "-agent"
+	editorTmuxID := sess.ID.String() + "-editor"
+	// All three backing tmux sessions exist and are torn down.
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(domain.TmuxSession{ID: sess.ID.String()}, nil).Once()
 	tmux.EXPECT().KillSession(mock.Anything, sess.ID.String()).Return(nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, agentTmuxID).
+		Return(domain.TmuxSession{ID: agentTmuxID}, nil).Once()
+	tmux.EXPECT().KillSession(mock.Anything, agentTmuxID).Return(nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, editorTmuxID).
+		Return(domain.TmuxSession{ID: editorTmuxID}, nil).Once()
+	tmux.EXPECT().KillSession(mock.Anything, editorTmuxID).Return(nil).Once()
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
@@ -1215,6 +1177,7 @@ func TestSessionService_Delete_HappyPath_ProjectMode_NoGitCall(t *testing.T) {
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(domain.TmuxSession{ID: sess.ID.String()}, nil).Once()
 	tmux.EXPECT().KillSession(mock.Anything, sess.ID.String()).Return(nil).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
@@ -1265,6 +1228,7 @@ func TestSessionService_Delete_TmuxSessionAlreadyGone_StillDeletes(t *testing.T)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
@@ -1293,6 +1257,7 @@ func TestSessionService_Delete_GitWorktreeAlreadyGone_StillDeletes(t *testing.T)
 		Return(domain.ErrGitWorktreeNotFound).Once()
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
@@ -1303,74 +1268,81 @@ func TestSessionService_Delete_GitWorktreeAlreadyGone_StillDeletes(t *testing.T)
 	}
 }
 
-func TestSessionService_OpenEditor_WorktreeSession_LaunchesAtWorktree(t *testing.T) {
-	worktreePath := t.TempDir()
-	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
-	if err := sess.AssignEditorCommand("true"); err != nil {
-		t.Fatalf("seed AssignEditorCommand: %v", err)
-	}
-	repo, projects, tmux, git := newSessionMocks(t)
-	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
-
-	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.OpenEditor(context.Background(), OpenEditorRequest{ID: sess.ID})
-
-	if err != nil {
-		t.Fatalf("OpenEditor() error = %v", err)
-	}
-	if resp.Command.Dir != worktreePath {
-		t.Fatalf("OpenEditor() Command.Dir = %q, want %q", resp.Command.Dir, worktreePath)
-	}
-}
-
-func TestSessionService_OpenEditor_ProjectMode_LaunchesAtProjectPath(t *testing.T) {
-	projectPath := t.TempDir()
-	overseerID := uuid.New()
-	sess := testutil.MakeSession("alpha", overseerID)
-	if err := sess.AssignEditorCommand("true"); err != nil {
-		t.Fatalf("seed AssignEditorCommand: %v", err)
-	}
-	project := testutil.MakeProject(projectPath, "overseer")
-	project.ID = overseerID
-	repo, projects, tmux, git := newSessionMocks(t)
-	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
-	projects.EXPECT().Get(mock.Anything, overseerID).Return(project, nil).Once()
-
-	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.OpenEditor(context.Background(), OpenEditorRequest{ID: sess.ID})
-
-	if err != nil {
-		t.Fatalf("OpenEditor() error = %v", err)
-	}
-	if resp.Command.Dir != projectPath {
-		t.Fatalf("OpenEditor() Command.Dir = %q, want %q", resp.Command.Dir, projectPath)
-	}
-}
-
-func TestSessionService_OpenEditor_NoSessionCommandAndNoDefaultEditor_ReturnsSentinel(t *testing.T) {
+func TestSessionService_AttachEditor_EditorTmuxExists_ReusesWithoutRecreate(t *testing.T) {
 	sess := testutil.MakeSession("alpha", uuid.New())
+	editorTmuxID := sess.ID.String() + "-editor"
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, editorTmuxID).
+		Return(domain.TmuxSession{ID: editorTmuxID}, nil).Once()
+	wantCmd := exec.Command("tmux", "attach-session", "-t", editorTmuxID)
+	tmux.EXPECT().AttachCommand(mock.Anything, editorTmuxID).Return(wantCmd, nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.AttachEditor(context.Background(), AttachEditorRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("AttachEditor() error = %v", err)
+	}
+	if resp.Command != wantCmd {
+		t.Fatalf("AttachEditor() Command = %v, want %v", resp.Command, wantCmd)
+	}
+}
+
+func TestSessionService_AttachEditor_EditorTmuxMissing_CreatesRunningConfiguredEditor(t *testing.T) {
+	worktreePath := "/abs/worktree/alpha"
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
+	editorTmuxID := sess.ID.String() + "-editor"
+	repo, projects, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, editorTmuxID).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, editorTmuxID, worktreePath, "nvim .").
+		Return(editorTmuxID, nil).Once()
+	wantCmd := exec.Command("tmux", "attach-session", "-t", editorTmuxID)
+	tmux.EXPECT().AttachCommand(mock.Anything, editorTmuxID).Return(wantCmd, nil).Once()
+
+	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+	resp, err := svc.AttachEditor(context.Background(), AttachEditorRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("AttachEditor() error = %v, want nil after create", err)
+	}
+	if resp.Command != wantCmd {
+		t.Fatalf("AttachEditor() Command = %v, want %v", resp.Command, wantCmd)
+	}
+}
+
+func TestSessionService_AttachEditor_EmptyEditorCommand_FallsBackToNvim(t *testing.T) {
+	worktreePath := "/abs/worktree/alpha"
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
+	editorTmuxID := sess.ID.String() + "-editor"
+	repo, projects, tmux, git := newSessionMocks(t)
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, editorTmuxID).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, editorTmuxID, worktreePath, "nvim .").
+		Return(editorTmuxID, nil).Once()
+	wantCmd := exec.Command("tmux", "attach-session", "-t", editorTmuxID)
+	tmux.EXPECT().AttachCommand(mock.Anything, editorTmuxID).Return(wantCmd, nil).Once()
 
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	svc := NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), launcher, domain.Editor{}, testLogger())
-	_, err := svc.OpenEditor(context.Background(), OpenEditorRequest{ID: sess.ID})
-
-	if !errors.Is(err, domain.ErrSessionNoEditorCommandAvailable) {
-		t.Fatalf("OpenEditor() error = %v, want ErrSessionNoEditorCommandAvailable", err)
+	svc := NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), launcher, "", testLogger())
+	if _, err := svc.AttachEditor(context.Background(), AttachEditorRequest{ID: sess.ID}); err != nil {
+		t.Fatalf("AttachEditor() error = %v", err)
 	}
 }
 
-func TestSessionService_OpenEditor_SessionNotFound(t *testing.T) {
+func TestSessionService_AttachEditor_SessionNotFound(t *testing.T) {
 	sessID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sessID).Return(domain.Session{}, domain.ErrSessionNotFound).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	_, err := svc.OpenEditor(context.Background(), OpenEditorRequest{ID: sessID})
+	_, err := svc.AttachEditor(context.Background(), AttachEditorRequest{ID: sessID})
 
 	if !errors.Is(err, domain.ErrSessionNotFound) {
-		t.Fatalf("OpenEditor() error = %v, want ErrSessionNotFound", err)
+		t.Fatalf("AttachEditor() error = %v, want ErrSessionNotFound", err)
 	}
 }
 

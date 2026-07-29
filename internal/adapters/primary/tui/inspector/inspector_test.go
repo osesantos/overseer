@@ -46,13 +46,69 @@ func TestInspector_ToggleKey_CyclesForward(t *testing.T) {
 
 func TestInspector_ToggleKey_WrapsAround(t *testing.T) {
 	m := newTestModel(t)
-	// 2 views: Agent → Shell → Agent (wraps on 2nd press)
-	for i := 0; i < len(m.views); i++ {
+	// Only the visible views cycle (Editor is gated). With Agent + Shell that
+	// is 2 tabs: Agent → Shell → Agent (wraps on the 2nd press).
+	presses := m.visibleCount()
+	for range presses {
 		updated, _ := m.Update(keyPress("tab"))
 		m = updated.(Model)
 	}
 	if got := m.views[m.activeIx].Label(); got != "Agent" {
-		t.Errorf("after %dx tab, active view label = %q, want %q", len(m.views), got, "Agent")
+		t.Errorf("after %dx tab, active view label = %q, want %q", presses, got, "Agent")
+	}
+}
+
+func TestInspector_RevealEditorMsg_ShowsAndActivatesEditorTab(t *testing.T) {
+	m := newTestModel(t)
+	if m.visibleCount() != 2 {
+		t.Fatalf("precondition: visibleCount = %d, want 2 (Editor hidden)", m.visibleCount())
+	}
+
+	updated, _ := m.Update(RevealEditorMsg{})
+	m = updated.(Model)
+
+	if m.visibleCount() != 3 {
+		t.Errorf("after reveal: visibleCount = %d, want 3", m.visibleCount())
+	}
+	if got := m.views[m.activeIx].Label(); got != "Editor" {
+		t.Errorf("after reveal: active view label = %q, want %q", got, "Editor")
+	}
+	if got := m.ActiveViewLabel(); got != "Editor" {
+		t.Errorf("ActiveViewLabel() = %q, want %q", got, "Editor")
+	}
+}
+
+func TestInspector_ToggleKey_CyclesThroughEditorOnceRevealed(t *testing.T) {
+	m := newTestModel(t)
+	updated, _ := m.Update(RevealEditorMsg{})
+	m = updated.(Model)
+	// From Editor: tab wraps to Agent, then Shell, then back to Editor.
+	wantSequence := []string{"Agent", "Shell", "Editor"}
+	for i, want := range wantSequence {
+		updated, _ := m.Update(keyPress("tab"))
+		m = updated.(Model)
+		if got := m.views[m.activeIx].Label(); got != want {
+			t.Fatalf("tab %d: active view label = %q, want %q", i+1, got, want)
+		}
+	}
+}
+
+func TestInspector_SessionSelectedMsg_RehidesEditorTab(t *testing.T) {
+	m := newTestModel(t)
+	updated, _ := m.Update(RevealEditorMsg{})
+	m = updated.(Model)
+	if m.visibleCount() != 3 {
+		t.Fatalf("precondition: Editor not revealed")
+	}
+
+	updated, _ = m.Update(shared.SessionSelectedMsg{Session: domain.Session{ID: uuid.New()}})
+	m = updated.(Model)
+
+	if m.visibleCount() != 2 {
+		t.Errorf("after session switch: visibleCount = %d, want 2 (Editor re-hidden)", m.visibleCount())
+	}
+	if got := m.views[m.activeIx].Label(); got != "Agent" {
+		t.Errorf("after session switch: active view label = %q, want %q", got, "Agent")
 	}
 }
 

@@ -7,6 +7,7 @@ type viewKind int
 const (
 	viewKindAgent viewKind = iota
 	viewKindShell
+	viewKindEditor
 )
 
 // previewCapturedMsg carries the result of a single tmux capture-pane call.
@@ -29,3 +30,9 @@ type previewCapturedMsg struct {
 // dashboard after a successful SendAgentPrompt) emit this so the user sees
 // the sent prompt land in the preview pane right away.
 type ForceRefreshMsg struct{}
+
+// RevealEditorMsg asks the inspector to reveal its gated Editor tab and make
+// it the active view. The dashboard emits this when the user presses "e", in
+// tandem with the AttachEditor call that opens nvim. The tab stays revealed
+// until the selected session changes.
+type RevealEditorMsg struct{}

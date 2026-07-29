@@ -56,6 +56,18 @@ func newShellView(svc service.SessionService, s *styles.Styles, pollInterval tim
 	}
 }
 
+func newEditorView(svc service.SessionService, s *styles.Styles, pollInterval time.Duration) *streamView {
+	return &streamView{
+		kind:            viewKindEditor,
+		label:           "Editor",
+		previewKind:     service.PreviewKindEditor,
+		notReadyMessage: "Editor not started — press e to launch nvim",
+		service:         svc,
+		styles:          s,
+		pollInterval:    pollInterval,
+	}
+}
+
 
 func (v *streamView) Label() string { return v.label }
 

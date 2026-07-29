@@ -56,16 +56,6 @@ func main() {
 		defaultLauncher = launchers[0]
 	}
 
-	editors, err := cfg.DomainEditors()
-	if err != nil {
-		log.Error("resolve editors", "error", err)
-		os.Exit(1)
-	}
-	var defaultEditor domain.Editor
-	if len(editors) > 0 {
-		defaultEditor = editors[0]
-	}
-
 	labels, err := cfg.DomainLabels()
 	if err != nil {
 		log.Error("resolve labels", "error", err)
@@ -95,7 +85,7 @@ func main() {
 
 	githubAdapter := githubcli.New(log)
 
-	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, resolver, defaultLauncher, defaultEditor, log)
+	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, resolver, defaultLauncher, cfg.EditorCommand, log)
 	projectSvc := service.NewProjectService(store.Projects(), gitAdapter, log)
 	prSvc := service.NewPullRequestService(githubAdapter, log)
 
@@ -133,7 +123,7 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, scheduler, launchers, editors, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {

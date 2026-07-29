@@ -100,7 +100,6 @@ type Model struct {
 	projectsService service.ProjectService
 	overseerService *service.OverseerService
 	launchers       []domain.Launcher
-	editors         []domain.Editor
 	labels          []domain.Label
 }
 
@@ -111,7 +110,6 @@ func New(
 	overseerService *service.OverseerService,
 	scheduler jobs.Model,
 	launchers []domain.Launcher,
-	editors []domain.Editor,
 	labels []domain.Label,
 	minWidth, minHeight int,
 	previewRefreshInterval time.Duration,
@@ -134,7 +132,6 @@ func New(
 		overseerService:         overseerService,
 		labels:                  labels,
 		launchers:               launchers,
-		editors:                 editors,
 		minWidth:                minWidth,
 		minHeight:               minHeight,
 		prStatuses:              make(map[uuid.UUID]shared.PRStatusUpdatedMsg),
@@ -359,8 +356,6 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		})
 	case shared.SessionAttachedMsg:
 		return m, nil
-	case shared.SessionEditorLaunchedMsg:
-		return m, nil
 	case shared.AgentEnterSentMsg:
 		return m, nil
 	case shared.PreviewSessionKilledMsg:
@@ -510,7 +505,6 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.branchesByProjectFlat(),
 			m.defaultBranchesByProject(),
 			m.launchers,
-			m.editors,
 			m.width,
 		)
 		m.activePopup = popupNewSession
@@ -521,18 +515,23 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return tea.Batch(cmds...), true
 	}
 	if key.Matches(msg, attachKeyBinding) {
-		if m.inspector.ActiveViewLabel() == "Shell" {
+		switch m.inspector.ActiveViewLabel() {
+		case "Shell":
 			if cmd := m.attachSelectedSessionShellCmd(); cmd != nil {
 				return cmd, true
 			}
-		} else {
+		case "Editor":
+			if cmd := m.attachSelectedSessionEditorCmd(); cmd != nil {
+				return cmd, true
+			}
+		default:
 			if cmd := m.attachSelectedSessionAgentCmd(); cmd != nil {
 				return cmd, true
 			}
 		}
 	}
 	if key.Matches(msg, openEditorKeyBinding) {
-		if cmd := m.openSelectedSessionEditorCmd(); cmd != nil {
+		if cmd := m.revealAndAttachEditorCmd(); cmd != nil {
 			return cmd, true
 		}
 	}
@@ -592,7 +591,24 @@ func (m Model) attachSelectedSessionAgentCmd() tea.Cmd {
 	}
 }
 
-func (m Model) openSelectedSessionEditorCmd() tea.Cmd {
+// revealAndAttachEditorCmd reveals the inspector's gated Editor tab and, in the
+// same batch, prepares an attach into the session's nvim. Pressing "e" both
+// surfaces the tab and drops the user straight into the editor; the tab then
+// persists so a later Enter re-attaches (see attachSelectedSessionEditorCmd).
+func (m *Model) revealAndAttachEditorCmd() tea.Cmd {
+	attach := m.attachSelectedSessionEditorCmd()
+	if attach == nil {
+		return nil
+	}
+	var revealCmd tea.Cmd
+	m.inspector, revealCmd = shared.UpdateModel(m.inspector, inspector.RevealEditorMsg{})
+	return tea.Batch(revealCmd, attach)
+}
+
+// attachSelectedSessionEditorCmd prepares an attach into the selected session's
+// editor tmux session (lazily created running nvim). Returns nil when no
+// session is selected.
+func (m Model) attachSelectedSessionEditorCmd() tea.Cmd {
 	idStr := m.leftPane.SelectedSessionID()
 	if idStr == "" {
 		return nil
@@ -603,8 +619,8 @@ func (m Model) openSelectedSessionEditorCmd() tea.Cmd {
 	}
 	svc := m.sessionsService
 	return func() tea.Msg {
-		_, err := svc.OpenEditor(context.Background(), service.OpenEditorRequest{ID: sessID})
-		return shared.SessionEditorLaunchedMsg{Err: err}
+		resp, err := svc.AttachEditor(context.Background(), service.AttachEditorRequest{ID: sessID})
+		return shared.SessionAttachReadyMsg{Command: resp.Command, Err: err}
 	}
 }
 

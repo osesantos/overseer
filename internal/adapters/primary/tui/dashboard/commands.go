@@ -119,7 +119,6 @@ func (m Model) cmdNew() (tea.Model, tea.Cmd) {
 		m.branchesByProjectFlat(),
 		m.defaultBranchesByProject(),
 		m.launchers,
-		m.editors,
 		m.width,
 	)
 	m.activePopup = popupNewSession

@@ -27,18 +27,17 @@ import (
 // when uuid.Nil. The two modes share every other field; the storage layer
 // persists the same struct shape for both.
 type Session struct {
-	ID            uuid.UUID
-	Name          string
-	ProjectID     uuid.UUID
-	Order         int
-	Branch        string
-	WorktreePath  string
-	AgentCommand  string
-	EditorCommand string
-	AgentType     AgentType `json:",omitempty"`
-	Label         string    `json:",omitempty"`
-	CreatedAt     time.Time
-	UpdatedAt     time.Time
+	ID           uuid.UUID
+	Name         string
+	ProjectID    uuid.UUID
+	Order        int
+	Branch       string
+	WorktreePath string
+	AgentCommand string
+	AgentType    AgentType `json:",omitempty"`
+	Label        string    `json:",omitempty"`
+	CreatedAt    time.Time
+	UpdatedAt    time.Time
 }
 
 // NewSession constructs a Session with no worktree assigned. For a Mode 1
@@ -155,21 +154,6 @@ func (s *Session) AssignAgentCommand(cmd string) error {
 	return nil
 }
 
-// AssignEditorCommand sets the raw shell command used to open this
-// session's worktree in an editor (e.g. "code", "cursor --wait", "nvim").
-// The command must be non-empty after trimming; empty values are rejected
-// so the invariant "if EditorCommand is set, it is runnable" holds.
-func (s *Session) AssignEditorCommand(cmd string) error {
-	cmd = strings.TrimSpace(cmd)
-	if cmd == "" {
-		return ErrSessionEmptyEditorCommand
-	}
-
-	s.EditorCommand = cmd
-	s.UpdatedAt = time.Now()
-	return nil
-}
-
 // AssignAgentType sets the session's agent type — the discriminator the
 // status-detection registry uses to route a session to the right detector.
 // Empty values are rejected so the invariant "if AgentType is set, it is
@@ -267,17 +251,15 @@ var ErrGitWorktreeNotFound = errors.New("git worktree not found")
 
 // Session sentinel errors.
 var (
-	ErrSessionEmptyName                = errors.New("session name cannot be empty")
-	ErrSessionNameTooLong              = errors.New("session name exceeds 100 characters")
-	ErrSessionEmptyProjectID           = errors.New("session project id cannot be empty")
-	ErrSessionNotFound                 = errors.New("session not found")
-	ErrSessionAlreadyExists            = errors.New("session already exists")
-	ErrSessionWorktreeFieldsMismatch   = errors.New("session worktree fields must all be set")
-	ErrSessionWorktreePathNotAbsolute  = errors.New("session worktree path must be absolute")
-	ErrSessionWorktreePathOutsideRoot  = errors.New("session worktree path is outside the managed worktree root")
-	ErrSessionEmptyAgentCommand        = errors.New("session agent command cannot be empty")
-	ErrSessionNoAgentCommandAvailable  = errors.New("session has no agent command and no default launcher is configured")
-	ErrSessionEmptyEditorCommand       = errors.New("session editor command cannot be empty")
-	ErrSessionNoEditorCommandAvailable = errors.New("session has no editor command and no default editor is configured")
-	ErrSessionLabelTooLong             = errors.New("session label exceeds 50 characters")
+	ErrSessionEmptyName               = errors.New("session name cannot be empty")
+	ErrSessionNameTooLong             = errors.New("session name exceeds 100 characters")
+	ErrSessionEmptyProjectID          = errors.New("session project id cannot be empty")
+	ErrSessionNotFound                = errors.New("session not found")
+	ErrSessionAlreadyExists           = errors.New("session already exists")
+	ErrSessionWorktreeFieldsMismatch  = errors.New("session worktree fields must all be set")
+	ErrSessionWorktreePathNotAbsolute = errors.New("session worktree path must be absolute")
+	ErrSessionWorktreePathOutsideRoot = errors.New("session worktree path is outside the managed worktree root")
+	ErrSessionEmptyAgentCommand       = errors.New("session agent command cannot be empty")
+	ErrSessionNoAgentCommandAvailable = errors.New("session has no agent command and no default launcher is configured")
+	ErrSessionLabelTooLong            = errors.New("session label exceeds 50 characters")
 )

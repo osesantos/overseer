@@ -57,8 +57,11 @@ func (m KillPreviewFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m KillPreviewFormModel) submit() (tea.Model, tea.Cmd) {
 	id := m.sessionID
 	kind := service.PreviewKindShell
-	if m.previewKind == "Agent" {
+	switch m.previewKind {
+	case "Agent":
 		kind = service.PreviewKindAgent
+	case "Editor":
+		kind = service.PreviewKindEditor
 	}
 	svc := m.sessionsService
 	return m, func() tea.Msg {

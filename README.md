@@ -36,7 +36,7 @@ Overseer is a TUI application that helps developers organize, launch, and monito
 ### Terminal Integration
 - **Tmux Integration**: Automatically creates and manages tmux sessions for both the AI agent and a shell in the session's working directory.
 - **One-Key Attach**: Attach to a session's tmux window directly from the dashboard.
-- **Editor Launch**: Open a session's working directory in your configured editor (VSCode, Neovim, etc.).
+- **Editor Tab**: Press `e` to reveal an "Editor" tab that opens `nvim` in the session's working directory, right inside the dashboard's tmux-backed inspector.
 - **Extended Key Support**: Overseer automatically enables tmux's `extended-keys` so modifier sequences like `Shift+Enter` are preserved inside the agent and shell sessions.
 
 ### Real-Time Monitoring
@@ -53,7 +53,7 @@ Overseer is a TUI application that helps developers organize, launch, and monito
 
 ### Developer Experience
 - **Keyboard-Driven**: Vim-inspired keybindings — navigate with `j`/`k`, create with `n`, delete with `d`, and more.
-- **Customizable**: YAML configuration for themes, launchers, editors, labels, and dashboard dimensions.
+- **Customizable**: YAML configuration for themes, launchers, editor, labels, and dashboard dimensions.
 - **Fast & Lightweight**: Built in Go with minimal resource usage.
 
 ---
@@ -149,7 +149,7 @@ Fill out the session creation form (navigate fields with `Tab` / `Shift+Tab` or 
 
 ### 4. Attach to Session
 
-Select a session and press `Enter` to attach to its tmux window. Press `Tab` to toggle between the Agent and Shell views. Press `e` to open the session directory in your editor.
+Select a session and press `Enter` to attach to its tmux window. Press `Tab` to toggle between the Agent and Shell views. Press `e` to reveal the Editor tab and drop straight into `nvim` at the session directory; the tab persists so you can detach and re-attach with `Enter`.
 
 ---
 
@@ -189,11 +189,7 @@ launchers:
     command: "opencode"
     agentType: "opencode"
 
-editors:
-  - displayName: "VSCode"
-    command: "code"
-  - displayName: "Neovim"
-    command: "nvim"
+editorCommand: "nvim"
 
 labels:
   - code: "urgent"
@@ -223,7 +219,7 @@ labels:
 | `storage` | `dataDir` | Directory for Overseer's data files (must be absolute) |
 | `projectDiscovery` | `paths` | List of directories to scan at startup for Git repos |
 | `launchers` | — | List of AI agent launchers (`displayName`, `command`, `agentType`) |
-| `editors` | — | List of code editors (`displayName`, `command`) |
+| `editorCommand` | — | Editor command run in the Editor tab (default `nvim`) |
 | `labels` | — | Custom labels for session categorization |
 
 #### Project Discovery
@@ -255,7 +251,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 | `r` | Rename selected session |
 | `l` | Cycle through labels |
 | `Enter` | Attach to session (agent or shell, based on active inspector tab) |
-| `e` | Open session in editor |
+| `e` | Reveal Editor tab and open nvim at the session directory |
 | `Ctrl+E` | Send Enter keystroke to the agent pane |
 | `x` | Kill the preview tmux session |
 | `g` / `G` | Go to next / previous project group |
@@ -266,7 +262,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 |-----|--------|
 | `Tab` / `Shift+Tab` | Next / previous field |
 | `↓` / `↑` | Next / previous field |
-| `←` / `→` | Cycle option (launcher, editor, worktree toggle) |
+| `←` / `→` | Cycle option (launcher, worktree toggle) |
 | `Space` | Toggle worktree on/off |
 | `e` | Paste a path into the repository field |
 | `Enter` | Create session |
