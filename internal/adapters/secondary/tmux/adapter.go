@@ -209,6 +209,27 @@ func (a *Adapter) EnsureExtendedKeys(_ context.Context) error {
 	return nil
 }
 
+// EnsureMouseMode sets the tmux server option `mouse on` so mouse-wheel scroll
+// while attached drives tmux's own copy-mode/scrollback on the active pane
+// rather than passing through to the outer terminal's scrollback, which mixes
+// together every session and the Overseer TUI's own screen redraws.
+//
+// tmux server options can only be set while the server is running, so we start
+// it first (idempotent — no-op if already running), matching EnsureExtendedKeys.
+// Errors are swallowed with a warning so startup is never aborted.
+func (a *Adapter) EnsureMouseMode(_ context.Context) error {
+	if _, err := a.run("start-server"); err != nil {
+		a.logger.Warn("tmux: could not start server, skipping mouse mode setup", "error", err)
+		return nil
+	}
+	if _, err := a.run("set", "-g", "mouse", "on"); err != nil {
+		a.logger.Warn("tmux: could not enable mouse mode", "error", err)
+	} else {
+		a.logger.Debug("tmux: mouse mode set to on")
+	}
+	return nil
+}
+
 // SendKeys sends the named key to the named tmux session's active pane without
 // attaching to it. key is a tmux key name such as "Enter". The call is
 // fire-and-forget: the TUI keeps running while the keypress is delivered.

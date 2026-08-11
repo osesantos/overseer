@@ -51,6 +51,11 @@ type TmuxAdapter interface {
 	// The option is server-scoped and only needs to be set once per tmux server
 	// process. It is a no-op on tmux servers that do not support the option.
 	EnsureExtendedKeys(ctx context.Context) error
+	// EnsureMouseMode sets the tmux server option `mouse on` so that mouse-wheel
+	// scrolling while attached enters tmux copy-mode on the active pane instead
+	// of falling through to the outer terminal's own scrollback. The option is
+	// server-scoped and only needs to be set once per tmux server process.
+	EnsureMouseMode(ctx context.Context) error
 }
 
 var ErrTmuxSessionNotFound = errors.New("tmux session not found")

@@ -8,6 +8,7 @@ BINARY := $(BIN_DIR)/overseer
 build: ## Build the overseer binary
 	mkdir -p $(BIN_DIR)
 	go build -o $(BINARY) ./cmd/overseer/
+	cp ./bin/overseer ~/go/bin/overseer
 
 test: ## Run the unit test suite
 	go test -race -cover ./...

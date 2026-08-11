@@ -105,3 +105,8 @@ func (s *Stub) SendText(_ context.Context, _ string, _ string) error {
 func (s *Stub) EnsureExtendedKeys(_ context.Context) error {
 	return nil
 }
+
+// EnsureMouseMode is a no-op in the stub; it always returns nil.
+func (s *Stub) EnsureMouseMode(_ context.Context) error {
+	return nil
+}

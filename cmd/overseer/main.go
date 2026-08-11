@@ -76,6 +76,9 @@ func main() {
 	if err := tmuxAdapter.EnsureExtendedKeys(context.Background()); err != nil {
 		log.Warn("tmux: could not enable extended-keys", "error", err)
 	}
+	if err := tmuxAdapter.EnsureMouseMode(context.Background()); err != nil {
+		log.Warn("tmux: could not enable mouse mode", "error", err)
+	}
 
 	gitAdapter, err := git.New(log)
 	if err != nil {
