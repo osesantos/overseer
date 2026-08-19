@@ -92,7 +92,21 @@ func (s *AgentStatusService) PollAll(ctx context.Context, _ PollAllAgentStatuses
 
 func (s *AgentStatusService) pollOne(ctx context.Context, sess domain.Session) domain.AgentStatus {
 	now := time.Now()
-	agentTmuxID := sess.ID.String() + "-agent"
+
+	// A swarm has one pane per agent, but this API carries a single status per
+	// session and there is no agreed rule for collapsing N of them into one.
+	// Probing the bare "-agent" pane a swarm never creates would report every
+	// swarm as Dead, so report Unknown until per-pane status lands.
+	if sess.IsSwarm() {
+		return domain.AgentStatus{
+			Kind:       domain.AgentStatusSwarm,
+			DetectedAt: now,
+			Source:     "service/swarm",
+			Reason:     "swarm sessions have one pane per agent; per-session status is not meaningful",
+		}
+	}
+
+	agentTmuxID := sess.AgentTmuxID(0)
 
 	if _, err := s.tmux.GetSession(ctx, agentTmuxID); err != nil {
 		if errors.Is(err, domain.ErrTmuxSessionNotFound) {

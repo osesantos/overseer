@@ -22,6 +22,7 @@ type SessionService struct {
 	projects        domain.ProjectRepository
 	tmux            domain.TmuxAdapter
 	git             domain.GitAdapter
+	board           domain.SwarmBoardRepository
 	pathsResolver   paths.Resolver
 	defaultLauncher domain.Launcher
 	editorCommand   string
@@ -31,12 +32,14 @@ type SessionService struct {
 // NewSessionService wires the session use-cases. defaultLauncher is used by
 // AttachAgent when a session's AgentCommand is empty (pre-launcher sessions);
 // editorCommand is the single editor launched by AttachEditor, falling back to
-// "nvim" when empty.
+// "nvim" when empty. board is used only to purge a swarm session's message
+// board during teardown — the swarm use-cases themselves live in SwarmService.
 func NewSessionService(
 	repo domain.SessionRepository,
 	projects domain.ProjectRepository,
 	tmux domain.TmuxAdapter,
 	git domain.GitAdapter,
+	board domain.SwarmBoardRepository,
 	resolver paths.Resolver,
 	defaultLauncher domain.Launcher,
 	editorCommand string,
@@ -47,6 +50,7 @@ func NewSessionService(
 		projects:        projects,
 		tmux:            tmux,
 		git:             git,
+		board:           board,
 		pathsResolver:   resolver,
 		defaultLauncher: defaultLauncher,
 		editorCommand:   editorCommand,
@@ -64,6 +68,10 @@ type CreateSessionRequest struct {
 	Branch         string
 	AgentCommand   string
 	AgentType      domain.AgentType
+	// SwarmSize turns the session into a swarm of that many agents. Leave it at
+	// zero for an ordinary single-agent session; a value of one is rejected
+	// rather than silently downgraded.
+	SwarmSize int
 }
 
 type CreateSessionResponse struct {
@@ -97,6 +105,12 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 
 	if req.AgentType != "" {
 		if err := sess.AssignAgentType(req.AgentType); err != nil {
+			return CreateSessionResponse{}, err
+		}
+	}
+
+	if req.SwarmSize != 0 {
+		if err := sess.AssignSwarmSize(req.SwarmSize); err != nil {
 			return CreateSessionResponse{}, err
 		}
 	}
@@ -155,9 +169,12 @@ func (s *SessionService) Create(ctx context.Context, req CreateSessionRequest) (
 // tmux sessions, saves the session row, and bumps the project's UpdatedAt
 // for recency ordering. The tmux sessions are rooted at the session's
 // working directory — the worktree path in Mode 1, the project path in
-// Mode 2. The agent tmux session uses sess.AgentCommand, falling back to
+// Mode 2. Each agent tmux session uses sess.AgentCommand, falling back to
 // the default launcher when empty — matching the lazy launch semantics in
 // ensureTmuxSession.
+//
+// A swarm gets one pane per agent (AgentTmuxIDs); if any of them fails to start,
+// every pane created so far is torn down so a half-built swarm never survives.
 func (s *SessionService) spinUpTmuxAndPersist(ctx context.Context, sess domain.Session, project domain.Project) (domain.Session, error) {
 	workDir := sessionWorkingDir(sess, project)
 
@@ -169,9 +186,17 @@ func (s *SessionService) spinUpTmuxAndPersist(ctx context.Context, sess domain.S
 	if agentCmd == "" {
 		agentCmd = s.defaultLauncher.Command
 	}
-	if _, err := s.tmux.CreateSession(ctx, sess.ID.String()+"-agent", workDir, agentCmd); err != nil {
-		_ = s.tmux.KillSession(ctx, sess.ID.String())
-		return domain.Session{}, fmt.Errorf("create agent tmux session: %w", err)
+
+	created := make([]string, 0, sess.AgentCount())
+	for _, agentTmuxID := range sess.AgentTmuxIDs() {
+		if _, err := s.tmux.CreateSession(ctx, agentTmuxID, workDir, agentCmd); err != nil {
+			for _, orphan := range created {
+				_ = s.tmux.KillSession(ctx, orphan)
+			}
+			_ = s.tmux.KillSession(ctx, sess.ID.String())
+			return domain.Session{}, fmt.Errorf("create agent tmux session %q: %w", agentTmuxID, err)
+		}
+		created = append(created, agentTmuxID)
 	}
 
 	if err := s.repo.Save(ctx, sess); err != nil {
@@ -501,6 +526,9 @@ func (s *SessionService) AttachShell(ctx context.Context, req AttachShellRequest
 
 type AttachAgentRequest struct {
 	ID uuid.UUID
+	// AgentIndex selects which pane of a swarm to attach to (1-based). It is
+	// ignored by single-agent sessions.
+	AgentIndex int
 }
 
 type AttachAgentResponse struct {
@@ -513,7 +541,7 @@ func (s *SessionService) AttachAgent(ctx context.Context, req AttachAgentRequest
 		return AttachAgentResponse{}, err
 	}
 
-	agentTmuxID := sess.ID.String() + "-agent"
+	agentTmuxID := sess.AgentTmuxID(req.AgentIndex)
 	agentCmd := sess.AgentCommand
 	if agentCmd == "" {
 		agentCmd = s.defaultLauncher.Command
@@ -564,7 +592,7 @@ func (s *SessionService) AttachEditor(ctx context.Context, req AttachEditorReque
 	if editorCmd == "" {
 		editorCmd = defaultEditorCommand
 	}
-	editorTmuxID := sess.ID.String() + tmuxSessionSuffix(PreviewKindEditor)
+	editorTmuxID := previewTmuxID(sess, PreviewKindEditor, 0)
 	if err := s.ensureTmuxSession(ctx, editorTmuxID, sess, editorCmd+" ."); err != nil {
 		return AttachEditorResponse{}, err
 	}
@@ -586,6 +614,9 @@ func (s *SessionService) AttachEditor(ctx context.Context, req AttachEditorReque
 
 type SendAgentEnterRequest struct {
 	ID uuid.UUID
+	// AgentIndex selects which pane of a swarm to poke (1-based). Ignored by
+	// single-agent sessions.
+	AgentIndex int
 }
 
 type SendAgentEnterResponse struct{}
@@ -598,19 +629,71 @@ func (s *SessionService) SendAgentEnter(ctx context.Context, req SendAgentEnterR
 	if err != nil {
 		return SendAgentEnterResponse{}, err
 	}
-	agentTmuxID := sess.ID.String() + "-agent"
+	agentTmuxID := sess.AgentTmuxID(req.AgentIndex)
 	if err := s.tmux.SendKeys(ctx, agentTmuxID, "Enter"); err != nil {
 		return SendAgentEnterResponse{}, fmt.Errorf("send enter to agent: %w", err)
 	}
-	s.logger.InfoContext(ctx, "sent enter to agent", slog.String("id", sess.ID.String()))
+	s.logger.InfoContext(ctx, "sent enter to agent",
+		slog.String("id", sess.ID.String()),
+		slog.String("tmux_id", agentTmuxID),
+	)
 	return SendAgentEnterResponse{}, nil
+}
+
+// --- SendAgentEnterAll ---
+
+type SendAgentEnterAllRequest struct {
+	ID uuid.UUID
+}
+
+type SendAgentEnterAllResponse struct {
+	// Delivered counts the panes that accepted the keystroke.
+	Delivered int
+}
+
+// SendAgentEnterAll delivers an Enter keypress to every agent pane of a session
+// — one pane for an ordinary session, all N for a swarm.
+//
+// This is the operator's "submit whatever is queued" lever. A bare Enter is safe
+// to broadcast: it submits a pending prompt, and is a harmless newline on an
+// agent that is idle or already working. An unreachable pane is logged and
+// skipped rather than failing the call, so one dead agent cannot stop the others
+// being woken.
+func (s *SessionService) SendAgentEnterAll(ctx context.Context, req SendAgentEnterAllRequest) (SendAgentEnterAllResponse, error) {
+	sess, err := s.repo.Get(ctx, req.ID)
+	if err != nil {
+		return SendAgentEnterAllResponse{}, err
+	}
+
+	delivered := 0
+	for _, tmuxID := range sess.AgentTmuxIDs() {
+		if err := s.tmux.SendKeys(ctx, tmuxID, "Enter"); err != nil {
+			s.logger.WarnContext(ctx, "could not send enter to agent pane",
+				slog.String("session_id", sess.ID.String()),
+				slog.String("tmux_id", tmuxID),
+				slog.String("error", err.Error()),
+			)
+			continue
+		}
+		delivered++
+	}
+
+	s.logger.InfoContext(ctx, "sent enter to agent panes",
+		slog.String("id", sess.ID.String()),
+		slog.Int("delivered", delivered),
+		slog.Int("agents", sess.AgentCount()),
+	)
+	return SendAgentEnterAllResponse{Delivered: delivered}, nil
 }
 
 // --- SendAgentPrompt ---
 
 type SendAgentPromptRequest struct {
-	ID     uuid.UUID
-	Prompt string
+	ID uuid.UUID
+	// AgentIndex selects which pane of a swarm receives the prompt (1-based).
+	// Ignored by single-agent sessions.
+	AgentIndex int
+	Prompt     string
 }
 
 type SendAgentPromptResponse struct{}
@@ -625,7 +708,7 @@ func (s *SessionService) SendAgentPrompt(ctx context.Context, req SendAgentPromp
 	if err != nil {
 		return SendAgentPromptResponse{}, err
 	}
-	agentTmuxID := sess.ID.String() + "-agent"
+	agentTmuxID := sess.AgentTmuxID(req.AgentIndex)
 	if err := s.tmux.SendText(ctx, agentTmuxID, req.Prompt); err != nil {
 		return SendAgentPromptResponse{}, fmt.Errorf("send prompt to agent: %w", err)
 	}
@@ -634,6 +717,7 @@ func (s *SessionService) SendAgentPrompt(ctx context.Context, req SendAgentPromp
 	}
 	s.logger.InfoContext(ctx, "sent prompt to agent",
 		slog.String("id", sess.ID.String()),
+		slog.String("tmux_id", agentTmuxID),
 		slog.Int("prompt_len", len(req.Prompt)),
 	)
 	return SendAgentPromptResponse{}, nil
@@ -655,30 +739,31 @@ const (
 // when no editorCommand is configured.
 const defaultEditorCommand = "nvim"
 
-const (
-	tmuxSuffixAgent  = "-agent"
-	tmuxSuffixEditor = "-editor"
-)
+const tmuxSuffixEditor = "-editor"
 
-// tmuxSessionSuffix maps a PreviewKind to the suffix appended to a session's
-// UUID to form its backing tmux session name. The shell pane uses the bare
-// UUID (empty suffix); the agent and editor panes append "-agent"/"-editor".
-func tmuxSessionSuffix(kind PreviewKind) string {
+// previewTmuxID resolves the tmux session backing the requested target of a
+// session. The shell uses the bare UUID and the editor appends "-editor"; agent
+// panes go through Session.AgentTmuxID so swarm sessions address the pane at
+// agentIndex while single-agent sessions ignore it.
+func previewTmuxID(sess domain.Session, kind PreviewKind, agentIndex int) string {
 	switch kind {
 	case PreviewKindAgent:
-		return tmuxSuffixAgent
+		return sess.AgentTmuxID(agentIndex)
 	case PreviewKindEditor:
-		return tmuxSuffixEditor
+		return sess.ID.String() + tmuxSuffixEditor
 	default:
-		return ""
+		return sess.ID.String()
 	}
 }
 
 type PreviewSessionRequest struct {
-	ID     uuid.UUID
-	Kind   PreviewKind
-	Width  int
-	Height int
+	ID   uuid.UUID
+	Kind PreviewKind
+	// AgentIndex selects which pane of a swarm to capture when Kind is
+	// PreviewKindAgent (1-based). Ignored otherwise.
+	AgentIndex int
+	Width      int
+	Height     int
 }
 
 // PreviewSessionResponse carries a snapshot of the targeted tmux pane.
@@ -696,7 +781,7 @@ func (s *SessionService) PreviewSession(ctx context.Context, req PreviewSessionR
 		return PreviewSessionResponse{}, err
 	}
 
-	tmuxID := sess.ID.String() + tmuxSessionSuffix(req.Kind)
+	tmuxID := previewTmuxID(sess, req.Kind, req.AgentIndex)
 
 	if req.Width > 0 && req.Height > 0 {
 		if err := s.tmux.ResizeWindow(ctx, tmuxID, req.Width, req.Height); err != nil {
@@ -722,6 +807,9 @@ func (s *SessionService) PreviewSession(ctx context.Context, req PreviewSessionR
 type KillPreviewSessionRequest struct {
 	ID   uuid.UUID
 	Kind PreviewKind
+	// AgentIndex selects which pane of a swarm to kill when Kind is
+	// PreviewKindAgent (1-based). Ignored otherwise.
+	AgentIndex int
 }
 
 type KillPreviewSessionResponse struct{}
@@ -732,7 +820,7 @@ func (s *SessionService) KillPreviewSession(ctx context.Context, req KillPreview
 		return KillPreviewSessionResponse{}, err
 	}
 
-	tmuxID := sess.ID.String() + tmuxSessionSuffix(req.Kind)
+	tmuxID := previewTmuxID(sess, req.Kind, req.AgentIndex)
 
 	if err := s.killTmuxIfExists(ctx, tmuxID); err != nil {
 		return KillPreviewSessionResponse{}, fmt.Errorf("kill preview session: %w", err)
@@ -762,10 +850,14 @@ type DeleteSessionResponse struct{}
 //     the worktree was already removed by a prior interrupted delete, git
 //     removal is skipped with a warning — the rest of the teardown still
 //     proceeds.
-//  2. All three backing tmux sessions (shell, -agent, -editor) are killed, if
-//     they still exist. A missing tmux session is not an error: the user may
-//     have killed it manually or the tmux server may have restarted.
-//  3. The session row is deleted from the repository last, so any failure in
+//  2. Every backing tmux session is killed, if it still exists: the shell, each
+//     agent pane (one for a single-agent session, N for a swarm) and the editor.
+//     A missing tmux session is not an error: the user may have killed it
+//     manually or the tmux server may have restarted.
+//  3. A swarm's message board is purged. A failure here is logged and swallowed
+//     — stale board data on disk must not strand a session row the user asked
+//     to delete.
+//  4. The session row is deleted from the repository last, so any failure in
 //     steps 1 or 2 leaves a retriable session row instead of an orphaned
 //     worktree or tmux session paired with no DB record.
 func (s *SessionService) Delete(ctx context.Context, req DeleteSessionRequest) (DeleteSessionResponse, error) {
@@ -788,16 +880,23 @@ func (s *SessionService) Delete(ctx context.Context, req DeleteSessionRequest) (
 		}
 	}
 
-	// Tear down all three backing tmux sessions: the shell (bare UUID), the
-	// agent (-agent) and the editor (-editor). A missing session is not an
-	// error (killTmuxIfExists no-ops), so partially-created sessions clean up.
-	for _, tmuxID := range []string{
-		sess.ID.String(),
-		sess.ID.String() + tmuxSuffixAgent,
-		sess.ID.String() + tmuxSuffixEditor,
-	} {
+	// Tear down every backing tmux session: the shell (bare UUID), each agent
+	// pane, and the editor (-editor). A missing session is not an error
+	// (killTmuxIfExists no-ops), so partially-created sessions clean up.
+	tmuxIDs := append([]string{sess.ID.String()}, sess.AgentTmuxIDs()...)
+	tmuxIDs = append(tmuxIDs, sess.ID.String()+tmuxSuffixEditor)
+	for _, tmuxID := range tmuxIDs {
 		if err := s.killTmuxIfExists(ctx, tmuxID); err != nil {
 			return DeleteSessionResponse{}, err
+		}
+	}
+
+	if sess.IsSwarm() {
+		if err := s.board.Purge(ctx, sess.ID); err != nil {
+			s.logger.WarnContext(ctx, "purge swarm board failed; board data left on disk",
+				slog.String("session_id", sess.ID.String()),
+				slog.String("error", err.Error()),
+			)
 		}
 	}
 

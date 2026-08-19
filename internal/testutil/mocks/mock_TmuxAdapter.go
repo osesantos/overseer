@@ -308,6 +308,108 @@ func (_c *MockTmuxAdapter_CreateSession_Call) RunAndReturn(run func(ctx context.
 	return _c
 }
 
+// EnsureExtendedKeys provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) EnsureExtendedKeys(ctx context.Context) error {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnsureExtendedKeys")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxAdapter_EnsureExtendedKeys_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureExtendedKeys'
+type MockTmuxAdapter_EnsureExtendedKeys_Call struct {
+	*mock.Call
+}
+
+// EnsureExtendedKeys is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockTmuxAdapter_Expecter) EnsureExtendedKeys(ctx interface{}) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	return &MockTmuxAdapter_EnsureExtendedKeys_Call{Call: _e.mock.On("EnsureExtendedKeys", ctx)}
+}
+
+func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) Run(run func(ctx context.Context)) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) Return(err error) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) RunAndReturn(run func(ctx context.Context) error) *MockTmuxAdapter_EnsureExtendedKeys_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// EnsureMouseMode provides a mock function for the type MockTmuxAdapter
+func (_mock *MockTmuxAdapter) EnsureMouseMode(ctx context.Context) error {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for EnsureMouseMode")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockTmuxAdapter_EnsureMouseMode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureMouseMode'
+type MockTmuxAdapter_EnsureMouseMode_Call struct {
+	*mock.Call
+}
+
+// EnsureMouseMode is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockTmuxAdapter_Expecter) EnsureMouseMode(ctx interface{}) *MockTmuxAdapter_EnsureMouseMode_Call {
+	return &MockTmuxAdapter_EnsureMouseMode_Call{Call: _e.mock.On("EnsureMouseMode", ctx)}
+}
+
+func (_c *MockTmuxAdapter_EnsureMouseMode_Call) Run(run func(ctx context.Context)) *MockTmuxAdapter_EnsureMouseMode_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockTmuxAdapter_EnsureMouseMode_Call) Return(err error) *MockTmuxAdapter_EnsureMouseMode_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockTmuxAdapter_EnsureMouseMode_Call) RunAndReturn(run func(ctx context.Context) error) *MockTmuxAdapter_EnsureMouseMode_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetSession provides a mock function for the type MockTmuxAdapter
 func (_mock *MockTmuxAdapter) GetSession(ctx context.Context, tmuxID string) (domain.TmuxSession, error) {
 	ret := _mock.Called(ctx, tmuxID)
@@ -625,100 +727,6 @@ func (_c *MockTmuxAdapter_SendKeys_Call) RunAndReturn(run func(ctx context.Conte
 	return _c
 }
 
-// EnsureExtendedKeys provides a mock function for the type MockTmuxAdapter
-func (_mock *MockTmuxAdapter) EnsureExtendedKeys(ctx context.Context) error {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for EnsureExtendedKeys")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockTmuxAdapter_EnsureExtendedKeys_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureExtendedKeys'
-type MockTmuxAdapter_EnsureExtendedKeys_Call struct {
-	*mock.Call
-}
-
-func (_e *MockTmuxAdapter_Expecter) EnsureExtendedKeys(ctx interface{}) *MockTmuxAdapter_EnsureExtendedKeys_Call {
-	return &MockTmuxAdapter_EnsureExtendedKeys_Call{Call: _e.mock.On("EnsureExtendedKeys", ctx)}
-}
-
-func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) Run(run func(ctx context.Context)) *MockTmuxAdapter_EnsureExtendedKeys_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(arg0)
-	})
-	return _c
-}
-
-func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) Return(err error) *MockTmuxAdapter_EnsureExtendedKeys_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockTmuxAdapter_EnsureExtendedKeys_Call) RunAndReturn(run func(ctx context.Context) error) *MockTmuxAdapter_EnsureExtendedKeys_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
-// EnsureMouseMode provides a mock function for the type MockTmuxAdapter
-func (_mock *MockTmuxAdapter) EnsureMouseMode(ctx context.Context) error {
-	ret := _mock.Called(ctx)
-
-	if len(ret) == 0 {
-		panic("no return value specified for EnsureMouseMode")
-	}
-
-	var r0 error
-	if returnFunc, ok := ret.Get(0).(func(context.Context) error); ok {
-		r0 = returnFunc(ctx)
-	} else {
-		r0 = ret.Error(0)
-	}
-	return r0
-}
-
-// MockTmuxAdapter_EnsureMouseMode_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EnsureMouseMode'
-type MockTmuxAdapter_EnsureMouseMode_Call struct {
-	*mock.Call
-}
-
-func (_e *MockTmuxAdapter_Expecter) EnsureMouseMode(ctx interface{}) *MockTmuxAdapter_EnsureMouseMode_Call {
-	return &MockTmuxAdapter_EnsureMouseMode_Call{Call: _e.mock.On("EnsureMouseMode", ctx)}
-}
-
-func (_c *MockTmuxAdapter_EnsureMouseMode_Call) Run(run func(ctx context.Context)) *MockTmuxAdapter_EnsureMouseMode_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		var arg0 context.Context
-		if args[0] != nil {
-			arg0 = args[0].(context.Context)
-		}
-		run(arg0)
-	})
-	return _c
-}
-
-func (_c *MockTmuxAdapter_EnsureMouseMode_Call) Return(err error) *MockTmuxAdapter_EnsureMouseMode_Call {
-	_c.Call.Return(err)
-	return _c
-}
-
-func (_c *MockTmuxAdapter_EnsureMouseMode_Call) RunAndReturn(run func(ctx context.Context) error) *MockTmuxAdapter_EnsureMouseMode_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // SendText provides a mock function for the type MockTmuxAdapter
 func (_mock *MockTmuxAdapter) SendText(ctx context.Context, tmuxID string, text string) error {
 	ret := _mock.Called(ctx, tmuxID, text)
@@ -763,7 +771,11 @@ func (_c *MockTmuxAdapter_SendText_Call) Run(run func(ctx context.Context, tmuxI
 		if args[2] != nil {
 			arg2 = args[2].(string)
 		}
-		run(arg0, arg1, arg2)
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
 	})
 	return _c
 }

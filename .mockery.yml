@@ -34,3 +34,5 @@ packages:
       PullRequestPort:
       AgentStatusDetector:
       AgentStatusDetectorRegistry:
+      SwarmBoardRepository:
+      SwarmDescriptorWriter:

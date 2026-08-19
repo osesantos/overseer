@@ -27,6 +27,8 @@ func (m Model) executeCommand(raw string) (tea.Model, tea.Cmd) {
 	switch name {
 	case "send":
 		return m.cmdSend(args)
+	case "enter":
+		return m.cmdEnter(args)
 	case "delete":
 		return m.cmdDelete(args)
 	case "new":
@@ -58,6 +60,57 @@ func parseCommand(raw string) (name string, args []string) {
 // chat panel renders a dimmed system line. It also stops the spinner.
 func (m Model) commandResult(text string, isError bool) (tea.Model, tea.Cmd) {
 	return m, shared.Emit(shared.OverseerCommandResultMsg{Text: text, IsError: isError})
+}
+
+// --- /enter ---
+
+// cmdEnter submits whatever is queued in a session's agent prompts by sending a
+// bare Enter to every agent pane.
+//
+// It exists because an agent CLI that is still starting up swallows the Enter
+// that should submit a prompt typed into it, leaving the agent holding an unsent
+// message. SubmitBriefings retries that automatically for a new swarm; this is
+// the operator's lever for when an agent is wedged anyway, or came back from a
+// restart with something queued.
+func (m Model) cmdEnter(args []string) (tea.Model, tea.Cmd) {
+	if len(args) == 0 {
+		return m.commandResult("usage: /enter <session-name>", true)
+	}
+	sess, rest, ok := matchSession(args, m.cachedSessions)
+	if !ok {
+		return m.commandResult(fmt.Sprintf("no session found matching %q", strings.Join(args, " ")), true)
+	}
+	if strings.TrimSpace(rest) != "" {
+		return m.commandResult("usage: /enter <session-name> (takes no further arguments)", true)
+	}
+
+	svc := m.sessionsService
+	sessionID := sess.ID
+	sessionName := sess.Name
+	agentCount := sess.AgentCount()
+	return m, shared.Request(
+		func(ctx context.Context) (service.SendAgentEnterAllResponse, error) {
+			return svc.SendAgentEnterAll(ctx, service.SendAgentEnterAllRequest{ID: sessionID})
+		},
+		func(resp service.SendAgentEnterAllResponse, err error) tea.Msg {
+			if err != nil {
+				return shared.OverseerCommandResultMsg{
+					Text:    fmt.Sprintf("could not send enter to %s: %v", sessionName, err),
+					IsError: true,
+				}
+			}
+			if resp.Delivered < agentCount {
+				return shared.OverseerCommandResultMsg{
+					Text: fmt.Sprintf("sent enter to %d of %d agent panes in %s — the rest were unreachable",
+						resp.Delivered, agentCount, sessionName),
+					IsError: true,
+				}
+			}
+			return shared.OverseerCommandResultMsg{
+				Text: fmt.Sprintf("sent enter to %d agent pane(s) in %s", resp.Delivered, sessionName),
+			}
+		},
+	)
 }
 
 // --- /send ---
@@ -120,6 +173,8 @@ func (m Model) cmdNew() (tea.Model, tea.Cmd) {
 		m.defaultBranchesByProject(),
 		m.launchers,
 		m.width,
+		m.swarmBoardURL != "",
+		m.swarmMaxAgents,
 	)
 	m.activePopup = popupNewSession
 	m.chatPanelVisible = false
@@ -155,6 +210,7 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 	help := strings.Join([]string{
 		"Operator commands:",
 		"  /send <session> <prompt…>       — send a prompt to a session",
+		"  /enter <session>                — submit queued prompts in all agent panes",
 		"  /delete <session>               — open the delete-session dialog",
 		"  /new                            — open the new-session dialog",
 		"  /list                           — list all sessions",

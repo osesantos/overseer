@@ -13,6 +13,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/adapters/secondary/swarmboard"
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 	"github.com/dnlopes/overseer/internal/shared/paths"
@@ -29,7 +30,7 @@ func newTestDashboard(t *testing.T) Model {
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 
 	return New(
@@ -37,12 +38,15 @@ func newTestDashboard(t *testing.T) Model {
 		*sessSvc,
 		*projSvc,
 		nil, // overseerService — not needed for these tests
+		nil, // swarmService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
 		domain.DefaultLabels,
 		60, 15,
 		500*time.Millisecond,
 		nil, // discoveryPaths
+		"",  // swarmBoardURL — swarm disabled
+		domain.SwarmMaxAgents,
 	)
 }
 
@@ -179,7 +183,7 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 
 	return New(
@@ -187,11 +191,14 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		*sessSvc,
 		*projSvc,
 		nil, // overseerService — not needed for these tests
+		nil, // swarmService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
 		domain.DefaultLabels,
 		60, 15,
 		500*time.Millisecond,
 		nil, // discoveryPaths
+		"",  // swarmBoardURL — swarm disabled
+		domain.SwarmMaxAgents,
 	)
 }

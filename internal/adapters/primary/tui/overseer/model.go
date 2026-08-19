@@ -25,6 +25,14 @@ const (
 	inputHeight = 1
 	// borderFrameH is the vertical frame consumed by the panel border.
 	borderFrameH = 2
+	// borderSideW is the two columns the left and right border glyphs occupy.
+	//
+	// lipgloss treats a bordered style's Width as the *total* including the
+	// border, so the usable interior is Width-2. The viewport used to be sized to
+	// the full Width, leaving it two columns wider than the box it draws into —
+	// which quietly wrapped any long agent line and became obvious once messages
+	// gained a full-width separator.
+	borderSideW = 2
 )
 
 // SessionSnapshot is a lightweight view into a session's static state that
@@ -51,10 +59,16 @@ type SessionSnapshot struct {
 type Model struct {
 	// history accumulates all chat messages for the viewport.
 	history []domain.OverseerMessage
+	// rendered holds each history entry already converted to styled text, index
+	// for index. Markdown rendering is far too costly to redo for the whole
+	// transcript on every incoming message, so each entry is rendered once and
+	// only re-rendered when a resize changes the wrap width.
+	rendered []string
 
 	viewport viewport.Model
 	input    textinput.Model
 	spinner  spinner.Model
+	markdown styles.Markdown
 	thinking bool
 	width    int
 	height   int
@@ -87,11 +101,19 @@ func (m *Model) SetSize(width, height int) {
 	m.width = width
 	m.height = height
 	// Prompt width depends on current mode; use the longer one to be safe.
-	m.input.SetWidth(width - len(operatorPrompt) - borderFrameH)
+	m.input.SetWidth(max(width-len(operatorPrompt)-borderFrameH-borderSideW, 1))
 
 	vpHeight := max(height-borderFrameH-inputHeight, 1)
-	m.viewport.SetWidth(width - borderFrameH)
+	vpWidth := max(width-borderFrameH-borderSideW, 1)
+	m.viewport.SetWidth(vpWidth)
 	m.viewport.SetHeight(vpHeight)
+
+	// Markdown is wrapped at a fixed width, so a width change invalidates every
+	// cached body. Height changes do not.
+	if m.markdown.Width() != vpWidth {
+		m.markdown = m.styles.NewMarkdown(vpWidth)
+		m.rerenderAll()
+	}
 	m.refreshViewport()
 }
 
@@ -194,7 +216,26 @@ func (m Model) View() tea.View {
 // appendMessage adds msg to history and refreshes the viewport.
 func (m *Model) appendMessage(msg domain.OverseerMessage) {
 	m.history = append(m.history, msg)
+	m.rendered = append(m.rendered, m.renderBody(msg))
 	m.refreshViewport()
+}
+
+// renderBody converts one message's content to styled text. Agent and user prose
+// goes through markdown; system notices stay literal, because they are Overseer's
+// own one-line notes and markdown would only mangle paths and errors in them.
+func (m Model) renderBody(msg domain.OverseerMessage) string {
+	if msg.Role == domain.OverseerRoleSystem {
+		return m.styles.Chat.SystemText.Render("  ○ " + msg.Content)
+	}
+	return m.markdown.Render(msg.Content)
+}
+
+// rerenderAll rebuilds every cached body, after a resize changed the wrap width.
+func (m *Model) rerenderAll() {
+	m.rendered = make([]string, len(m.history))
+	for i, msg := range m.history {
+		m.rendered[i] = m.renderBody(msg)
+	}
 }
 
 // refreshViewport re-renders the message history into the viewport.
@@ -203,18 +244,29 @@ func (m *Model) appendMessage(msg domain.OverseerMessage) {
 // yanked back on every new message.
 func (m *Model) refreshViewport() {
 	s := m.styles
+	separator := s.Chat.Separator.Render(strings.Repeat("─", max(m.viewport.Width(), 1)))
+
 	var b strings.Builder
-	for _, msg := range m.history {
+	for i, msg := range m.history {
+		body := ""
+		if i < len(m.rendered) {
+			body = m.rendered[i]
+		}
+
 		switch msg.Role {
 		case domain.OverseerRoleUser:
-			b.WriteString(s.Chat.UserLabel.Render("You  "))
-			b.WriteString(s.Chat.UserText.Render(msg.Content))
+			b.WriteString(s.Chat.UserLabel.Render("You"))
+			b.WriteByte('\n')
+			b.WriteString(body)
 		case domain.OverseerRoleAgent:
 			b.WriteString(s.Chat.AgentLabel.Render("Agent"))
-			b.WriteString(s.Chat.AgentText.Render(" " + msg.Content))
+			b.WriteByte('\n')
+			b.WriteString(body)
 		case domain.OverseerRoleSystem:
-			b.WriteString(s.Chat.SystemText.Render("  ○ " + msg.Content))
+			b.WriteString(body)
 		}
+		b.WriteByte('\n')
+		b.WriteString(separator)
 		b.WriteByte('\n')
 	}
 	atBottom := m.viewport.AtBottom()

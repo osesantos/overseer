@@ -9,6 +9,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/boardhttp"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/dashboard"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -20,6 +21,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/secondary/git"
 	githubcli "github.com/dnlopes/overseer/internal/adapters/secondary/github"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/storage"
+	"github.com/dnlopes/overseer/internal/adapters/secondary/swarmboard"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/tmux"
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
@@ -29,6 +31,10 @@ import (
 )
 
 const pullRequestRefreshInterval = time.Minute
+
+// boardShutdownTimeout bounds how long we wait for in-flight agent requests to
+// drain when the TUI exits.
+const boardShutdownTimeout = 5 * time.Second
 
 func main() {
 	cfg, err := config.Load(paths.ConfigFile())
@@ -88,9 +94,32 @@ func main() {
 
 	githubAdapter := githubcli.New(log)
 
-	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, resolver, defaultLauncher, cfg.EditorCommand, log)
+	swarmBoard := swarmboard.New(resolver, log)
+
+	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, swarmBoard, resolver, defaultLauncher, cfg.EditorCommand, log)
 	projectSvc := service.NewProjectService(store.Projects(), gitAdapter, log)
 	prSvc := service.NewPullRequestService(githubAdapter, log)
+	swarmSvc := service.NewSwarmService(swarmBoard, swarmBoard, store.Sessions(), tmuxAdapter, resolver, cfg.Swarm.MaxMessagesPerSession, log)
+
+	// The board server is what lets the agent processes talk to each other. It
+	// binds loopback only; boardURL is empty when swarm mode is off, which is the
+	// signal the TUI uses to refuse swarm session creation.
+	var boardURL string
+	if cfg.Swarm.Enabled {
+		boardServer := boardhttp.New(swarmSvc, log)
+		boardURL, err = boardServer.Start(cfg.Swarm.BoardAddr)
+		if err != nil {
+			log.Error("start swarm board server", "error", err)
+			os.Exit(1)
+		}
+		defer func() {
+			shutdownCtx, cancel := context.WithTimeout(context.Background(), boardShutdownTimeout)
+			defer cancel()
+			if err := boardServer.Shutdown(shutdownCtx); err != nil {
+				log.Warn("swarm board server shutdown", "error", err)
+			}
+		}()
+	}
 
 	// Overseer Agent (optional: gracefully disabled when claude is not on PATH).
 	var overseerSvc *service.OverseerService
@@ -111,6 +140,9 @@ func main() {
 	if cfg.AgentStatus.Enabled {
 		schedulerJobs = append(schedulerJobs, buildAgentStatusJob(agentStatusSvc, cfg.AgentStatus.RefreshInterval))
 	}
+	if cfg.Swarm.Enabled {
+		schedulerJobs = append(schedulerJobs, buildSwarmNudgeJob(swarmSvc, cfg.Swarm.NudgeDebounce))
+	}
 	scheduler := jobs.New(schedulerJobs...)
 
 	previewRefresh, err := cfg.PreviewRefreshDuration()
@@ -126,7 +158,7 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents)
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {
@@ -161,6 +193,36 @@ func buildPullRequestJob(
 						return nil
 					}
 					return shared.JobsBatchMsg{Cmds: fanOutPRFetches(prSvc, data)}
+				},
+			)
+		},
+	}
+}
+
+// buildSwarmNudgeJob drives the swarm heartbeat. Agent CLIs do not loop, so a
+// post from one agent would otherwise sit unread; this job periodically pokes
+// every agent whose board has moved. The interval doubles as the debounce
+// window: a burst of posts inside one tick costs a single round of pokes.
+func buildSwarmNudgeJob(svc *service.SwarmService, interval time.Duration) jobs.Job {
+	return jobs.Job{
+		ID:       "swarm-nudge-flush",
+		Interval: interval,
+		Run: func() tea.Cmd {
+			return shared.Request(
+				func(ctx context.Context) (service.FlushSwarmNudgesResponse, error) {
+					// Submitting freshly typed briefings comes first: a new swarm's
+					// agents are still starting up when they are briefed, so the
+					// Enter that submits their prompt has to be retried here.
+					if _, err := svc.SubmitBriefings(ctx, service.SubmitSwarmBriefingsRequest{}); err != nil {
+						return service.FlushSwarmNudgesResponse{}, err
+					}
+					return svc.FlushNudges(ctx, service.FlushSwarmNudgesRequest{})
+				},
+				func(_ service.FlushSwarmNudgesResponse, _ error) tea.Msg {
+					// Nothing for the UI to react to: failures are logged in the
+					// service, per-agent, so one dead pane stays visible without
+					// interrupting the operator.
+					return nil
 				},
 			)
 		},

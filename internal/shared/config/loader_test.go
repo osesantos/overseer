@@ -1,12 +1,14 @@
 package config_test
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/shared/config"
 	"github.com/dnlopes/overseer/internal/shared/errs"
 )
@@ -125,6 +127,134 @@ func TestDefault_ShipsNvimEditorCommand(t *testing.T) {
 
 	if cfg.EditorCommand != "nvim" {
 		t.Errorf("EditorCommand: want nvim, got %q", cfg.EditorCommand)
+	}
+}
+
+func TestDefault_ShipsSwarmDefaults(t *testing.T) {
+	cfg := config.Default()
+
+	if !cfg.Swarm.Enabled {
+		t.Error("Swarm.Enabled: want true, got false")
+	}
+	if cfg.Swarm.MaxAgents != domain.SwarmMaxAgents {
+		t.Errorf("Swarm.MaxAgents: want %d, got %d", domain.SwarmMaxAgents, cfg.Swarm.MaxAgents)
+	}
+	if cfg.Swarm.NudgeDebounce != 2*time.Second {
+		t.Errorf("Swarm.NudgeDebounce: want 2s, got %v", cfg.Swarm.NudgeDebounce)
+	}
+	if cfg.Swarm.MaxMessagesPerSession != 500 {
+		t.Errorf("Swarm.MaxMessagesPerSession: want 500, got %d", cfg.Swarm.MaxMessagesPerSession)
+	}
+	if cfg.Swarm.BoardAddr != "127.0.0.1:0" {
+		t.Errorf("Swarm.BoardAddr: want 127.0.0.1:0 (loopback, ephemeral port), got %q", cfg.Swarm.BoardAddr)
+	}
+}
+
+func TestLoad_DefaultsApplyWhenSwarmSectionMissing(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("logging:\n  level: debug\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.Swarm.Enabled {
+		t.Error("Swarm.Enabled: want true, got false")
+	}
+	if cfg.Swarm.MaxMessagesPerSession != 500 {
+		t.Errorf("Swarm.MaxMessagesPerSession: want 500, got %d", cfg.Swarm.MaxMessagesPerSession)
+	}
+}
+
+func TestLoad_SwarmSectionOverridesDefaults(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "swarm:\n" +
+		"  enabled: false\n" +
+		"  maxAgents: 4\n" +
+		"  nudgeDebounce: 10s\n" +
+		"  maxMessagesPerSession: 50\n" +
+		"  boardAddr: 127.0.0.1:9999\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.Swarm.Enabled {
+		t.Error("Swarm.Enabled: want false, got true")
+	}
+	if cfg.Swarm.MaxAgents != 4 {
+		t.Errorf("Swarm.MaxAgents: want 4, got %d", cfg.Swarm.MaxAgents)
+	}
+	if cfg.Swarm.NudgeDebounce != 10*time.Second {
+		t.Errorf("Swarm.NudgeDebounce: want 10s, got %v", cfg.Swarm.NudgeDebounce)
+	}
+	if cfg.Swarm.MaxMessagesPerSession != 50 {
+		t.Errorf("Swarm.MaxMessagesPerSession: want 50, got %d", cfg.Swarm.MaxMessagesPerSession)
+	}
+	if cfg.Swarm.BoardAddr != "127.0.0.1:9999" {
+		t.Errorf("Swarm.BoardAddr: want 127.0.0.1:9999, got %q", cfg.Swarm.BoardAddr)
+	}
+}
+
+func TestLoad_SwarmValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{
+			name:    "maxAgents below the domain minimum",
+			content: "swarm:\n  maxAgents: 1\n",
+		},
+		{
+			name:    "maxAgents above the domain ceiling",
+			content: "swarm:\n  maxAgents: 99\n",
+		},
+		{
+			name:    "non-positive nudgeDebounce",
+			content: "swarm:\n  nudgeDebounce: 0s\n",
+		},
+		{
+			name:    "negative maxMessagesPerSession",
+			content: "swarm:\n  maxMessagesPerSession: -1\n",
+		},
+		{
+			name:    "blank boardAddr",
+			content: "swarm:\n  boardAddr: \"   \"\n",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := config.Load(path)
+			if !errors.Is(err, errs.ErrInvalidInput) {
+				t.Fatalf("Load() error = %v, want %v", err, errs.ErrInvalidInput)
+			}
+		})
+	}
+}
+
+func TestLoad_SwarmDisabled_SkipsValidation(t *testing.T) {
+	// A disabled swarm should not block startup over settings it will never use.
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "swarm:\n  enabled: false\n  maxAgents: 99\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := config.Load(path); err != nil {
+		t.Fatalf("Load() error = %v, want nil when swarm is disabled", err)
 	}
 }
 

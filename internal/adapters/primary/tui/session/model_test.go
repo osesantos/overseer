@@ -14,6 +14,7 @@ import (
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/adapters/secondary/swarmboard"
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 	"github.com/dnlopes/overseer/internal/shared/paths"
@@ -469,7 +470,7 @@ func newSessionServiceWithRepo(t *testing.T) (service.SessionService, *mocks.Moc
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return *service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo
+	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo
 }
 
 func keyPress(value string) tea.KeyPressMsg {

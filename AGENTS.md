@@ -22,6 +22,7 @@ Key capabilities:
 - Overseer chat panel — an LLM meta-agent (Claude Code) that can control sessions
 - Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`
 - Background evaluation loops (`/loop <session> <criteria>`) — runs `claude -p` in the session's working directory; 5s interval between iterations; up to 40 iterations
+- **Swarm sessions** — 2–8 agents on one goal, coordinating through a shared message board served over loopback HTTP; Overseer wakes idle agents via tmux because agent CLIs do not poll
 
 ---
 
@@ -94,10 +95,11 @@ overseer/
 │   │   └── service/       # Use-case services (SessionService, ProjectService, OverseerService)
 │   ├── adapters/
 │   │   ├── primary/
+│   │   │   ├── boardhttp/  # HTTP board API for swarm agent processes (inbound adapter)
 │   │   │   └── tui/       # Bubble Tea TUI (primary adapter)
 │   │   │       ├── components/     # Pure rendering functions (TUI-01)
 │   │   │       ├── dashboard/      # Root model — wires all panes; root.go, commands.go, bindings.go
-│   │   │       ├── inspector/      # Right pane: Agent + Shell preview tabs with polling
+│   │   │       ├── inspector/      # Right pane: preview tabs with polling + the swarm Agents Board
 │   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, branch cache)
 │   │   │       ├── leftpane/       # Left pane: session list + session details
 │   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go, bindings.go)
@@ -111,6 +113,7 @@ overseer/
 │   │       ├── git/                # GitAdapter impl — worktree management
 │   │       ├── github/             # GitHub CLI adapter — PR status
 │   │       ├── storage/            # JSON persistence (atomic writes, schema versioning)
+│   │       ├── swarmboard/         # JSONL swarm board + bootstrap descriptor writer
 │   │       └── tmux/               # TmuxAdapter impl — session create/kill/capture/send-keys
 │   ├── shared/
 │   │   ├── config/        # YAML config loader
@@ -129,18 +132,41 @@ overseer/
 
 ### `internal/core/domain`
 Pure Go structs and interfaces. No I/O. Defines:
-- `Session`, `Project`, `Label` aggregates
-- Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `OverseerAgentPort`
+- `Session`, `Project`, `Label`, `SwarmMessage` aggregates
+- Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `OverseerAgentPort`, `SwarmBoardRepository`, `SwarmDescriptorWriter`
 - Overseer types: `LoopState`, `LoopStatus`, `OverseerMessage`, `OverseerAction`, `OverseerSessionContext`
+- Swarm types: `SwarmMessage`, `SwarmRole`, `SwarmDescriptor`; bounds `SwarmMinAgents` / `SwarmMaxAgents`
 - `ScanForEnd(paneOutput string) bool` — detects the `END` sentinel in loop task output (domain-layer utility)
 - `InferAgentType(agentCommand string) AgentType` — maps a legacy session's agent command string to a typed `AgentType` (lives in `domain/agent_type.go`)
-- Sentinel errors: `ErrTmuxSessionNotFound`, `ErrOverseerAgentNotFound`, etc.
+- `SwarmAgentAuthor(index int) string` — the canonical board author name for an agent (`agent-3`)
+- Sentinel errors: `ErrTmuxSessionNotFound`, `ErrOverseerAgentNotFound`, `ErrSessionNotASwarm`, `ErrSwarmBoardCapReached`, etc.
+
+**Agent tmux naming lives here and nowhere else.** `Session.AgentTmuxID(index)` returns `<uuid>-agent` for a single-agent session and `<uuid>-agent-<index>` for a swarm; `AgentTmuxIDs()` enumerates all of them. Never concatenate `"-agent"` by hand — that convention used to be duplicated across six call sites and is now centralised.
 
 ### `internal/core/service`
 Use-case layer. Each file owns one aggregate:
-- `session.go` — `SessionService`: Create, Rename, Delete, List, Reorder, AttachAgent, AttachShell, SendAgentPrompt, PreviewSession
+- `session.go` — `SessionService`: Create, Rename, Delete, List, Reorder, AttachAgent, AttachShell, SendAgentPrompt, PreviewSession. Agent-targeting methods take an `AgentIndex` (ignored by single-agent sessions).
 - `project.go` — `ProjectService`: Register, Rename, List
 - `overseer.go` — `OverseerService`: Chat, EvaluateLoop
+- `swarm.go` — `SwarmService`: Post, ListMessages, FlushNudges, Bootstrap
+
+#### Why `SwarmService` splits posting from nudging
+
+Agent CLIs do not loop — they finish a turn and idle at their prompt — so nothing would ever make agent 3 read what agent 2 wrote. Overseer has to poke them by typing into their tmux panes.
+
+`Post` only records that a nudge is *due*; `FlushNudges` performs it, driven by the `swarm-nudge-flush` scheduler job at `swarm.nudgeDebounce`. That split keeps timing out of the service (so it stays deterministically testable) and coalesces a burst of posts into one round of pokes — the main defence against a swarm nudging itself into an endless conversation. The most recent author is skipped, since they just spoke.
+
+Do **not** reintroduce timers inside the service; the flush interval is the debounce window.
+
+#### Why briefing and submitting are separate
+
+`Bootstrap` types each agent's briefing but deliberately does **not** send Enter. A pane exists milliseconds after creation, so tmux accepts the keystroke — but the agent CLI is still booting and swallows it, leaving the agent holding a prompt it never submitted. That was a real bug: every swarm looked stalled on creation.
+
+`SubmitBriefings` sends the Enter, called by the same flush job, retrying `briefingSubmitAttempts` rounds. Enter is safe to repeat (submits a queued prompt, harmless newline otherwise), which is what makes a blind retry acceptable.
+
+This is deliberately **retry, not readiness detection**. Modelling readiness would mean either importing the `claudecode` patterns into the service (breaks ARCH-01) or extending the status detectors, which currently hardcode pane index 0 and cannot target agent N. If you add per-pane status detection, this is the first thing worth revisiting.
+
+`SessionService.SendAgentEnterAll` is the operator-facing version of the same primitive, exposed as `ctrl+e` (tab-aware) and `/enter <session>`.
 
 ### `internal/adapters/primary/tui/dashboard`
 Root Bubble Tea model. Owns:
@@ -148,6 +174,22 @@ Root Bubble Tea model. Owns:
 - All global key bindings (`bindings.go`)
 - Operator slash-command execution (`commands.go`)
 - Background loop management (`commands.go`: `startLoopTaskCmd`, `handleLoopTaskCompleted`)
+- Swarm bootstrapping after creation (`root.go`: `bootstrapSwarmCmd`)
+
+#### Key routing — read this before adding a key
+
+**The inspector has no focus model and only receives keys the dashboard explicitly hands it.** `inspector.SetFocus(true)` is never called; the only focused pane is the left one. If you add an inspector key, you must forward it from `handleKey`, the way `tab`, `[` / `]` and `i` already are — otherwise `handleKey` or the left pane will consume it first and your key will appear dead.
+
+Routing order in `Update`, which matters:
+
+1. **Popup gate** — an open popup owns every key.
+2. **Capture gate** — `m.inspector.CapturesInput()` (board compose) owns every key except `hardQuitKeyBinding`. This sits ahead of `ctrl+o` and quit on purpose: a half-typed message must not be cut short by a global shortcut.
+3. `ctrl+o` — toggles the chat panel.
+4. **Chat branch** — when the chat is visible, only `hardQuitKeyBinding` quits; arrows pass through to the session list, `tab` to the inspector, everything else to the chat input.
+5. `quitKeyBinding` — plain `q` or `ctrl+c`.
+6. `handleKey`, then fallthrough to the left pane.
+
+`quitKeyBinding` is `q`/`ctrl+c`; `hardQuitKeyBinding` is `ctrl+c` only. The split exists because `q` is a character the user means to type when an input owns the keyboard — matching the combined binding too early is what used to quit the app mid-sentence in the chat panel.
 
 ### `internal/adapters/primary/tui/overseer`
 Chat panel model. Handles:
@@ -159,12 +201,59 @@ Chat panel model. Handles:
 ### `internal/adapters/primary/tui/inspector`
 Right-pane preview with generation-counter-based polling (prevents chain doubling on `ForceRefreshMsg`).
 
+Holds **five** views at fixed indexes — `ixAgent`, `ixBoard`, `ixSwarmAgent`, `ixShell`, `ixEditor` — and renders a subset chosen by `visibleIxs()`:
+
+| Session type | Visible tabs |
+|--------------|--------------|
+| Ordinary | `Agent` · `Shell` · `Editor` (once revealed) |
+| Swarm | `Agents Board` · `Agent N/M` · `Shell` · `Editor` (once revealed) |
+
+Things to know before editing this package:
+
+- `activeIx` indexes `views`, **not** the visible subset. The visible set is no longer a prefix, so anything iterating tabs must walk `visibleIxs()` — a bare `for i := range n` will render the wrong labels.
+- `ixEditor` must stay last so `RevealEditorMsg` and the size loop need no knowledge of the swarm tabs.
+- `ActivePreviewKind() (service.PreviewKind, int, bool)` is the **only** way to learn what pane the active tab shows. Never map tab *labels* back to a kind: that is exactly how `x` on the Agents Board used to silently kill the shell.
+- `CapturesInput()` reports that the board's compose line owns the keyboard; `CanCompose()` reports that the compose key would do something. The dashboard consults both.
+- `swarmBoardLoadedMsg` / `swarmBoardPostedMsg` are routed to `ixBoard` explicitly, not to `activeIx`, so the board absorbs the tail of its own polling chain after the user tabs away.
+
+### `internal/adapters/primary/boardhttp`
+Inbound HTTP adapter exposing a swarm session's board to the **agent processes**, which live outside Overseer. Requests flow inward through `SwarmService` like the TUI's do (ARCH-05).
+
+The TUI does **not** use this server — it shares the process and reads the board through the service directly. There is no loopback round-trip and no WebSocket.
+
+Binds loopback on an ephemeral port and has **no authentication**; that is deliberate for a single-developer machine and the reason it must not be exposed.
+
+### `internal/adapters/secondary/swarmboard`
+Implements both `SwarmBoardRepository` and `SwarmDescriptorWriter` over a per-session directory under the data dir (never inside the user's repo).
+
+- The board is append-only JSONL, one record per line, each carrying its own `v` schema version — a file header could not be rewritten without losing the crash-safety of a plain append (SEC-05 satisfied per record).
+- `Append` holds a mutex across sequence assignment *and* the write, so `Seq` stays gapless under concurrent posts from several agents. Reads take the same lock, so they never observe a half-written line.
+- A malformed or partially-written line is **skipped with a warning**, never quarantined or deleted. This is a deliberate reading of SEC-06: a torn append must not cost the operator the rest of the conversation.
+
 ### `internal/adapters/secondary/claude`
 Implements `OverseerAgentPort`. Invokes `claude -p <prompt>` as a subprocess.
 - `Chat`: parses `<action>{...}</action>` fence for structured actions; uses `overseerRequestTimeout = 60s` because LLM calls routinely exceed 30s
 - `RunLoopTask`: runs `claude -p --dangerously-skip-permissions <criteria>` in the session's working directory and returns raw stdout; no timeout (subprocess runs until `claude` exits naturally); the dashboard scans output with `domain.ScanForEnd` to detect task completion
 
 ---
+
+## Markdown Rendering in Chat Panels
+
+Both the Overseer chat panel and the swarm Agents Board render message bodies as markdown via `styles.Markdown` (`charm.land/glamour/v2`).
+
+Rules if you touch either panel:
+
+- **Glamour lives in `styles/`.** It has its own stylesheet system, so it is wrapped by `Styles.NewMarkdown(width)` rather than configured in feature code — otherwise TUI-03 ("all styles from `*styles.Styles`") is dead letter.
+- **The stylesheet is pinned to `"dark"`, not `WithAutoStyle`.** Auto-detection probes the terminal background, which makes output depend on where the process runs and breaks golden tests.
+- **Bodies are rendered once and cached.** Each panel keeps a `rendered []string` parallel to its message slice. Re-rendering the whole transcript per incoming message — which is what the plain-text version did — does not scale with glamour.
+- **The two slices must stay index-for-index.** Anything that clears messages must clear `rendered` too; a session switch that cleared only one paired the new session's posts with the old session's bodies.
+- **Only a width change invalidates the cache.** `applySizes`/`SetSize` also run on mode changes, which must not pay for a full re-render — hence the `markdown.Width() != vpWidth` guard.
+- **System notices bypass markdown.** They are Overseer's own one-liners carrying paths and errors that reflowing would mangle.
+- **`Render` never returns empty for non-empty input.** A glamour failure degrades to the raw text; a message must never vanish because it could not be prettified.
+
+### Bordered-panel width
+
+`lipgloss` treats a bordered style's `Width` as the **total** including the border glyphs, so the usable interior is `Width-2`. The chat panel's viewport was sized to the full width and so ran two columns wider than the box it drew into — invisible with plain text, obvious once messages gained a full-width separator. See `borderSideW` in `tui/overseer/model.go`.
 
 ## Shared Utilities (`internal/adapters/primary/tui/shared`)
 
@@ -218,8 +307,19 @@ Use the `overseer-add-feature` skill — it provides the step-by-step hexagonal 
 
 ```bash
 go build ./...          # must always be clean
-go test ./...           # pre-existing tui/session mock failures are known; all others must pass
+go vet ./...            # must always be clean
+go test ./... -race     # pre-existing tui/session mock failures are known; all others must pass
 ```
+
+**Regenerating mocks** — `mockery` is not vendored. Add the interface to `.mockery.yml`, then:
+
+```bash
+go run github.com/vektra/mockery/v3@v3.5.1
+```
+
+This rewrites every mock, so expect cosmetic diffs in unrelated mock files if the pinned version differs from whatever generated the committed ones.
+
+**Do not run `gofmt -w` on a whole directory.** Several committed files carry pre-existing formatting drift (`domain/agent_type.go`, `service/overseer.go`, `tui/session/bindings.go`, and others). A directory-wide format sweeps them into your diff and buries the actual change. Format only the files you edited.
 
 ### Adding a new operator command
 
@@ -263,6 +363,42 @@ Load these at the start of every session (mandatory):
 
 ---
 
+## Adding a swarm-aware feature
+
+Swarm sessions break several assumptions that held when every session had exactly one agent pane. If you touch anything agent-related, check all of these:
+
+| Assumption | What to do instead |
+|------------|--------------------|
+| Pane name is `<uuid>-agent` | Use `Session.AgentTmuxID(index)` / `AgentTmuxIDs()` |
+| A session has one agent | Loop `Session.AgentCount()` |
+| The active tab implies a pane | Ask `inspector.ActivePreviewKind()`; it returns `false` for the Agents Board |
+| One status per session is enough | `AgentStatusService.pollOne` reports `AgentStatusSwarm` — a distinct kind, *not* `Unknown`. Unknown means detection failed; this means it does not apply. Aggregating N panes needs a rule nobody has specified yet |
+| Teardown kills three tmux sessions | `SessionService.Delete` kills shell + every agent pane + editor, and purges the board |
+
+---
+
 ## Known Pre-Existing Test Failures
 
-The `internal/adapters/primary/tui/session` package has 4 failing tests related to `CreateWorktree` mock expectations. These are pre-existing and unrelated to Overseer agent work. Do not attempt to fix them unless explicitly asked.
+The `internal/adapters/primary/tui/session` package has 4 failing tests related to `CreateWorktree` mock expectations:
+
+- `TestCreateForm_DefaultsToCreateWorktreeOn`
+- `TestCreateForm_TabCyclesThroughWorktreeFields`
+- `TestCreateForm_SpaceOnToggleSwitchesMode`
+- `TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch`
+
+These are pre-existing and unrelated to agent work. Do not attempt to fix them unless explicitly asked. To confirm a failure is pre-existing rather than yours, test a clean tree instead of stashing:
+
+```bash
+TMPWT=$(mktemp -d)/baseline
+git worktree add -q --detach "$TMPWT" HEAD
+(cd "$TMPWT" && go test ./...)
+git worktree remove --force "$TMPWT"
+```
+
+### Known test-helper footguns
+
+Several dashboard commands bail out early when `leftPane.SelectedSessionID()` is empty. A test that only sends `SessionSelectedMsg` does **not** populate the list, so the command returns `nil` and the assertion passes without ever running the code under test. Use `selectInDashboard` (in `key_routing_test.go`), which sends `SessionsLoadedMsg` *and* `SessionSelectedMsg` and asserts the selection took.
+
+
+
+`focusIdxOf` in `tui/session/create_form_test.go` returns `0` — not `-1` — for a field that is not in the focus order. Asserting `>= 0` to test for presence therefore always passes, and focusing a missing field silently focuses **Name** instead. Use an explicit `slices.Contains` check (see `hasField` in `create_form_swarm_test.go`).

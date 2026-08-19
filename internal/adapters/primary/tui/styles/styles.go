@@ -97,6 +97,47 @@ type TabStyles struct {
 	Bar      lipgloss.Style
 }
 
+// BoardStyles styles the swarm Agents Board: a chat-shaped transcript where each
+// agent needs to be tellable apart at a glance.
+//
+// AuthorColors is derived here rather than added to Theme on purpose — Theme is
+// compared with == in its tests, so a slice field would make it non-comparable.
+// Deriving from colours every theme already defines also means all twelve themes
+// get a working palette with no per-theme edits.
+type BoardStyles struct {
+	// Author is the base style for an agent's name; callers apply the
+	// per-agent foreground from AuthorColorFor on top.
+	Author lipgloss.Style
+	// AuthorHuman styles the operator's own name, held apart from the agent
+	// palette so a human instruction never reads as just another agent.
+	AuthorHuman lipgloss.Style
+	// Text styles a message body.
+	Text lipgloss.Style
+	// Timestamp styles the time prefix on a message.
+	Timestamp lipgloss.Style
+	// SystemText styles board notices that came from Overseer itself.
+	SystemText lipgloss.Style
+	// Separator styles the rule drawn between messages.
+	Separator lipgloss.Style
+	// AuthorColors is the per-agent palette, indexed by agent number via
+	// AuthorColorFor.
+	AuthorColors []color.Color
+}
+
+// AuthorColorFor returns the palette entry for a 1-based agent index, wrapping
+// so any index — including zero or negative from malformed board data — yields a
+// usable colour instead of panicking mid-render.
+func (b BoardStyles) AuthorColorFor(agentIndex int) color.Color {
+	if len(b.AuthorColors) == 0 {
+		return nil
+	}
+	slot := (agentIndex - 1) % len(b.AuthorColors)
+	if slot < 0 {
+		slot += len(b.AuthorColors)
+	}
+	return b.AuthorColors[slot]
+}
+
 type ChatStyles struct {
 	// Panel is the border style used for the chat panel container.
 	Panel lipgloss.Style
@@ -108,6 +149,8 @@ type ChatStyles struct {
 	AgentLabel lipgloss.Style
 	// AgentText styles the body of agent messages.
 	AgentText lipgloss.Style
+	// Separator styles the rule drawn between chat messages.
+	Separator lipgloss.Style
 	// SystemText styles operator-command feedback and loop notices.
 	// Rendered dimmer than agent/user text so it reads as infrastructure
 	// noise rather than conversational content.
@@ -232,6 +275,7 @@ type Styles struct {
 	}
 	Glyphs Glyphs
 	Chat   ChatStyles
+	Board  BoardStyles
 }
 
 // New builds *Styles using the dark theme; production code should use NewWithTheme.
@@ -429,8 +473,31 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 			AgentLabel:     lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
 			AgentText:      lipgloss.NewStyle().Foreground(theme.Text),
 			SystemText:     lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
+			Separator:      lipgloss.NewStyle().Foreground(theme.Border),
 			ThinkingPrefix: lipgloss.NewStyle().Foreground(theme.Accent),
 			ThinkingText:   lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
+		},
+		Board: BoardStyles{
+			Author:      lipgloss.NewStyle().Bold(true).Foreground(theme.Primary),
+			AuthorHuman: lipgloss.NewStyle().Bold(true).Foreground(theme.TitleText),
+			Text:        lipgloss.NewStyle().Foreground(theme.Text),
+			Timestamp:   lipgloss.NewStyle().Foreground(theme.Subtext),
+			SystemText:  lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
+			Separator:   lipgloss.NewStyle().Foreground(theme.Border),
+			// Chosen for spread, not aesthetics: every theme aliases
+			// StatusRunningFg to Accent and StatusWaitingFg to Warning, so
+			// including those would silently collapse the palette to ~5 slots
+			// and make agents 6-8 look like agents 1-3.
+			AuthorColors: []color.Color{
+				theme.Primary,
+				theme.Accent,
+				theme.Warning,
+				theme.Danger,
+				theme.TitleSubtext,
+				theme.BorderFocus,
+				theme.Subtext,
+				theme.Muted,
+			},
 		},
 	}
 }

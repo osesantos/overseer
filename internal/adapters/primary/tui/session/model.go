@@ -380,6 +380,7 @@ var agentStatusTitleOrder = []domain.AgentStatusKind{
 	domain.AgentStatusWaiting,
 	domain.AgentStatusDead,
 	domain.AgentStatusIdle,
+	domain.AgentStatusSwarm,
 	domain.AgentStatusUnknown,
 }
 
@@ -393,6 +394,8 @@ func agentStatusLabel(kind domain.AgentStatusKind) string {
 		return "idle"
 	case domain.AgentStatusDead:
 		return "dead"
+	case domain.AgentStatusSwarm:
+		return "swarm"
 	default:
 		return "unknown"
 	}

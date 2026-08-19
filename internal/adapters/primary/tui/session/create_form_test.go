@@ -11,6 +11,7 @@ import (
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/adapters/secondary/swarmboard"
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 	"github.com/dnlopes/overseer/internal/shared/paths"
@@ -98,7 +99,7 @@ func TestCreateForm_SubmitProjectMode_SendsCreateWorktreeFalseAndNoBranch(t *tes
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, nil, nil, testLaunchers(t), 100)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, nil, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	form = updated.(CreateFormModel)
@@ -140,7 +141,7 @@ func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
 			{Name: "main", Scope: domain.BranchScopeLocal},
 		},
 	}
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, branches, nil, testLaunchers(t), 100)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, branches, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
@@ -236,7 +237,7 @@ func newCreateFormForTest(t *testing.T, projects []domain.Project) CreateFormMod
 	t.Helper()
 	svc, _, _, _, _ := newCreateFormSessionServiceWithMocks(t)
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	return NewCreateForm(styles.New(), svc, projectsSvc, projects, uuid.Nil, nil, nil, testLaunchers(t), 100)
+	return NewCreateForm(styles.New(), svc, projectsSvc, projects, uuid.Nil, nil, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
 }
 
 func newCreateFormSessionService(t *testing.T) service.SessionService {
@@ -252,7 +253,7 @@ func newCreateFormSessionServiceWithMocks(t *testing.T) (service.SessionService,
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return *service.NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo, projects, tmux, git
+	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo, projects, tmux, git
 }
 
 // expectAgentAndEditorTmuxGone stubs the session-service Delete teardown's

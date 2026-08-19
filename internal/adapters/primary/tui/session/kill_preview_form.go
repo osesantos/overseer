@@ -16,19 +16,38 @@ import (
 
 const killPreviewPopupWidth = 80
 
+// KillPreviewFormModel confirms tearing down one of a session's backing tmux
+// panes.
+//
+// previewKind is the typed target and previewLabel is only ever displayed. They
+// used to be one stringly-typed field that was mapped back to a kind with a
+// switch defaulting to the shell — so any tab whose label was not exactly
+// "Agent" or "Editor" silently killed the shell instead.
 type KillPreviewFormModel struct {
 	sessionID       uuid.UUID
 	sessionName     string
-	previewKind     string
+	previewKind     service.PreviewKind
+	agentIndex      int
+	previewLabel    string
 	sessionsService service.SessionService
 	styles          *styles.Styles
 }
 
-func NewKillPreviewForm(s *styles.Styles, sessionsService service.SessionService, sessionID uuid.UUID, sessionName string, previewKind string) KillPreviewFormModel {
+func NewKillPreviewForm(
+	s *styles.Styles,
+	sessionsService service.SessionService,
+	sessionID uuid.UUID,
+	sessionName string,
+	previewKind service.PreviewKind,
+	agentIndex int,
+	previewLabel string,
+) KillPreviewFormModel {
 	return KillPreviewFormModel{
 		sessionID:       sessionID,
 		sessionName:     sessionName,
 		previewKind:     previewKind,
+		agentIndex:      agentIndex,
+		previewLabel:    previewLabel,
 		sessionsService: sessionsService,
 		styles:          s,
 	}
@@ -56,18 +75,14 @@ func (m KillPreviewFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m KillPreviewFormModel) submit() (tea.Model, tea.Cmd) {
 	id := m.sessionID
-	kind := service.PreviewKindShell
-	switch m.previewKind {
-	case "Agent":
-		kind = service.PreviewKindAgent
-	case "Editor":
-		kind = service.PreviewKindEditor
-	}
+	kind := m.previewKind
+	agentIndex := m.agentIndex
 	svc := m.sessionsService
 	return m, func() tea.Msg {
 		_, err := svc.KillPreviewSession(context.Background(), service.KillPreviewSessionRequest{
-			ID:   id,
-			Kind: kind,
+			ID:         id,
+			Kind:       kind,
+			AgentIndex: agentIndex,
 		})
 		return shared.PreviewSessionKilledMsg{Err: err}
 	}
@@ -85,7 +100,7 @@ func (m KillPreviewFormModel) View() tea.View {
 	b.WriteString(field.LabelFocused.Render(m.sessionName))
 	b.WriteByte('\n')
 	b.WriteString(field.Label.Render("Preview: "))
-	b.WriteString(field.LabelFocused.Render(m.previewKind))
+	b.WriteString(field.LabelFocused.Render(m.previewLabel))
 	b.WriteByte('\n')
 	b.WriteByte('\n')
 	b.WriteString(m.styles.Help.Description.Render("y/enter: confirm kill  n/esc: cancel"))

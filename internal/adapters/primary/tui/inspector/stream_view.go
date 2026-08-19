@@ -2,6 +2,7 @@ package inspector
 
 import (
 	"context"
+	"fmt"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -9,6 +10,7 @@ import (
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
@@ -30,6 +32,12 @@ type streamView struct {
 	service       service.SessionService
 	styles        *styles.Styles
 	pollInterval  time.Duration
+
+	// agentCount and agentIndex are only meaningful for the swarm agent view:
+	// agentCount drives the "Agent 2/4" label and bounds paging, agentIndex is
+	// the 1-based pane currently shown.
+	agentCount int
+	agentIndex int
 }
 
 func newAgentView(svc service.SessionService, s *styles.Styles, pollInterval time.Duration) *streamView {
@@ -69,7 +77,43 @@ func newEditorView(svc service.SessionService, s *styles.Styles, pollInterval ti
 }
 
 
-func (v *streamView) Label() string { return v.label }
+// newSwarmAgentView previews one pane of a swarm at a time. The board shows what
+// agents choose to say; this tab is how the operator sees what an agent is
+// actually doing when it stops making sense.
+func newSwarmAgentView(svc service.SessionService, s *styles.Styles, pollInterval time.Duration) *streamView {
+	return &streamView{
+		kind:            viewKindSwarmAgent,
+		label:           "Agent",
+		previewKind:     service.PreviewKindAgent,
+		notReadyMessage: "Agent pane not started",
+		service:         svc,
+		styles:          s,
+		pollInterval:    pollInterval,
+		agentIndex:      1,
+	}
+}
+
+func (v *streamView) Label() string {
+	if v.kind == viewKindSwarmAgent && v.agentCount > 0 {
+		return fmt.Sprintf("%s %d/%d", v.label, v.agentIndex, v.agentCount)
+	}
+	return v.label
+}
+
+// cycleAgent moves the swarm agent view to another pane, wrapping at both ends.
+// Returns false when the view has nothing to cycle, so the caller can leave the
+// keypress unhandled rather than pointlessly restarting a poll.
+func (v *streamView) cycleAgent(delta int) bool {
+	if v.kind != viewKindSwarmAgent || v.agentCount <= 1 {
+		return false
+	}
+	next := ((v.agentIndex-1+delta)%v.agentCount + v.agentCount) % v.agentCount
+	v.agentIndex = next + 1
+	v.content = ""
+	v.ready = false
+	v.err = nil
+	return true
+}
 
 func (v *streamView) Init() tea.Cmd {
 	v.generation++
@@ -124,8 +168,10 @@ func (v *streamView) SetSize(width, height int) {
 	v.height = height
 }
 
-func (v *streamView) SetSession(sessionID uuid.UUID) {
-	v.sessionID = sessionID
+func (v *streamView) SetSession(sess domain.Session) {
+	v.sessionID = sess.ID
+	v.agentCount = sess.AgentCount()
+	v.agentIndex = 1
 	v.content = ""
 	v.ready = false
 	v.err = nil
@@ -145,15 +191,17 @@ func (v *streamView) capture() tea.Cmd {
 	width := v.width
 	height := v.height
 	gen := v.generation
+	agentIndex := v.agentIndex
 	return func() tea.Msg {
 		if sessID == uuid.Nil {
 			return previewCapturedMsg{kind: kind, sessionID: sessID, generation: gen}
 		}
 		resp, err := svc.PreviewSession(context.Background(), service.PreviewSessionRequest{
-			ID:     sessID,
-			Kind:   previewKind,
-			Width:  width,
-			Height: height,
+			ID:         sessID,
+			Kind:       previewKind,
+			AgentIndex: agentIndex,
+			Width:      width,
+			Height:     height,
 		})
 		return previewCapturedMsg{
 			kind:         kind,

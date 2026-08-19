@@ -2,6 +2,8 @@ package domain
 
 import (
 	"errors"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -403,6 +405,182 @@ func TestSession_AssignAgentType_Validates(t *testing.T) {
 		}
 		if !s.UpdatedAt.After(originalUpdated) {
 			t.Fatalf("UpdatedAt = %v, want after %v", s.UpdatedAt, originalUpdated)
+		}
+	})
+}
+
+func TestSession_IsSwarm_TrueOnlyFromTwoAgentsUp(t *testing.T) {
+	tests := []struct {
+		name      string
+		swarmSize int
+		want      bool
+	}{
+		{name: "zero is a legacy single-agent session", swarmSize: 0, want: false},
+		{name: "one is a single-agent session", swarmSize: 1, want: false},
+		{name: "two is the smallest swarm", swarmSize: 2, want: true},
+		{name: "eight is the largest swarm", swarmSize: 8, want: true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := NewSession("alpha", uuid.New())
+			s.SwarmSize = tt.swarmSize
+			if got := s.IsSwarm(); got != tt.want {
+				t.Fatalf("IsSwarm() = %v, want %v for SwarmSize %d", got, tt.want, tt.swarmSize)
+			}
+		})
+	}
+}
+
+func TestNewSession_IsNotASwarm(t *testing.T) {
+	s, err := NewSession("alpha", uuid.New())
+	if err != nil {
+		t.Fatalf("NewSession() error = %v", err)
+	}
+	if s.IsSwarm() {
+		t.Fatal("NewSession() IsSwarm() = true, want false (swarm is opt-in)")
+	}
+	if s.AgentCount() != 1 {
+		t.Fatalf("NewSession() AgentCount() = %d, want 1", s.AgentCount())
+	}
+}
+
+func TestSession_AssignSwarmSize_Validation(t *testing.T) {
+	tests := []struct {
+		name    string
+		size    int
+		wantErr error
+	}{
+		{name: "negative", size: -1, wantErr: ErrSessionSwarmSizeOutOfRange},
+		{name: "zero", size: 0, wantErr: ErrSessionSwarmSizeOutOfRange},
+		{name: "one is below the minimum", size: 1, wantErr: ErrSessionSwarmSizeOutOfRange},
+		{name: "above the maximum", size: SwarmMaxAgents + 1, wantErr: ErrSessionSwarmSizeOutOfRange},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			s, _ := NewSession("alpha", uuid.New())
+			err := s.AssignSwarmSize(tt.size)
+			if !errors.Is(err, tt.wantErr) {
+				t.Fatalf("AssignSwarmSize(%d) error = %v, want %v", tt.size, err, tt.wantErr)
+			}
+			if s.SwarmSize != 0 {
+				t.Fatalf("SwarmSize = %d, want 0 after rejected assignment", s.SwarmSize)
+			}
+		})
+	}
+}
+
+func TestSession_AssignSwarmSize_StoresAndBumpsUpdatedAt(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	originalUpdated := s.UpdatedAt
+	time.Sleep(time.Millisecond)
+
+	if err := s.AssignSwarmSize(4); err != nil {
+		t.Fatalf("AssignSwarmSize(4) error = %v", err)
+	}
+	if s.SwarmSize != 4 {
+		t.Fatalf("SwarmSize = %d, want 4", s.SwarmSize)
+	}
+	if !s.IsSwarm() {
+		t.Fatal("IsSwarm() = false, want true after AssignSwarmSize(4)")
+	}
+	if s.AgentCount() != 4 {
+		t.Fatalf("AgentCount() = %d, want 4", s.AgentCount())
+	}
+	if !s.UpdatedAt.After(originalUpdated) {
+		t.Fatalf("UpdatedAt = %v, want after %v", s.UpdatedAt, originalUpdated)
+	}
+}
+
+func TestSession_AssignSwarmSize_AcceptsBoundaries(t *testing.T) {
+	for _, size := range []int{SwarmMinAgents, SwarmMaxAgents} {
+		s, _ := NewSession("alpha", uuid.New())
+		if err := s.AssignSwarmSize(size); err != nil {
+			t.Fatalf("AssignSwarmSize(%d) error = %v, want nil", size, err)
+		}
+	}
+}
+
+func TestSession_AgentTmuxID_SingleAgentIgnoresIndex(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	want := s.ID.String() + "-agent"
+
+	for _, index := range []int{0, 1, 2, 99} {
+		if got := s.AgentTmuxID(index); got != want {
+			t.Fatalf("AgentTmuxID(%d) = %q, want %q for a single-agent session", index, got, want)
+		}
+	}
+}
+
+func TestSession_AgentTmuxID_SwarmIsOneBasedAndSuffixed(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	if err := s.AssignSwarmSize(3); err != nil {
+		t.Fatalf("AssignSwarmSize(3) error = %v", err)
+	}
+
+	for index := 1; index <= 3; index++ {
+		want := fmt.Sprintf("%s-agent-%d", s.ID, index)
+		if got := s.AgentTmuxID(index); got != want {
+			t.Fatalf("AgentTmuxID(%d) = %q, want %q", index, got, want)
+		}
+	}
+}
+
+func TestSession_AgentTmuxID_SwarmClampsOutOfRangeIndex(t *testing.T) {
+	s, _ := NewSession("alpha", uuid.New())
+	if err := s.AssignSwarmSize(3); err != nil {
+		t.Fatalf("AssignSwarmSize(3) error = %v", err)
+	}
+
+	tests := []struct {
+		index int
+		want  int
+	}{
+		{index: -5, want: 1},
+		{index: 0, want: 1},
+		{index: 4, want: 3},
+		{index: 99, want: 3},
+	}
+
+	for _, tt := range tests {
+		want := fmt.Sprintf("%s-agent-%d", s.ID, tt.want)
+		if got := s.AgentTmuxID(tt.index); got != want {
+			t.Fatalf("AgentTmuxID(%d) = %q, want clamped %q", tt.index, got, want)
+		}
+	}
+}
+
+func TestSession_AgentTmuxIDs_CoversEveryPane(t *testing.T) {
+	t.Run("single agent yields one id", func(t *testing.T) {
+		s, _ := NewSession("alpha", uuid.New())
+		ids := s.AgentTmuxIDs()
+		if len(ids) != 1 {
+			t.Fatalf("AgentTmuxIDs() length = %d, want 1", len(ids))
+		}
+		if ids[0] != s.ID.String()+"-agent" {
+			t.Fatalf("AgentTmuxIDs()[0] = %q, want %q", ids[0], s.ID.String()+"-agent")
+		}
+	})
+
+	t.Run("swarm yields one id per agent", func(t *testing.T) {
+		s, _ := NewSession("alpha", uuid.New())
+		if err := s.AssignSwarmSize(4); err != nil {
+			t.Fatalf("AssignSwarmSize(4) error = %v", err)
+		}
+
+		ids := s.AgentTmuxIDs()
+		if len(ids) != 4 {
+			t.Fatalf("AgentTmuxIDs() length = %d, want 4", len(ids))
+		}
+		for i, id := range ids {
+			want := fmt.Sprintf("%s-agent-%d", s.ID, i+1)
+			if id != want {
+				t.Fatalf("AgentTmuxIDs()[%d] = %q, want %q", i, id, want)
+			}
+		}
+		if slices.Contains(ids, s.ID.String()+"-agent") {
+			t.Fatal("AgentTmuxIDs() contains the bare -agent id, want only indexed swarm panes")
 		}
 	})
 }

@@ -61,6 +61,22 @@ type ProjectDiscoveryConfig struct {
 	Paths []string `yaml:"paths"`
 }
 
+// SwarmConfig tunes multi-agent swarm sessions.
+//
+// NudgeDebounce is the interval at which pending board activity is flushed into
+// agent panes: a longer window coalesces more chatter into a single round of
+// pokes. MaxMessagesPerSession is the circuit breaker that stops a swarm talking
+// to itself forever — set it to zero to disable the cap, at your own cost.
+// BoardAddr binds the HTTP board the agent processes call; keep it on loopback,
+// as the board has no authentication.
+type SwarmConfig struct {
+	Enabled               bool          `yaml:"enabled"`
+	MaxAgents             int           `yaml:"maxAgents"`
+	NudgeDebounce         time.Duration `yaml:"nudgeDebounce"`
+	MaxMessagesPerSession int           `yaml:"maxMessagesPerSession"`
+	BoardAddr             string        `yaml:"boardAddr"`
+}
+
 type Config struct {
 	Theme            string                 `yaml:"theme"`
 	DisableEmoji     bool                   `yaml:"disableEmoji"`
@@ -72,6 +88,7 @@ type Config struct {
 	Labels           []LabelConfig          `yaml:"labels"`
 	AgentStatus      AgentStatusConfig      `yaml:"agentStatus"`
 	ProjectDiscovery ProjectDiscoveryConfig `yaml:"projectDiscovery"`
+	Swarm            SwarmConfig            `yaml:"swarm"`
 }
 
 // defaultEditorCommand is the editor launched in the session's Editor tab when
@@ -103,6 +120,13 @@ func Default() Config {
 				StatusBar:    true,
 				RowHighlight: "subtle",
 			},
+		},
+		Swarm: SwarmConfig{
+			Enabled:               true,
+			MaxAgents:             domain.SwarmMaxAgents,
+			NudgeDebounce:         2 * time.Second,
+			MaxMessagesPerSession: 500,
+			BoardAddr:             "127.0.0.1:0",
 		},
 	}
 }
@@ -170,6 +194,26 @@ func (c Config) Validate() error {
 		}
 		if _, err := domain.NewLauncher(l.DisplayName, l.Command, domain.AgentType(l.AgentType)); err != nil {
 			return errs.Wrap(errs.ErrInvalidInput, fmt.Sprintf("config: launchers[%d]: %v", i, err))
+		}
+	}
+
+	// Only validate swarm settings when the feature is on, so a disabled swarm
+	// never blocks startup over values it will not use.
+	if c.Swarm.Enabled {
+		if c.Swarm.MaxAgents < domain.SwarmMinAgents || c.Swarm.MaxAgents > domain.SwarmMaxAgents {
+			return fmt.Errorf("config: swarm.maxAgents must be between %d and %d, got %d: %w",
+				domain.SwarmMinAgents, domain.SwarmMaxAgents, c.Swarm.MaxAgents, errs.ErrInvalidInput)
+		}
+		if c.Swarm.NudgeDebounce <= 0 {
+			return fmt.Errorf("config: swarm.nudgeDebounce must be > 0, got %v: %w",
+				c.Swarm.NudgeDebounce, errs.ErrInvalidInput)
+		}
+		if c.Swarm.MaxMessagesPerSession < 0 {
+			return fmt.Errorf("config: swarm.maxMessagesPerSession must be >= 0 (0 disables the cap), got %d: %w",
+				c.Swarm.MaxMessagesPerSession, errs.ErrInvalidInput)
+		}
+		if strings.TrimSpace(c.Swarm.BoardAddr) == "" {
+			return fmt.Errorf("config: swarm.boardAddr cannot be empty: %w", errs.ErrInvalidInput)
 		}
 	}
 

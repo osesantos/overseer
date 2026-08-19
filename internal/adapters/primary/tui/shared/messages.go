@@ -10,7 +10,20 @@ import (
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
-type SessionCreatedMsg struct{ Session domain.Session }
+// SwarmBootstrappedMsg reports the outcome of briefing a new swarm's agents.
+type SwarmBootstrappedMsg struct {
+	SessionID uuid.UUID
+	Err       error
+}
+
+// SessionCreatedMsg reports a newly created session. SwarmGoal is set only for
+// swarm sessions and carries the operator's initial prompt through to
+// bootstrapping — the goal is not persisted on the Session, it becomes the first
+// message on the swarm's board.
+type SessionCreatedMsg struct {
+	Session   domain.Session
+	SwarmGoal string
+}
 
 type SessionSelectedMsg struct{ Session domain.Session }
 

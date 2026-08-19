@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"testing"
 	"time"
 
@@ -54,6 +55,9 @@ func expectAgentAndEditorTmuxGone(tmux *mocks.MockTmuxAdapter, baseID string) {
 		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
 }
 
+// newTestSessionService builds a service with a throwaway board mock, for the
+// majority of tests that never touch a swarm. Swarm tests use
+// newTestSessionServiceWithBoard so they can assert on board calls.
 func newTestSessionService(
 	repo domain.SessionRepository,
 	projects domain.ProjectRepository,
@@ -62,8 +66,33 @@ func newTestSessionService(
 	logger *slog.Logger,
 ) *SessionService {
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), launcher, "nvim", logger)
+	return NewSessionService(repo, projects, tmux, git, noopBoard{}, paths.NewResolver(""), launcher, "nvim", logger)
 }
+
+func newTestSessionServiceWithBoard(
+	repo domain.SessionRepository,
+	projects domain.ProjectRepository,
+	tmux domain.TmuxAdapter,
+	git domain.GitAdapter,
+	board domain.SwarmBoardRepository,
+	logger *slog.Logger,
+) *SessionService {
+	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
+	return NewSessionService(repo, projects, tmux, git, board, paths.NewResolver(""), launcher, "nvim", logger)
+}
+
+// noopBoard satisfies the board port for tests that never exercise a swarm, so
+// they neither need board expectations nor risk a nil dereference.
+type noopBoard struct{}
+
+func (noopBoard) Append(context.Context, domain.SwarmMessage) (domain.SwarmMessage, error) {
+	return domain.SwarmMessage{}, nil
+}
+func (noopBoard) ListSince(context.Context, uuid.UUID, int) ([]domain.SwarmMessage, error) {
+	return nil, nil
+}
+func (noopBoard) Count(context.Context, uuid.UUID) (int, error) { return 0, nil }
+func (noopBoard) Purge(context.Context, uuid.UUID) error        { return nil }
 
 func expectProjectLookup(t *testing.T, projects *mocks.MockProjectRepository, projectID uuid.UUID, name string) string {
 	t.Helper()
@@ -80,6 +109,421 @@ func worktreeCreateReq(name string, projectID uuid.UUID, baseBranch string) Crea
 		ProjectID:      projectID,
 		CreateWorktree: true,
 		BaseBranch:     baseBranch,
+	}
+}
+
+// expectSwarmAgentTmuxGone stubs the Delete teardown's inspection of a swarm's
+// agent panes plus the editor pane when none of them still exist.
+func expectSwarmAgentTmuxGone(tmux *mocks.MockTmuxAdapter, sess domain.Session) {
+	for _, tmuxID := range sess.AgentTmuxIDs() {
+		tmux.EXPECT().GetSession(mock.Anything, tmuxID).
+			Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	}
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()+"-editor").
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+}
+
+func TestSessionService_Create_Swarm_CreatesOneTmuxSessionPerAgent(t *testing.T) {
+	overseerID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	expectProjectLookup(t, projects, overseerID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
+		Return("tmux-shell", nil).Once()
+	for index := 1; index <= 3; index++ {
+		tmux.EXPECT().CreateSession(mock.Anything, testutil.SwarmAgentTmuxIDString(index), mock.Anything, "opencode").
+			Return("tmux-agent", nil).Once()
+	}
+
+	var saved domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { saved = s }).
+		Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:      "hive",
+		ProjectID: overseerID,
+		SwarmSize: 3,
+	})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !resp.Session.IsSwarm() {
+		t.Fatal("Create() Session.IsSwarm() = false, want true")
+	}
+	if resp.Session.SwarmSize != 3 {
+		t.Fatalf("Create() Session.SwarmSize = %d, want 3", resp.Session.SwarmSize)
+	}
+	if saved.SwarmSize != 3 {
+		t.Fatalf("persisted SwarmSize = %d, want 3", saved.SwarmSize)
+	}
+}
+
+func TestSessionService_Create_Swarm_NeverCreatesABareAgentPane(t *testing.T) {
+	overseerID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	expectProjectLookup(t, projects, overseerID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+
+	var createdTmuxIDs []string
+	tmux.EXPECT().CreateSession(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
+		Run(func(_ context.Context, name, _, _ string) { createdTmuxIDs = append(createdTmuxIDs, name) }).
+		Return("tmux", nil).Times(3)
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:      "hive",
+		ProjectID: overseerID,
+		SwarmSize: 2,
+	})
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+
+	bare := resp.Session.ID.String() + "-agent"
+	if slices.Contains(createdTmuxIDs, bare) {
+		t.Fatalf("Create() created the bare agent pane %q for a swarm; panes = %v", bare, createdTmuxIDs)
+	}
+	for index := 1; index <= 2; index++ {
+		want := resp.Session.AgentTmuxID(index)
+		if !slices.Contains(createdTmuxIDs, want) {
+			t.Fatalf("Create() did not create swarm pane %q; panes = %v", want, createdTmuxIDs)
+		}
+	}
+}
+
+func TestSessionService_Create_Swarm_RejectsOutOfRangeSize(t *testing.T) {
+	tests := []struct {
+		name string
+		size int
+	}{
+		{name: "one is not a swarm", size: 1},
+		{name: "above maximum", size: domain.SwarmMaxAgents + 1},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo, projects, tmux, git := newSessionMocks(t)
+			board := mocks.NewMockSwarmBoardRepository(t)
+
+			svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+			_, err := svc.Create(context.Background(), CreateSessionRequest{
+				Name:      "hive",
+				ProjectID: uuid.New(),
+				SwarmSize: tt.size,
+			})
+
+			if !errors.Is(err, domain.ErrSessionSwarmSizeOutOfRange) {
+				t.Fatalf("Create() error = %v, want %v", err, domain.ErrSessionSwarmSizeOutOfRange)
+			}
+		})
+	}
+}
+
+func TestSessionService_Create_SwarmSizeOne_StaysASingleAgentSession(t *testing.T) {
+	// A size of 1 is rejected outright rather than silently downgraded, so the
+	// only way to get a single-agent session is to leave SwarmSize at zero.
+	overseerID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	expectProjectLookup(t, projects, overseerID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
+		Return("tmux-shell", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").
+		Return("tmux-agent", nil).Once()
+	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:      "solo",
+		ProjectID: overseerID,
+	})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if resp.Session.IsSwarm() {
+		t.Fatal("Create() with no SwarmSize produced a swarm")
+	}
+}
+
+func TestSessionService_Delete_Swarm_KillsEveryAgentPaneAndPurgesBoard(t *testing.T) {
+	pinWorktreeRoot(t)
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+
+	// Shell, then every swarm agent pane, then the editor.
+	for _, tmuxID := range append(
+		append([]string{sess.ID.String()}, sess.AgentTmuxIDs()...),
+		sess.ID.String()+"-editor",
+	) {
+		tmux.EXPECT().GetSession(mock.Anything, tmuxID).
+			Return(domain.TmuxSession{ID: tmuxID}, nil).Once()
+		tmux.EXPECT().KillSession(mock.Anything, tmuxID).Return(nil).Once()
+	}
+
+	board.EXPECT().Purge(mock.Anything, sess.ID).Return(nil).Once()
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+}
+
+func TestSessionService_Delete_Swarm_BoardPurgeFailureIsNotFatal(t *testing.T) {
+	pinWorktreeRoot(t)
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 2)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	expectSwarmAgentTmuxGone(tmux, sess)
+	board.EXPECT().Purge(mock.Anything, sess.ID).Return(errors.New("disk on fire")).Once()
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+		t.Fatalf("Delete() error = %v, want nil — a stale board must not block session teardown", err)
+	}
+}
+
+func TestSessionService_Delete_NonSwarm_LeavesTheBoardAlone(t *testing.T) {
+	pinWorktreeRoot(t)
+	sess := testutil.MakeSession("solo", uuid.New())
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+
+	// No board.EXPECT().Purge — the mock fails the test if Purge is called.
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+}
+
+func TestSessionService_AttachAgent_Swarm_TargetsRequestedPane(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 4)
+	wantTmuxID := sess.AgentTmuxID(3)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, wantTmuxID).
+		Return(domain.TmuxSession{ID: wantTmuxID}, nil).Once()
+	tmux.EXPECT().AttachCommand(mock.Anything, wantTmuxID).
+		Return(exec.Command("true"), nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.AttachAgent(context.Background(), AttachAgentRequest{ID: sess.ID, AgentIndex: 3})
+
+	if err != nil {
+		t.Fatalf("AttachAgent() error = %v", err)
+	}
+	if resp.Command == nil {
+		t.Fatal("AttachAgent() Command = nil")
+	}
+}
+
+func TestSessionService_PreviewSession_Swarm_CapturesRequestedAgentPane(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	wantTmuxID := sess.AgentTmuxID(2)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().CapturePane(mock.Anything, wantTmuxID).Return("agent two output", nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.PreviewSession(context.Background(), PreviewSessionRequest{
+		ID:         sess.ID,
+		Kind:       PreviewKindAgent,
+		AgentIndex: 2,
+	})
+
+	if err != nil {
+		t.Fatalf("PreviewSession() error = %v", err)
+	}
+	if resp.Content != "agent two output" {
+		t.Fatalf("PreviewSession() Content = %q", resp.Content)
+	}
+}
+
+func TestSessionService_KillPreviewSession_Swarm_KillsRequestedAgentPane(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	wantTmuxID := sess.AgentTmuxID(3)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, wantTmuxID).
+		Return(domain.TmuxSession{ID: wantTmuxID}, nil).Once()
+	tmux.EXPECT().KillSession(mock.Anything, wantTmuxID).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	_, err := svc.KillPreviewSession(context.Background(), KillPreviewSessionRequest{
+		ID:         sess.ID,
+		Kind:       PreviewKindAgent,
+		AgentIndex: 3,
+	})
+
+	if err != nil {
+		t.Fatalf("KillPreviewSession() error = %v", err)
+	}
+}
+
+func TestSessionService_SendAgentPrompt_Swarm_TargetsRequestedPane(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	wantTmuxID := sess.AgentTmuxID(2)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().SendText(mock.Anything, wantTmuxID, "read the board").Return(nil).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, wantTmuxID, "Enter").Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	_, err := svc.SendAgentPrompt(context.Background(), SendAgentPromptRequest{
+		ID:         sess.ID,
+		AgentIndex: 2,
+		Prompt:     "read the board",
+	})
+
+	if err != nil {
+		t.Fatalf("SendAgentPrompt() error = %v", err)
+	}
+}
+
+func TestSessionService_SendAgentEnter_Swarm_TargetsRequestedPane(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	wantTmuxID := sess.AgentTmuxID(1)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, wantTmuxID, "Enter").Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	_, err := svc.SendAgentEnter(context.Background(), SendAgentEnterRequest{ID: sess.ID, AgentIndex: 1})
+
+	if err != nil {
+		t.Fatalf("SendAgentEnter() error = %v", err)
+	}
+}
+
+func TestSessionService_SendAgentEnterAll_Swarm_ReachesEveryPane(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 4)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	for _, tmuxID := range sess.AgentTmuxIDs() {
+		tmux.EXPECT().SendKeys(mock.Anything, tmuxID, "Enter").Return(nil).Once()
+	}
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.SendAgentEnterAll(context.Background(), SendAgentEnterAllRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("SendAgentEnterAll() error = %v", err)
+	}
+	if resp.Delivered != 4 {
+		t.Fatalf("SendAgentEnterAll() Delivered = %d, want 4", resp.Delivered)
+	}
+}
+
+func TestSessionService_SendAgentEnterAll_NonSwarm_ReachesTheSinglePane(t *testing.T) {
+	sess := testutil.MakeSession("solo", uuid.New())
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, sess.ID.String()+"-agent", "Enter").Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.SendAgentEnterAll(context.Background(), SendAgentEnterAllRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("SendAgentEnterAll() error = %v", err)
+	}
+	if resp.Delivered != 1 {
+		t.Fatalf("SendAgentEnterAll() Delivered = %d, want 1 — /enter must work on ordinary sessions too", resp.Delivered)
+	}
+}
+
+func TestSessionService_SendAgentEnterAll_DeadPaneDoesNotStopTheOthers(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, sess.AgentTmuxID(1), "Enter").
+		Return(domain.ErrTmuxSessionNotFound).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, sess.AgentTmuxID(2), "Enter").Return(nil).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, sess.AgentTmuxID(3), "Enter").Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	resp, err := svc.SendAgentEnterAll(context.Background(), SendAgentEnterAllRequest{ID: sess.ID})
+
+	if err != nil {
+		t.Fatalf("SendAgentEnterAll() error = %v, want a dead pane to be tolerated", err)
+	}
+	if resp.Delivered != 2 {
+		t.Fatalf("SendAgentEnterAll() Delivered = %d, want 2 (the reachable panes)", resp.Delivered)
+	}
+}
+
+func TestSessionService_SendAgentEnterAll_UnknownSession(t *testing.T) {
+	missingID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+	repo.EXPECT().Get(mock.Anything, missingID).
+		Return(domain.Session{}, domain.ErrSessionNotFound).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	_, err := svc.SendAgentEnterAll(context.Background(), SendAgentEnterAllRequest{ID: missingID})
+
+	if !errors.Is(err, domain.ErrSessionNotFound) {
+		t.Fatalf("SendAgentEnterAll() error = %v, want %v", err, domain.ErrSessionNotFound)
+	}
+}
+
+func TestSessionService_SendAgentEnter_NonSwarm_IgnoresAgentIndex(t *testing.T) {
+	sess := testutil.MakeSession("solo", uuid.New())
+	wantTmuxID := sess.ID.String() + "-agent"
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().SendKeys(mock.Anything, wantTmuxID, "Enter").Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	_, err := svc.SendAgentEnter(context.Background(), SendAgentEnterRequest{ID: sess.ID, AgentIndex: 7})
+
+	if err != nil {
+		t.Fatalf("SendAgentEnter() error = %v", err)
 	}
 }
 
@@ -554,7 +998,6 @@ func TestCreateSession_CapturesAgentTypeFromLauncher(t *testing.T) {
 	}
 }
 
-
 func TestSessionService_Rename_HappyPath(t *testing.T) {
 	original := testutil.MakeSession("alpha", uuid.New())
 	repo, projects, tmux, git := newSessionMocks(t)
@@ -1005,7 +1448,7 @@ func TestSessionService_AttachAgent_NoSessionCommandAndNoDefaultLauncher_Returns
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
 
-	svc := NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), domain.Launcher{}, "nvim", testLogger())
+	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, paths.NewResolver(""), domain.Launcher{}, "nvim", testLogger())
 	_, err := svc.AttachAgent(context.Background(), AttachAgentRequest{ID: sess.ID})
 
 	if !errors.Is(err, domain.ErrSessionNoAgentCommandAvailable) {
@@ -1327,7 +1770,7 @@ func TestSessionService_AttachEditor_EmptyEditorCommand_FallsBackToNvim(t *testi
 	tmux.EXPECT().AttachCommand(mock.Anything, editorTmuxID).Return(wantCmd, nil).Once()
 
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	svc := NewSessionService(repo, projects, tmux, git, paths.NewResolver(""), launcher, "", testLogger())
+	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, paths.NewResolver(""), launcher, "", testLogger())
 	if _, err := svc.AttachEditor(context.Background(), AttachEditorRequest{ID: sess.ID}); err != nil {
 		t.Fatalf("AttachEditor() error = %v", err)
 	}

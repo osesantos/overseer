@@ -19,6 +19,7 @@ Overseer is a TUI application that helps developers organize, launch, and monito
 - [Configuration](#configuration)
 - [Usage](#usage)
 - [Overseer Agent Loop](#overseer-agent-loop)
+- [Swarm Mode](#swarm-mode)
 - [Contributing](#contributing)
 - [License](#license)
 
@@ -42,7 +43,17 @@ Overseer is a TUI application that helps developers organize, launch, and monito
 ### Real-Time Monitoring
 - **Live Session Preview**: Toggle between Agent and Shell stream views to see what your AI agent is doing in real-time.
 
+### Swarm Mode
+- **Multiple Agents, One Goal**: Run 2–8 agents in a single session, all working toward the same goal. Built for work a single agent context handles badly — research spanning several repositories, troubleshooting across many queries, broad audits.
+- **Shared Message Board**: Agents coordinate through a per-session board they read and write over a loopback HTTP API. You watch it live in the **Agents Board** tab and can post to it yourself.
+- **Automatic Wake-Ups**: Agent CLIs don't poll — they finish a turn and go idle. Overseer watches the board and nudges idle agents when there is something new to read, so the conversation keeps moving without you babysitting it.
+- **Per-Agent Inspection**: The **Agent** tab pages through individual agent panes with `[` and `]`, so you can see what any one agent is actually doing when it stops making sense.
+- **Bounded Chatter**: A configurable message cap and a debounced nudge window keep a swarm from talking itself into an expensive loop.
+
+See [Swarm Mode](#swarm-mode) for the full picture.
+
 ### Overseer Chat Panel
+- **Markdown Rendering**: Agent replies render as markdown — code blocks, lists and emphasis — with a rule between messages so a long exchange stays readable. The Agents Board renders the same way.
 - **Agent Mode**: Chat with a Claude-backed meta-agent that can read session output and send prompts to your sessions on your behalf.
 - **Operator Mode**: Type any message starting with `/` to execute a direct command without involving the LLM (see [Operator Commands](#operator-commands)).
 - **Scrollable History**: The chat history is fully scrollable — use `↑`/`↓` to scroll line by line or `PgUp`/`PgDn` to jump a full page. New messages auto-scroll to the bottom unless you have scrolled up to read history.
@@ -144,12 +155,23 @@ Fill out the session creation form (navigate fields with `Tab` / `Shift+Tab` or 
 | **Create worktree** | Off | Enable for isolated branch-based sessions |
 | **Base branch** | — | Branch to fork from (e.g., `main`); shown when worktree is on |
 | **New branch** | — | Branch name for this session; auto-generated if left empty |
+| **Swarm?** | Off | Run several agents on one goal; shown when swarm mode is enabled in config |
+| **Agents** | 2 | How many agents to run; shown when Swarm is on |
+| **Goal** | — | What the swarm should achieve; required when Swarm is on |
 | **Launcher** | Claude Code | AI agent to run in the session |
-| **Editor** | VSCode | Editor to open the session directory |
+
+The editor is not chosen per session — it comes from the `editorCommand` config value (default `nvim`).
 
 ### 4. Attach to Session
 
-Select a session and press `Enter` to attach to its tmux window. Press `Tab` to toggle between the Agent and Shell views. Press `e` to reveal the Editor tab and drop straight into `nvim` at the session directory; the tab persists so you can detach and re-attach with `Enter`.
+Select a session and press `Enter` to attach to its tmux window. Press `Tab` to cycle the inspector tabs. Press `e` to reveal the Editor tab and drop straight into `nvim` at the session directory; the tab persists so you can detach and re-attach with `Enter`.
+
+Which tabs you get depends on the session:
+
+| Session type | Tabs |
+|--------------|------|
+| Ordinary | `Agent` · `Shell` · `Editor` (after `e`) |
+| Swarm | `Agents Board` · `Agent N/M` · `Shell` · `Editor` (after `e`) |
 
 ---
 
@@ -191,6 +213,15 @@ launchers:
 
 editorCommand: "nvim"
 
+# Multi-agent swarm sessions. When enabled, Overseer starts a loopback HTTP
+# board that the agent processes use to talk to each other.
+swarm:
+  enabled: true
+  maxAgents: 8              # ceiling offered in the create form (domain max is 8)
+  nudgeDebounce: 2s         # how often pending board activity is flushed to agents
+  maxMessagesPerSession: 500 # circuit breaker; 0 disables the cap
+  boardAddr: "127.0.0.1:0"  # :0 picks a free port. Keep this on loopback.
+
 labels:
   - code: "urgent"
     color: "#ff6b6b"
@@ -220,6 +251,11 @@ labels:
 | `projectDiscovery` | `paths` | List of directories to scan at startup for Git repos |
 | `launchers` | — | List of AI agent launchers (`displayName`, `command`, `agentType`) |
 | `editorCommand` | — | Editor command run in the Editor tab (default `nvim`) |
+| `swarm` | `enabled` | Turn swarm mode on/off. When off, the board server never starts and the create form hides the swarm fields |
+| `swarm` | `maxAgents` | Highest agent count the create form offers (2–8) |
+| `swarm` | `nudgeDebounce` | Interval at which idle agents are woken. Longer coalesces more chatter into one round |
+| `swarm` | `maxMessagesPerSession` | Board message cap; further posts are rejected with `429`. `0` disables the cap |
+| `swarm` | `boardAddr` | Address the board HTTP server binds. Loopback only — the board has no authentication |
 | `labels` | — | Custom labels for session categorization |
 
 #### Project Discovery
@@ -252,7 +288,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 | `l` | Cycle through labels |
 | `Enter` | Attach to session (agent or shell, based on active inspector tab) |
 | `e` | Reveal Editor tab and open nvim at the session directory |
-| `Ctrl+E` | Send Enter keystroke to the agent pane |
+| `Ctrl+E` | Submit the agent's queued prompt (see below) |
 | `x` | Kill the preview tmux session |
 | `g` / `G` | Go to next / previous project group |
 
@@ -262,8 +298,8 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 |-----|--------|
 | `Tab` / `Shift+Tab` | Next / previous field |
 | `↓` / `↑` | Next / previous field |
-| `←` / `→` | Cycle option (launcher, worktree toggle) |
-| `Space` | Toggle worktree on/off |
+| `←` / `→` | Cycle option (launcher, agent count, toggles) |
+| `Space` | Toggle worktree or swarm on/off |
 | `e` | Paste a path into the repository field |
 | `Enter` | Create session |
 | `Esc` | Cancel |
@@ -272,7 +308,16 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 
 | Key | Action |
 |-----|--------|
-| `Tab` | Toggle between Agent and Shell views |
+| `Tab` | Cycle the visible tabs |
+| `x` | Kill the tmux pane behind the active tab (no-op on the Agents Board) |
+| `[` / `]` | Previous / next agent pane (swarm sessions, Agent tab) |
+| `i` | Compose a message to the swarm (swarm sessions, Agents Board tab) |
+
+While composing a board message, every key goes to the input — including `q`. Press `Esc` to cancel or `Enter` to post; `Ctrl+C` still quits.
+
+**`Ctrl+E` follows the active tab.** On a swarm's `Agent N/M` tab it submits that one pane's queued prompt; anywhere else on a swarm — including the Agents Board, which stands for the whole swarm — it submits **all** of them. On an ordinary session it always targets its single agent. `/enter <session>` does the same broadcast from the chat, whichever session is selected.
+
+An Enter is safe to send repeatedly: it submits a pending prompt and is a harmless newline otherwise.
 
 #### Overseer Chat Panel
 
@@ -290,6 +335,7 @@ Open / close the chat panel with `Ctrl+O` from anywhere in the dashboard.
 | Command | Description |
 |---------|-------------|
 | `/send <session> <prompt…>` | Send a prompt directly to a session's agent pane |
+| `/enter <session>` | Submit whatever is queued in **all** of a session's agent prompts |
 | `/delete <session>` | Open the delete-session confirmation dialog |
 | `/new` | Open the new-session creation form |
 | `/list` | Print all active sessions inline |
@@ -318,6 +364,8 @@ New messages auto-scroll to the bottom only if you were already at the bottom. S
 | `Ctrl+O` | Toggle Overseer chat panel |
 | `?` | Show help menu |
 | `q` / `Ctrl+C` | Quit |
+
+`q` only quits when nothing is capturing the keyboard. While the chat panel or a board message is open, `q` is a character you are typing — use `Ctrl+C` to quit from there.
 
 ### Session Modes
 
@@ -373,6 +421,79 @@ Overseer will:
 ```
 /loop info overseer-improvements
 ```
+
+---
+
+## Swarm Mode
+
+A swarm session runs 2–8 agents against one goal, coordinating through a shared message board.
+
+It exists for work that a single agent context handles badly: research spanning several repositories, troubleshooting that needs many separate queries, broad audits. For a focused task on one codebase, one agent is still the right answer.
+
+### Creating a swarm
+
+Press `n`, turn **Swarm?** on, pick an agent count, and write a goal. On create, Overseer:
+
+1. Spawns one tmux pane per agent (`<session-uuid>-agent-1` … `-agent-N`)
+2. Writes a bootstrap descriptor the agents read
+3. Posts your goal as the board's first message
+4. Introduces each agent to its own identity and the board protocol
+
+### The Agents Board
+
+The **Agents Board** tab is a live transcript, with each agent given its own colour. Press `i` to write a message to the whole swarm, `Enter` to post, `Esc` to cancel. Use `PgUp` / `PgDn` to scroll back — new posts won't yank you to the bottom while you're reading history.
+
+### How agents stay in sync
+
+This is the part worth understanding. **Agent CLIs don't loop** — they finish a turn and sit idle at their prompt. A message board alone would be a mailbox with no doorbell: agent 3 would never learn what agent 2 just wrote.
+
+So Overseer is the doorbell. It watches the board and, on a `nudgeDebounce` tick, types a short "read the board" instruction into every idle agent's pane — skipping whoever posted last, since they just spoke. A burst of posts inside one tick costs a single round of wake-ups, which is what stops a swarm nudging itself into an endless conversation.
+
+Two more guards on that: the board rejects posts past `maxMessagesPerSession` with `429`, and the agents are told up front to post only when they have something substantive.
+
+### Working directory
+
+All agents in a swarm share the session's one working directory. That suits read-heavy work; for anything that writes, the agents are instructed to claim a file on the board before editing it. Coordination is advisory, not enforced — if two agents ignore each other, they can still collide.
+
+### The board API
+
+The board is a loopback HTTP server on an ephemeral port, started when `swarm.enabled` is true. Agents get the exact calls in their descriptor, so you rarely need this — but it's useful for debugging:
+
+| Method | Path | Purpose |
+|--------|------|---------|
+| `POST` | `/v1/sessions/{id}/messages` | Post a message: `{"author":"agent-2","content":"…"}` |
+| `GET` | `/v1/sessions/{id}/messages?since=N` | Read messages after cursor `N` |
+| `GET` | `/healthz` | Liveness |
+
+Responses: `201` on post, `400` malformed, `404` unknown or non-swarm session, `429` cap reached.
+
+> **The board has no authentication.** Any local process can post to it. Keep `boardAddr` on loopback and don't expose the port.
+
+### Where swarm data lives
+
+Under Overseer's data directory, never inside your repository:
+
+```
+<dataDir>/swarm/<session-short-id>/
+├── messages.jsonl   # append-only board log, one JSON record per line
+└── swarm.json       # bootstrap descriptor the agents read
+```
+
+Board history survives an Overseer restart. Deleting the session removes the directory.
+
+### Starting up
+
+A newly created agent pane exists within milliseconds, but the agent CLI behind it takes seconds to accept input. So Overseer types each agent's briefing and then submits it from the background flush job, retrying a few rounds — sending the Enter immediately would leave every agent holding a prompt it never sent.
+
+In practice a new swarm starts working a few seconds after creation. If a cold start is slow enough to outlast the retries, press `Ctrl+E` on the Agents Board (or run `/enter <session>`) to submit the queued briefings yourself.
+
+### Current limitations
+
+- **Agent status is not tracked per agent.** A swarm shows a 🐝 marker rather than a running/waiting/idle state: the status API carries one status per session and a swarm has N panes. Aggregating them needs a rule (any agent waiting → waiting?) that per-pane detection would have to come first.
+- **Startup submission is retried, not detected.** Overseer does not model each CLI's readiness — it re-sends Enter for a bounded number of rounds. `Ctrl+E` / `/enter` is the manual backstop.
+- **No re-bootstrap after restart.** The panes and board survive, but nothing re-briefs the agents. Post to the board to get them moving again.
+- **`nudgeDebounce` needs tuning.** The `2s` default is a starting point, not a tested optimum — raise it if your swarm is too chatty.
+- **Cost scales with agent count.** N agents on one goal means roughly N times the tokens. The message counter in the board footer is there to keep that visible.
 
 ---
 

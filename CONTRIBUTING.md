@@ -52,11 +52,13 @@ Overseer follows **Clean Architecture** (Ports and Adapters / Hexagonal):
 │   │   └── service/        # Use cases (create session, register project, ...)
 │   ├── adapters/
 │   │   ├── primary/        # Driving adapters
+│   │   │   ├── boardhttp/  # HTTP board API used by swarm agent processes
 │   │   │   └── tui/        # Bubble Tea UI (dashboard, forms, inspector)
 │   │   └── secondary/      # Driven adapters
 │   │       ├── tmux/       # tmux integration
 │   │       ├── git/        # Git operations
 │   │       ├── github/     # GitHub CLI integration
+│   │       ├── swarmboard/ # JSONL swarm message board
 │   │       └── storage/    # JSON file persistence
 │   └── shared/
 │       ├── config/         # YAML config loading
@@ -65,6 +67,8 @@ Overseer follows **Clean Architecture** (Ports and Adapters / Hexagonal):
 ```
 
 Dependencies point inward: TUI → Services → Domain. The domain knows nothing about Bubble Tea, tmux, or GitHub CLI.
+
+Note that `boardhttp` is a **primary** adapter, not a secondary one: swarm agents run as separate processes and call *into* Overseer, so requests flow inward through the service layer exactly as the TUI's do.
 
 ## Where to Make Changes
 

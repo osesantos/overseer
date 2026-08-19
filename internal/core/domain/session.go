@@ -3,12 +3,18 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"path/filepath"
 	"strings"
 	"time"
 
 	"github.com/google/uuid"
 )
+
+// tmuxAgentSuffix is appended to a session's UUID to name its agent tmux
+// session. Swarm sessions append a further "-<index>". This is the single
+// source of the agent pane naming convention — see AgentTmuxID.
+const tmuxAgentSuffix = "-agent"
 
 // Session is the aggregate representing a single AI agent session.
 //
@@ -26,6 +32,13 @@ import (
 // Every session is bound to a Project — ProjectID is required and rejected
 // when uuid.Nil. The two modes share every other field; the storage layer
 // persists the same struct shape for both.
+//
+// Orthogonally to the worktree modes, a session runs either a single agent or a
+// swarm of them (see SwarmSize / IsSwarm). Swarm sessions back each agent with
+// its own tmux session and coordinate through a shared message board; single
+// agent sessions are the original one-pane shape. Both modes resolve their tmux
+// session names through AgentTmuxID, which is the only place the naming
+// convention lives.
 type Session struct {
 	ID           uuid.UUID
 	Name         string
@@ -36,6 +49,7 @@ type Session struct {
 	AgentCommand string
 	AgentType    AgentType `json:",omitempty"`
 	Label        string    `json:",omitempty"`
+	SwarmSize    int       `json:",omitempty"`
 	CreatedAt    time.Time
 	UpdatedAt    time.Time
 }
@@ -74,6 +88,67 @@ func NewSession(name string, projectID uuid.UUID) (Session, error) {
 // the project's path.
 func (s Session) HasWorktree() bool {
 	return s.WorktreePath != ""
+}
+
+// IsSwarm reports whether the session runs a swarm of cooperating agents rather
+// than a single one. Sessions persisted before swarm support decode SwarmSize as
+// zero, and an explicit size of one is still a single agent, so both are treated
+// as "not a swarm".
+func (s Session) IsSwarm() bool {
+	return s.SwarmSize >= SwarmMinAgents
+}
+
+// AgentCount returns how many agent panes back this session: SwarmSize for a
+// swarm, one otherwise. Callers loop over it rather than branching on IsSwarm.
+func (s Session) AgentCount() int {
+	if s.IsSwarm() {
+		return s.SwarmSize
+	}
+	return 1
+}
+
+// AssignSwarmSize turns the session into a swarm of n agents. n must be within
+// [SwarmMinAgents, SwarmMaxAgents]; one is rejected rather than silently
+// downgraded so a caller asking for a swarm of one hears about it.
+func (s *Session) AssignSwarmSize(n int) error {
+	if n < SwarmMinAgents || n > SwarmMaxAgents {
+		return ErrSessionSwarmSizeOutOfRange
+	}
+
+	s.SwarmSize = n
+	s.UpdatedAt = time.Now()
+	return nil
+}
+
+// AgentTmuxID returns the tmux session name backing the agent pane at the given
+// 1-based index. Single-agent sessions ignore index entirely and always return
+// "<uuid>-agent", preserving the name used before swarm support; swarm sessions
+// return "<uuid>-agent-<index>".
+//
+// Out-of-range indexes are clamped into [1, AgentCount] so callers can pass a UI
+// cursor straight through without bounds-checking it first.
+func (s Session) AgentTmuxID(index int) string {
+	if !s.IsSwarm() {
+		return s.ID.String() + tmuxAgentSuffix
+	}
+	if index < 1 {
+		index = 1
+	}
+	if index > s.SwarmSize {
+		index = s.SwarmSize
+	}
+	return fmt.Sprintf("%s%s-%d", s.ID, tmuxAgentSuffix, index)
+}
+
+// AgentTmuxIDs returns every agent tmux session name backing this session, in
+// index order. Teardown iterates this so no pane is ever orphaned.
+func (s Session) AgentTmuxIDs() []string {
+	count := s.AgentCount()
+	ids := make([]string, 0, count)
+	for index := 1; index <= count; index++ {
+		ids = append(ids, s.AgentTmuxID(index))
+	}
+	return ids
 }
 
 // WorktreeIsInsideRoot reports whether the session's WorktreePath lies
@@ -262,4 +337,5 @@ var (
 	ErrSessionEmptyAgentCommand       = errors.New("session agent command cannot be empty")
 	ErrSessionNoAgentCommandAvailable = errors.New("session has no agent command and no default launcher is configured")
 	ErrSessionLabelTooLong            = errors.New("session label exceeds 50 characters")
+	ErrSessionSwarmSizeOutOfRange     = errors.New("session swarm size must be between 2 and 8")
 )

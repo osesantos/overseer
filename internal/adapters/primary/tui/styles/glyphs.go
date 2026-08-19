@@ -28,6 +28,11 @@ type Glyphs struct {
 	StatusIdle    string
 	StatusDead    string
 	StatusUnknown string
+	// StatusSwarm marks a swarm session. It stands in place of a status glyph
+	// rather than alongside one: per-session agent status is not meaningful for a
+	// swarm (it has N panes), so this says "this is a swarm" instead of pretending
+	// to report a state it cannot know.
+	StatusSwarm string
 }
 
 func NewGlyphs(disableEmoji bool) Glyphs {
@@ -58,6 +63,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 			StatusIdle:    "○",
 			StatusDead:    "■",
 			StatusUnknown: "?",
+			StatusSwarm:   "⁂",
 		}
 	}
 	return Glyphs{
@@ -86,6 +92,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 		StatusIdle:    "💤",
 		StatusDead:    "🟥",
 		StatusUnknown: "❓",
+		StatusSwarm:   "🐝",
 	}
 }
 
@@ -115,6 +122,8 @@ func (g Glyphs) AgentStatus(kind domain.AgentStatusKind) string {
 		return g.StatusIdle
 	case domain.AgentStatusDead:
 		return g.StatusDead
+	case domain.AgentStatusSwarm:
+		return g.StatusSwarm
 	default:
 		return g.StatusUnknown
 	}

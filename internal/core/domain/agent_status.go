@@ -31,6 +31,12 @@ const (
 	AgentStatusWaiting AgentStatusKind = "waiting"
 	AgentStatusIdle    AgentStatusKind = "idle"
 	AgentStatusDead    AgentStatusKind = "dead"
+	// AgentStatusSwarm marks a session whose agents are not tracked individually.
+	// A swarm has one pane per agent, and this API carries a single status per
+	// session, so there is nothing honest to report — but it is not Unknown
+	// either: Unknown means detection failed, whereas this means detection does
+	// not apply.
+	AgentStatusSwarm AgentStatusKind = "swarm"
 )
 
 // AgentStatus is a value object describing what an agent is doing right

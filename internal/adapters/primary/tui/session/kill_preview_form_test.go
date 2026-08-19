@@ -9,12 +9,13 @@ import (
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/core/service"
 	"github.com/dnlopes/overseer/internal/testutil"
 )
 
 func TestKillPreviewForm_EscapeCancelsPopup(t *testing.T) {
 	svc := newCreateFormSessionService(t)
-	form := NewKillPreviewForm(styles.New(), svc, uuid.New(), "alpha", "Shell")
+	form := NewKillPreviewForm(styles.New(), svc, uuid.New(), "alpha", service.PreviewKindShell, 0, "Shell")
 
 	_, cmd := form.Update(escKeyPress())
 
@@ -28,7 +29,7 @@ func TestKillPreviewForm_EscapeCancelsPopup(t *testing.T) {
 
 func TestKillPreviewForm_NCancelsPopup(t *testing.T) {
 	svc := newCreateFormSessionService(t)
-	form := NewKillPreviewForm(styles.New(), svc, uuid.New(), "alpha", "Shell")
+	form := NewKillPreviewForm(styles.New(), svc, uuid.New(), "alpha", service.PreviewKindShell, 0, "Shell")
 
 	_, cmd := form.Update(formKeyPress("n"))
 
@@ -48,7 +49,7 @@ func TestKillPreviewForm_EnterConfirmsKill_Shell(t *testing.T) {
 		Return(makeTmuxSession(sess.ID.String()), nil).Once()
 	tmux.EXPECT().KillSession(mock.Anything, sess.ID.String()).Return(nil).Once()
 
-	form := NewKillPreviewForm(styles.New(), svc, sess.ID, sess.Name, "Shell")
+	form := NewKillPreviewForm(styles.New(), svc, sess.ID, sess.Name, service.PreviewKindShell, 0, "Shell")
 
 	_, cmd := form.Update(formKeyPress("enter"))
 
@@ -68,7 +69,7 @@ func TestKillPreviewForm_EnterConfirmsKill_Agent(t *testing.T) {
 		Return(makeTmuxSession(sess.ID.String()+"-agent"), nil).Once()
 	tmux.EXPECT().KillSession(mock.Anything, sess.ID.String()+"-agent").Return(nil).Once()
 
-	form := NewKillPreviewForm(styles.New(), svc, sess.ID, sess.Name, "Agent")
+	form := NewKillPreviewForm(styles.New(), svc, sess.ID, sess.Name, service.PreviewKindAgent, 0, "Agent")
 
 	_, cmd := form.Update(formKeyPress("enter"))
 
@@ -82,7 +83,7 @@ func TestKillPreviewForm_EnterConfirmsKill_Agent(t *testing.T) {
 
 func TestKillPreviewForm_ViewUsesDangerStyling(t *testing.T) {
 	svc := newCreateFormSessionService(t)
-	form := NewKillPreviewForm(styles.New(), svc, uuid.New(), "alpha", "Shell")
+	form := NewKillPreviewForm(styles.New(), svc, uuid.New(), "alpha", service.PreviewKindShell, 0, "Shell")
 
 	view := form.View().Content
 

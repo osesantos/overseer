@@ -17,7 +17,7 @@ import (
 
 func newTestModel(t *testing.T) Model {
 	t.Helper()
-	return New(styles.New(), service.SessionService{}, 500*time.Millisecond)
+	return New(styles.New(), service.SessionService{}, nil, 500*time.Millisecond)
 }
 
 func keyPress(value string) tea.KeyPressMsg {
@@ -117,10 +117,10 @@ func TestInspector_SessionSelectedMsg_PropagatesToAllViews(t *testing.T) {
 	id := uuid.New()
 	updated, _ := m.Update(shared.SessionSelectedMsg{Session: domain.Session{ID: id}})
 	m = updated.(Model)
-	if m.sessionID != id {
-		t.Errorf("model sessionID = %v, want %v", m.sessionID, id)
+	// Every view receives the whole Session via SetSession.
+	if agent := m.views[ixAgent].(*streamView); agent.sessionID != id {
+		t.Errorf("agent view sessionID = %v, want %v", agent.sessionID, id)
 	}
-	// Both views (Agent, Shell) receive the session ID via SetSession.
 	for i, v := range m.views {
 		sv, ok := v.(*streamView)
 		if !ok {
@@ -153,7 +153,7 @@ func TestInspector_PreviewCapturedMsg_OnlyActiveViewProcesses(t *testing.T) {
 	m := newTestModel(t)
 	id := uuid.New()
 	for i := range m.views {
-		m.views[i].SetSession(id)
+		m.views[i].SetSession(domain.Session{ID: id})
 	}
 	msg := previewCapturedMsg{
 		kind:         viewKindAgent,
@@ -164,7 +164,7 @@ func TestInspector_PreviewCapturedMsg_OnlyActiveViewProcesses(t *testing.T) {
 	updated, _ := m.Update(msg)
 	m = updated.(Model)
 
-	agent := m.views[0].(*streamView)
+	agent := m.views[ixAgent].(*streamView)
 	if agent.content != "agent stream" {
 		t.Errorf("agent content = %q, want %q", agent.content, "agent stream")
 	}
@@ -181,7 +181,7 @@ func TestInspector_PreviewCapturedMsg_OnlyActiveViewProcesses(t *testing.T) {
 	updated, _ = m.Update(staleMsg)
 	m = updated.(Model)
 
-	shell := m.views[1].(*streamView)
+	shell := m.views[ixShell].(*streamView)
 	if shell.content != "" {
 		t.Errorf("shell received agent-kind message: content = %q, want empty", shell.content)
 	}
@@ -234,8 +234,8 @@ func TestInspector_SessionSelectionClearedMsg_ResetsAllViews(t *testing.T) {
 	if cmd != nil {
 		t.Errorf("Update(SessionSelectionClearedMsg) cmd = %#v, want nil (no further polling)", cmd)
 	}
-	if m.sessionID != uuid.Nil {
-		t.Errorf("model sessionID = %v, want uuid.Nil", m.sessionID)
+	if agent := m.views[ixAgent].(*streamView); agent.sessionID != uuid.Nil {
+		t.Errorf("agent view sessionID = %v, want uuid.Nil", agent.sessionID)
 	}
 	for i, v := range m.views {
 		sv, ok := v.(*streamView)

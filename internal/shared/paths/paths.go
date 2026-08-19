@@ -36,6 +36,25 @@ func (r Resolver) SessionWorktreePath(sessionID uuid.UUID) string {
 	return filepath.Join(r.WorktreeRoot(), shortUUID(sessionID))
 }
 
+// SwarmDir is the per-session directory holding a swarm's board and bootstrap
+// descriptor. It deliberately lives under the data dir rather than inside the
+// session's working directory: the working directory is a git tree the user
+// commits from, and Overseer must not litter it with untracked state.
+func (r Resolver) SwarmDir(sessionID uuid.UUID) string {
+	return filepath.Join(r.dataDir, "swarm", shortUUID(sessionID))
+}
+
+// SwarmBoardFile is the append-only JSONL log of a swarm session's messages.
+func (r Resolver) SwarmBoardFile(sessionID uuid.UUID) string {
+	return filepath.Join(r.SwarmDir(sessionID), "messages.jsonl")
+}
+
+// SwarmDescriptorFile is the bootstrap descriptor a swarm's agents read to
+// discover the board endpoint, the goal, and their own roster.
+func (r Resolver) SwarmDescriptorFile(sessionID uuid.UUID) string {
+	return filepath.Join(r.SwarmDir(sessionID), "swarm.json")
+}
+
 // ConfigFile is a package-level bootstrap helper used to locate the config
 // file BEFORE a Resolver can be constructed (chicken-and-egg: the config
 // itself defines what the Resolver should override).

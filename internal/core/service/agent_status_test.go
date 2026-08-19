@@ -74,6 +74,43 @@ func TestAgentStatusService_PollAll_ReturnsDeadWhenAgentTmuxMissing(t *testing.T
 	}
 }
 
+func TestAgentStatusService_PollAll_SwarmSession_ReportsSwarmNotDead(t *testing.T) {
+	ctx := context.Background()
+	sess := newSessionFixture(domain.AgentTypeClaudeCode)
+	if err := sess.AssignSwarmSize(3); err != nil {
+		t.Fatalf("AssignSwarmSize() error = %v", err)
+	}
+
+	repo, tmux, registry := newAgentStatusMocks(t)
+	repo.EXPECT().List(mock.Anything).Return([]domain.Session{sess}, nil).Once()
+	// No tmux and no registry expectations: a swarm has N panes and this
+	// one-status-per-session API cannot represent them, so it must bail out
+	// before probing anything.
+
+	svc := newAgentStatusServiceWithDeps(repo, tmux, registry)
+	resp, err := svc.PollAll(ctx, PollAllAgentStatusesRequest{})
+	if err != nil {
+		t.Fatalf("PollAll err = %v", err)
+	}
+
+	status, ok := resp.Statuses[sess.ID]
+	if !ok {
+		t.Fatal("PollAll missing status for swarm session")
+	}
+	// Swarm, not Unknown: probing the bare -agent pane a swarm never creates would
+	// falsely report Dead, and Unknown would imply detection failed rather than
+	// not applying.
+	if status.Kind != domain.AgentStatusSwarm {
+		t.Fatalf("Kind = %q, want %q", status.Kind, domain.AgentStatusSwarm)
+	}
+	if status.Source == "" {
+		t.Fatal("swarm status Source = empty, want non-empty")
+	}
+	if status.DetectedAt.IsZero() {
+		t.Fatal("swarm status DetectedAt zero, want non-zero")
+	}
+}
+
 func TestAgentStatusService_PollAll_TmuxError_DegradesToUnknown(t *testing.T) {
 	ctx := context.Background()
 	sess := newSessionFixture(domain.AgentTypeClaudeCode)

@@ -3,6 +3,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/google/uuid"
@@ -164,5 +165,67 @@ func TestSessionFeatureBranchUsesOverseerPrefix(t *testing.T) {
 	want := "overseer/" + sessionID.String()[:8]
 	if got != want {
 		t.Fatalf("SessionFeatureBranch() = %q, want %q", got, want)
+	}
+}
+
+func TestResolver_SwarmDir_UsesUUIDUnderDataDir(t *testing.T) {
+	r := NewResolver("/custom/data")
+	id := uuid.New()
+	got := r.SwarmDir(id)
+	want := filepath.Join("/custom/data", "swarm", id.String()[:8])
+	if got != want {
+		t.Fatalf("Resolver.SwarmDir() = %q, want %q", got, want)
+	}
+}
+
+func TestResolver_SwarmDir_IsolatesSessions(t *testing.T) {
+	r := NewResolver("/custom/data")
+	first, second := r.SwarmDir(uuid.New()), r.SwarmDir(uuid.New())
+	if first == second {
+		t.Fatalf("Resolver.SwarmDir() returned %q for two different sessions, want distinct dirs", first)
+	}
+}
+
+func TestResolver_SwarmDir_StaysOutOfTheWorktreeRoot(t *testing.T) {
+	r := NewResolver("/custom/data")
+	id := uuid.New()
+	if got := r.SwarmDir(id); strings.HasPrefix(got, r.WorktreeRoot()) {
+		t.Fatalf("Resolver.SwarmDir() = %q, must not live under WorktreeRoot() %q — board data would land in a git tree", got, r.WorktreeRoot())
+	}
+}
+
+func TestResolver_SwarmBoardFile_IsJSONLUnderSwarmDir(t *testing.T) {
+	r := NewResolver("/custom/data")
+	id := uuid.New()
+	got := r.SwarmBoardFile(id)
+	want := filepath.Join(r.SwarmDir(id), "messages.jsonl")
+	if got != want {
+		t.Fatalf("Resolver.SwarmBoardFile() = %q, want %q", got, want)
+	}
+}
+
+func TestResolver_SwarmDescriptorFile_IsSwarmJSONUnderSwarmDir(t *testing.T) {
+	r := NewResolver("/custom/data")
+	id := uuid.New()
+	got := r.SwarmDescriptorFile(id)
+	want := filepath.Join(r.SwarmDir(id), "swarm.json")
+	if got != want {
+		t.Fatalf("Resolver.SwarmDescriptorFile() = %q, want %q", got, want)
+	}
+}
+
+func TestResolver_SwarmFiles_HonourDataDirOverride(t *testing.T) {
+	t.Setenv("XDG_DATA_HOME", "/tmp/xdg-data")
+
+	r := NewResolver("/custom/data")
+	id := uuid.New()
+	for name, got := range map[string]string{
+		"SwarmDir":            r.SwarmDir(id),
+		"SwarmBoardFile":      r.SwarmBoardFile(id),
+		"SwarmDescriptorFile": r.SwarmDescriptorFile(id),
+	} {
+		if !strings.HasPrefix(got, "/custom/data") {
+			t.Fatalf("Resolver.%s() = %q, want it under the /custom/data override", name, got)
+		}
 	}
 }

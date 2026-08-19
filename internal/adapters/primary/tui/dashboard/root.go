@@ -99,8 +99,15 @@ type Model struct {
 	sessionsService service.SessionService
 	projectsService service.ProjectService
 	overseerService *service.OverseerService
+	swarmService    *service.SwarmService
 	launchers       []domain.Launcher
 	labels          []domain.Label
+
+	// swarmBoardURL is the base URL agents call to reach the board. Empty means
+	// swarm mode is disabled, which is what gates the create form's swarm field.
+	swarmBoardURL string
+	// swarmMaxAgents is the configured ceiling offered by the create form.
+	swarmMaxAgents int
 }
 
 func New(
@@ -108,12 +115,15 @@ func New(
 	sessionsService service.SessionService,
 	projectsService service.ProjectService,
 	overseerService *service.OverseerService,
+	swarmService *service.SwarmService,
 	scheduler jobs.Model,
 	launchers []domain.Launcher,
 	labels []domain.Label,
 	minWidth, minHeight int,
 	previewRefreshInterval time.Duration,
 	discoveryPaths []string,
+	swarmBoardURL string,
+	swarmMaxAgents int,
 ) Model {
 	sessionsModel := sessionui.New(styles, sessionsService, labels)
 	detailsModel := sessiondetails.New(styles)
@@ -124,12 +134,15 @@ func New(
 		styles:                  styles,
 		titlebar:                newTitlebar(styles, "overseer"),
 		leftPane:                left,
-		inspector:               inspector.New(styles, sessionsService, previewRefreshInterval),
+		inspector:               inspector.New(styles, sessionsService, swarmService, previewRefreshInterval),
 		helpBar:                 shared.NewHelpBarModel(styles, slices.Concat(sessionsKeyBindings, inspectorKeyBindings, generalKeyBindings)),
 		scheduler:               scheduler,
 		sessionsService:         sessionsService,
 		projectsService:         projectsService,
 		overseerService:         overseerService,
+		swarmService:            swarmService,
+		swarmBoardURL:           swarmBoardURL,
+		swarmMaxAgents:          swarmMaxAgents,
 		labels:                  labels,
 		launchers:               launchers,
 		minWidth:                minWidth,
@@ -305,7 +318,20 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.activePopup = popupNone
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
-		return m, cmd
+		cmds := []tea.Cmd{cmd}
+		// A swarm's panes exist by now but the agents have no idea what they are
+		// for, so brief them: write the contract, post the goal, introduce each
+		// agent to its identity.
+		if bootstrap := m.bootstrapSwarmCmd(msg.Session, msg.SwarmGoal); bootstrap != nil {
+			cmds = append(cmds, bootstrap)
+		}
+		return m, tea.Batch(cmds...)
+
+	case shared.SwarmBootstrappedMsg:
+		if msg.Err != nil {
+			m.discoveryMsg = "Swarm bootstrap failed: " + msg.Err.Error()
+		}
+		return m, nil
 	case shared.SessionDeleteRequestedMsg:
 		m.deleteForm = sessionui.NewDeleteForm(m.styles, m.sessionsService, msg.Session)
 		m.activePopup = popupDeleteSession
@@ -430,18 +456,32 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
+		// A view that has taken the keyboard — currently the Agents Board's
+		// compose line — keeps every key except the hard-kill escape hatch. This
+		// gate has to sit ahead of everything else, including ctrl+o and quit,
+		// or a half-typed message would be cut short by a global shortcut.
+		if m.inspector.CapturesInput() {
+			if key.Matches(keyMsg, hardQuitKeyBinding) {
+				return m, tea.Quit
+			}
+			var cmd tea.Cmd
+			m.inspector, cmd = shared.UpdateModel(m.inspector, keyMsg)
+			return m, cmd
+		}
+
 		// ctrl+o toggles the chat panel regardless of focus state.
-		// ctrl+c is the hard-kill escape hatch that always quits.
 		if key.Matches(keyMsg, overseerPanelKeyBinding) {
 			if cmd, handled := m.handleKey(keyMsg); handled {
 				return m, cmd
 			}
 		}
-		if key.Matches(keyMsg, quitKeyBinding) {
-			return m, tea.Quit
-		}
 
 		if m.chatPanelVisible {
+			// Only ctrl+c quits while the chat is open — "q" belongs to the
+			// message being typed.
+			if key.Matches(keyMsg, hardQuitKeyBinding) {
+				return m, tea.Quit
+			}
 			// Navigation keys pass through to the session list so the user can
 			// change the selected session while typing in the chat.
 			if key.Matches(keyMsg, chatPassthroughNav) {
@@ -459,6 +499,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, keyMsg)
 			return m, cmd
+		}
+
+		if key.Matches(keyMsg, quitKeyBinding) {
+			return m, tea.Quit
 		}
 
 		// Normal routing when the chat panel is closed.
@@ -494,6 +538,20 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		m.inspector, cmd = shared.UpdateModel(m.inspector, msg)
 		return cmd, true
 	}
+	// The inspector never sees a key it is not handed, so the swarm agent pager
+	// has to be forwarded explicitly — same as tab above.
+	if key.Matches(msg, inspector.SwarmAgentNextKeyBinding, inspector.SwarmAgentPrevKeyBinding) {
+		var cmd tea.Cmd
+		m.inspector, cmd = shared.UpdateModel(m.inspector, msg)
+		return cmd, true
+	}
+	// Only claim the compose key when the board can actually use it, so "i" stays
+	// available to the rest of the UI.
+	if key.Matches(msg, inspector.BoardComposeKeyBinding) && m.inspector.CanCompose() {
+		var cmd tea.Cmd
+		m.inspector, cmd = shared.UpdateModel(m.inspector, msg)
+		return cmd, true
+	}
 	if key.Matches(msg, newSessionKeyBinding) {
 		initialProjectID := m.cursorProjectID()
 		m.createForm = sessionui.NewCreateForm(
@@ -506,6 +564,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			m.defaultBranchesByProject(),
 			m.launchers,
 			m.width,
+			m.swarmBoardURL != "",
+			m.swarmMaxAgents,
 		)
 		m.activePopup = popupNewSession
 		cmds := []tea.Cmd{m.createForm.Init()}
@@ -515,18 +575,25 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return tea.Batch(cmds...), true
 	}
 	if key.Matches(msg, attachKeyBinding) {
-		switch m.inspector.ActiveViewLabel() {
-		case "Shell":
-			if cmd := m.attachSelectedSessionShellCmd(); cmd != nil {
-				return cmd, true
-			}
-		case "Editor":
-			if cmd := m.attachSelectedSessionEditorCmd(); cmd != nil {
-				return cmd, true
-			}
-		default:
-			if cmd := m.attachSelectedSessionAgentCmd(); cmd != nil {
-				return cmd, true
+		// Dispatch on the typed preview kind rather than the tab label. The
+		// Agents Board has no pane behind it and reports ok=false, which is what
+		// stops Enter falling through to AttachAgent and lazily spawning an
+		// unmanaged extra agent on a swarm.
+		kind, agentIndex, ok := m.inspector.ActivePreviewKind()
+		if ok {
+			switch kind {
+			case service.PreviewKindShell:
+				if cmd := m.attachSelectedSessionShellCmd(); cmd != nil {
+					return cmd, true
+				}
+			case service.PreviewKindEditor:
+				if cmd := m.attachSelectedSessionEditorCmd(); cmd != nil {
+					return cmd, true
+				}
+			case service.PreviewKindAgent:
+				if cmd := m.attachSelectedSessionAgentCmd(agentIndex); cmd != nil {
+					return cmd, true
+				}
 			}
 		}
 	}
@@ -575,7 +642,30 @@ func (m Model) attachSelectedSessionShellCmd() tea.Cmd {
 	}
 }
 
-func (m Model) attachSelectedSessionAgentCmd() tea.Cmd {
+// bootstrapSwarmCmd briefs a freshly created swarm. Returns nil for ordinary
+// sessions, or when swarm mode is off and there is therefore no board to point
+// the agents at.
+func (m Model) bootstrapSwarmCmd(sess domain.Session, goal string) tea.Cmd {
+	if !sess.IsSwarm() || m.swarmService == nil || m.swarmBoardURL == "" {
+		return nil
+	}
+
+	svc := m.swarmService
+	boardURL := m.swarmBoardURL
+	sessID := sess.ID
+	return func() tea.Msg {
+		err := svc.Bootstrap(context.Background(), service.BootstrapSwarmRequest{
+			SessionID: sessID,
+			BoardURL:  boardURL,
+			Goal:      goal,
+		})
+		return shared.SwarmBootstrappedMsg{SessionID: sessID, Err: err}
+	}
+}
+
+// attachSelectedSessionAgentCmd attaches to an agent pane. agentIndex selects
+// which pane of a swarm; it is ignored by single-agent sessions.
+func (m Model) attachSelectedSessionAgentCmd(agentIndex int) tea.Cmd {
 	idStr := m.leftPane.SelectedSessionID()
 	if idStr == "" {
 		return nil
@@ -586,7 +676,10 @@ func (m Model) attachSelectedSessionAgentCmd() tea.Cmd {
 	}
 	svc := m.sessionsService
 	return func() tea.Msg {
-		resp, err := svc.AttachAgent(context.Background(), service.AttachAgentRequest{ID: sessID})
+		resp, err := svc.AttachAgent(context.Background(), service.AttachAgentRequest{
+			ID:         sessID,
+			AgentIndex: agentIndex,
+		})
 		return shared.SessionAttachReadyMsg{Command: resp.Command, Err: err}
 	}
 }
@@ -634,8 +727,31 @@ func (m Model) sendAgentEnterCmd() tea.Cmd {
 		return nil
 	}
 	svc := m.sessionsService
+
+	// The keystroke follows what the active tab represents. On a swarm's Agent
+	// tab it goes to that one pane; anywhere else on a swarm — including the
+	// Agents Board, which is the default tab and stands for the whole swarm — it
+	// goes to every agent.
+	//
+	// Broadcasting is safe: a bare Enter submits a queued prompt and is a
+	// harmless newline otherwise. Previously this discarded the `ok` from
+	// ActivePreviewKind, so on the board tab agentIndex fell through as 0 and
+	// silently poked agent 1 alone.
+	kind, agentIndex, ok := m.inspector.ActivePreviewKind()
+	if sess, found := m.leftPane.SelectedSession(); found && sess.IsSwarm() {
+		if !ok || kind != service.PreviewKindAgent {
+			return func() tea.Msg {
+				_, err := svc.SendAgentEnterAll(context.Background(), service.SendAgentEnterAllRequest{ID: sessID})
+				return shared.AgentEnterSentMsg{Err: err}
+			}
+		}
+	}
+
 	return func() tea.Msg {
-		_, err := svc.SendAgentEnter(context.Background(), service.SendAgentEnterRequest{ID: sessID})
+		_, err := svc.SendAgentEnter(context.Background(), service.SendAgentEnterRequest{
+			ID:         sessID,
+			AgentIndex: agentIndex,
+		})
 		return shared.AgentEnterSentMsg{Err: err}
 	}
 }
@@ -653,8 +769,19 @@ func (m *Model) showKillPreviewPopupCmd() tea.Cmd {
 	if !ok {
 		return nil
 	}
-	kind := m.inspector.ActiveViewLabel()
-	m.killPreviewForm = sessionui.NewKillPreviewForm(m.styles, m.sessionsService, sessID, sess.Name, kind)
+
+	// Refuse when the active tab has no pane behind it. Previously this mapped a
+	// tab *label* to a kind and silently defaulted to the shell, so pressing x on
+	// the Agents Board killed the shell while the popup claimed otherwise.
+	kind, agentIndex, ok := m.inspector.ActivePreviewKind()
+	if !ok {
+		return nil
+	}
+
+	m.killPreviewForm = sessionui.NewKillPreviewForm(
+		m.styles, m.sessionsService, sessID, sess.Name,
+		kind, agentIndex, m.inspector.ActiveViewLabel(),
+	)
 	m.activePopup = popupKillPreview
 	return m.killPreviewForm.Init()
 }
@@ -978,4 +1105,3 @@ func truncateLines(s string, n int) string {
 func fit(s *styles.Styles, content string, width, height int) string {
 	return s.Layout.Box.Width(width).Height(height).Render(content)
 }
-

@@ -2,6 +2,7 @@ package session
 
 import (
 	"context"
+	"strconv"
 	"strings"
 
 	"charm.land/bubbles/v2/key"
@@ -34,6 +35,15 @@ type CreateFormModel struct {
 	projectsService        service.ProjectService
 	styles                 *styles.Styles
 	contentWidth           int
+
+	// swarmAvailable gates the swarm fields entirely: false when swarm mode is
+	// disabled in config, in which case the board server was never started and a
+	// swarm session would have nowhere to talk.
+	swarmAvailable bool
+	swarmMaxAgents int
+	swarmEnabled   bool
+	swarmSize      int
+	goalInput      textinput.Model
 }
 
 type formField int
@@ -44,6 +54,9 @@ const (
 	fieldCreateWorktreeToggle
 	fieldBaseBranchPicker
 	fieldNewBranch
+	fieldSwarmToggle
+	fieldSwarmSize
+	fieldSwarmGoal
 	fieldLauncher
 )
 
@@ -57,6 +70,8 @@ func NewCreateForm(
 	defaultBranchByProject map[uuid.UUID]string,
 	launchers []domain.Launcher,
 	terminalWidth int,
+	swarmAvailable bool,
+	swarmMaxAgents int,
 ) CreateFormModel {
 	contentWidth := formContentWidth(terminalWidth)
 	inputWidth := formValueColumnWidth(contentWidth)
@@ -73,6 +88,15 @@ func NewCreateForm(
 	newBranchInput.CharLimit = 200
 	newBranchInput.SetWidth(inputWidth)
 	newBranchInput.SetStyles(s.Form.Input)
+
+	// A single-line input rather than a textarea: textarea's default keymap
+	// claims enter, up and down, all of which this form already binds to submit
+	// and field navigation.
+	goalInput := textinput.New()
+	goalInput.Placeholder = "What should the swarm achieve?"
+	goalInput.CharLimit = 2000
+	goalInput.SetWidth(inputWidth)
+	goalInput.SetStyles(s.Form.Input)
 
 	if branchesByProject == nil {
 		branchesByProject = map[uuid.UUID][]domain.BranchInfo{}
@@ -97,6 +121,10 @@ func NewCreateForm(
 		projectsService:        projectsService,
 		styles:                 s,
 		contentWidth:           contentWidth,
+		swarmAvailable:         swarmAvailable,
+		swarmMaxAgents:         swarmMaxAgents,
+		swarmSize:              domain.SwarmMinAgents,
+		goalInput:              goalInput,
 	}
 	m.rebuildFocusOrder()
 	return m
@@ -152,6 +180,23 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.rebuildFocusOrder()
 				return m, nil
 			}
+		case fieldSwarmToggle:
+			if key.Matches(msg, popupToggleKeyBinding) ||
+				key.Matches(msg, popupSelectorNextKeyBinding) ||
+				key.Matches(msg, popupSelectorPrevKeyBinding) {
+				m.swarmEnabled = !m.swarmEnabled
+				m.rebuildFocusOrder()
+				return m, nil
+			}
+		case fieldSwarmSize:
+			if key.Matches(msg, popupSelectorNextKeyBinding) {
+				m.cycleSwarmSize(1)
+				return m, nil
+			}
+			if key.Matches(msg, popupSelectorPrevKeyBinding) {
+				m.cycleSwarmSize(-1)
+				return m, nil
+			}
 		case fieldBaseBranchPicker:
 			if key.Matches(msg, popupSubmitFormKeyBinding) {
 				m.baseBranchPicker.confirmSelection()
@@ -204,6 +249,10 @@ func (m CreateFormModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.nameInput, cmd = m.nameInput.Update(msg)
 		return m, cmd
+	case fieldSwarmGoal:
+		var cmd tea.Cmd
+		m.goalInput, cmd = m.goalInput.Update(msg)
+		return m, cmd
 	case fieldNewBranch:
 		var cmd tea.Cmd
 		m.newBranchInput, cmd = m.newBranchInput.Update(msg)
@@ -226,12 +275,30 @@ func (m *CreateFormModel) rebuildFocusOrder() {
 	if m.createWorktree {
 		order = append(order, fieldBaseBranchPicker, fieldNewBranch)
 	}
+	if m.swarmAvailable {
+		order = append(order, fieldSwarmToggle)
+		if m.swarmEnabled {
+			order = append(order, fieldSwarmSize, fieldSwarmGoal)
+		}
+	}
 	order = append(order, fieldLauncher)
 	m.focusOrder = order
 	if m.focusIdx >= len(order) {
 		m.focusIdx = 0
 	}
 	m.updateFocusAndBlurs()
+}
+
+// cycleSwarmSize walks the agent count within the configured bounds, wrapping at
+// both ends the same way the launcher selector does.
+func (m *CreateFormModel) cycleSwarmSize(direction int) {
+	maxAgents := m.swarmMaxAgents
+	if maxAgents < domain.SwarmMinAgents {
+		maxAgents = domain.SwarmMinAgents
+	}
+	span := maxAgents - domain.SwarmMinAgents + 1
+	offset := ((m.swarmSize-domain.SwarmMinAgents+direction)%span + span) % span
+	m.swarmSize = domain.SwarmMinAgents + offset
 }
 
 func (m CreateFormModel) currentField() formField {
@@ -254,12 +321,15 @@ func (m CreateFormModel) moveFocus(direction int) (tea.Model, tea.Cmd) {
 func (m *CreateFormModel) updateFocusAndBlurs() {
 	m.nameInput.Blur()
 	m.newBranchInput.Blur()
+	m.goalInput.Blur()
 	m.repoPicker.blur()
 	m.baseBranchPicker.blur()
 
 	switch m.currentField() {
 	case fieldName:
 		m.nameInput.Focus()
+	case fieldSwarmGoal:
+		m.goalInput.Focus()
 	case fieldNewBranch:
 		m.newBranchInput.Focus()
 	case fieldRepository:
@@ -363,6 +433,20 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		req.Branch = strings.TrimSpace(m.newBranchInput.Value())
 	}
 
+	goal := strings.TrimSpace(m.goalInput.Value())
+	if m.swarmAvailable && m.swarmEnabled {
+		// A swarm with no goal has nothing to coordinate around, and the goal
+		// becomes the board's first message — so require it up front rather than
+		// failing later in Bootstrap.
+		if goal == "" {
+			m.errMsg = "a swarm needs a goal"
+			return m, nil
+		}
+		req.SwarmSize = m.swarmSize
+	} else {
+		goal = ""
+	}
+
 	m.errMsg = ""
 	svc := m.sessionsService
 	return m, func() tea.Msg {
@@ -370,7 +454,7 @@ func (m CreateFormModel) submit() (tea.Model, tea.Cmd) {
 		if err != nil {
 			return shared.SessionCreateErrMsg{Err: err}
 		}
-		return shared.SessionCreatedMsg{Session: resp.Session}
+		return shared.SessionCreatedMsg{Session: resp.Session, SwarmGoal: goal}
 	}
 }
 
@@ -393,6 +477,23 @@ func (m CreateFormModel) View() tea.View {
 			"",
 			renderField(m.styles, m.labelStyle(fieldNewBranch), "New branch", m.newBranchInput.View()),
 		)
+	}
+
+	if m.swarmAvailable {
+		parts = append(parts,
+			"",
+			renderField(m.styles, m.labelStyle(fieldSwarmToggle), "Swarm?", m.swarmToggleView()),
+			renderFieldHint(m.styles, "space / ← → toggle"),
+		)
+		if m.swarmEnabled {
+			parts = append(parts,
+				"",
+				renderField(m.styles, m.labelStyle(fieldSwarmSize), "Agents", m.swarmSizeView()),
+				renderFieldHint(m.styles, "←/→ cycle count"),
+				"",
+				renderField(m.styles, m.labelStyle(fieldSwarmGoal), "Goal", m.goalInput.View()),
+			)
+		}
 	}
 
 	parts = append(parts,
@@ -424,6 +525,25 @@ func (m CreateFormModel) toggleView() string {
 	}
 	focused := m.currentField() == fieldCreateWorktreeToggle
 	if focused {
+		return modalListRow(m.styles, true).Render("< " + value + " >")
+	}
+	return modalListRow(m.styles, false).Render("  " + value + "  ")
+}
+
+func (m CreateFormModel) swarmToggleView() string {
+	value := "Off"
+	if m.swarmEnabled {
+		value = "On"
+	}
+	if m.currentField() == fieldSwarmToggle {
+		return modalListRow(m.styles, true).Render("< " + value + " >")
+	}
+	return modalListRow(m.styles, false).Render("  " + value + "  ")
+}
+
+func (m CreateFormModel) swarmSizeView() string {
+	value := strconv.Itoa(m.swarmSize)
+	if m.currentField() == fieldSwarmSize {
 		return modalListRow(m.styles, true).Render("< " + value + " >")
 	}
 	return modalListRow(m.styles, false).Render("  " + value + "  ")
