@@ -837,6 +837,11 @@ func (s *SessionService) KillPreviewSession(ctx context.Context, req KillPreview
 
 type DeleteSessionRequest struct {
 	ID uuid.UUID
+	// PurgeBoard also deletes a swarm session's message board. It defaults to
+	// false because the board is the durable record of how the swarm reasoned —
+	// worth more than the session row it belonged to, and cheap to keep. Set it
+	// when the operator explicitly asks to purge.
+	PurgeBoard bool
 }
 
 type DeleteSessionResponse struct{}
@@ -854,9 +859,11 @@ type DeleteSessionResponse struct{}
 //     agent pane (one for a single-agent session, N for a swarm) and the editor.
 //     A missing tmux session is not an error: the user may have killed it
 //     manually or the tmux server may have restarted.
-//  3. A swarm's message board is purged. A failure here is logged and swallowed
-//     — stale board data on disk must not strand a session row the user asked
-//     to delete.
+//  3. A swarm's message board is purged, but only when PurgeBoard is set. By
+//     default the board outlives the session: it is the record of how the swarm
+//     reasoned, which is usually worth more than the session row. A failure here
+//     is logged and swallowed — stale board data on disk must not strand a
+//     session row the user asked to delete.
 //  4. The session row is deleted from the repository last, so any failure in
 //     steps 1 or 2 leaves a retriable session row instead of an orphaned
 //     worktree or tmux session paired with no DB record.
@@ -891,7 +898,7 @@ func (s *SessionService) Delete(ctx context.Context, req DeleteSessionRequest) (
 		}
 	}
 
-	if sess.IsSwarm() {
+	if sess.IsSwarm() && req.PurgeBoard {
 		if err := s.board.Purge(ctx, sess.ID); err != nil {
 			s.logger.WarnContext(ctx, "purge swarm board failed; board data left on disk",
 				slog.String("session_id", sess.ID.String()),

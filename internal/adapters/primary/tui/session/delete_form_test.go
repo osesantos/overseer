@@ -157,3 +157,60 @@ func TestDeleteForm_ViewMentionsTmuxConsequencesForProjectlessSession(t *testing
 		t.Fatalf("View() missing tmux warning: %q", view)
 	}
 }
+
+func TestDeleteForm_SwarmSession_KeepsBoardUnlessToggled(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	svc := newCreateFormSessionService(t)
+
+	form := NewDeleteForm(styles.New(), svc, sess)
+	if form.purgeBoard {
+		t.Fatal("purgeBoard defaults to on; the transcript must survive a plain delete")
+	}
+
+	view := form.View().Content
+	if !strings.Contains(view, "kept on disk") {
+		t.Fatalf("View() does not state the board is kept: %q", view)
+	}
+	if !strings.Contains(view, "p: toggle board purge") {
+		t.Fatalf("View() does not offer the purge toggle: %q", view)
+	}
+}
+
+func TestDeleteForm_SwarmSession_PToggleFlipsAndIsVisible(t *testing.T) {
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	svc := newCreateFormSessionService(t)
+
+	updated, _ := NewDeleteForm(styles.New(), svc, sess).Update(formKeyPress("p"))
+	form := updated.(DeleteFormModel)
+
+	if !form.purgeBoard {
+		t.Fatal("p did not enable the board purge")
+	}
+	// The purge is irreversible, so its state has to be readable on screen.
+	if view := form.View().Content; !strings.Contains(view, "PURGED") {
+		t.Fatalf("View() does not warn that the board will be purged: %q", view)
+	}
+
+	updated, _ = form.Update(formKeyPress("p"))
+	if updated.(DeleteFormModel).purgeBoard {
+		t.Fatal("p is not a toggle — it did not turn the purge back off")
+	}
+}
+
+func TestDeleteForm_NonSwarmSession_HidesThePurgeOption(t *testing.T) {
+	sess := testutil.MakeSession("solo", uuid.New())
+	svc := newCreateFormSessionService(t)
+
+	form := NewDeleteForm(styles.New(), svc, sess)
+
+	view := form.View().Content
+	if strings.Contains(view, "Swarm board") || strings.Contains(view, "toggle board purge") {
+		t.Fatalf("View() offers a board purge on a session that has no board: %q", view)
+	}
+
+	// And the key must not silently arm anything.
+	updated, _ := form.Update(formKeyPress("p"))
+	if updated.(DeleteFormModel).purgeBoard {
+		t.Fatal("p armed the purge on a non-swarm session")
+	}
+}

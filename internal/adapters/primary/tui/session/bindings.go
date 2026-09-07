@@ -29,5 +29,6 @@ var (
 	RenameKeyBinding               = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "rename"))
 	DeleteSessionKeyBinding        = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "delete session"))
 	deleteConfirmKeyBinding        = key.NewBinding(key.WithKeys("y", "enter"), key.WithHelp("y/enter", "confirm delete"))
+	deletePurgeBoardKeyBinding     = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "also purge swarm board"))
 	deleteCancelKeyBinding         = key.NewBinding(key.WithKeys("n"), key.WithHelp("n", "cancel"))
 )

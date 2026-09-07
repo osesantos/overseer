@@ -51,8 +51,56 @@ type descriptorFile struct {
 	AgentCount    int      `json:"agentCount"`
 	Roster        []string `json:"roster"`
 	Goal          string   `json:"goal"`
+	Method        []string `json:"method"`
+	Conventions   []string `json:"conventions"`
 	Post          string   `json:"post"`
 	Read          string   `json:"read"`
+}
+
+// boardMethod is how to work; boardConventions is how to write it up. They are
+// separate lists because they are tuned for different reasons and it should be
+// obvious which one you are changing.
+//
+// Every rule here answers something measured on a real run rather than general
+// prompt advice — the motivating observation is on each line.
+var boardMethod = []string{
+	// Two runs: the one where agents falsified their own claims 11 times had 5
+	// reversals; the one where they never did had 10. Pre-testing a claim is the
+	// cheapest way to cut correction churn.
+	"Before you post a claim, try to break it yourself and say what survived. A claim you have already attacked is worth ten you have not.",
+	// An agent had to cede an axis it had duplicated, and three agents once claimed
+	// the same write at the same time and had to invent a tie-break on the spot.
+	"Read the board before claiming anything, and claim an axis nobody else holds. If two of you claim the same thing, the earliest claim wins — the later one withdraws without arguing.",
+	// The single most decision-relevant paragraph either run produced was an agent
+	// concluding there was no evidence in either direction, and proving it.
+	"Say how confident you are and what would change your mind. \"I cannot tell from the evidence, and here is why each candidate fails\" is a strong answer, not a failure.",
+	// One run had to be told, two thirds of the way in, to stop auditing and start
+	// converging. Left alone a swarm keeps opening findings.
+	"Once several findings are open, prefer closing one to opening another. Answer the goal; do not just keep enumerating problems with it.",
+	// Neither run posted a verdict unprompted. The review artefact from the second
+	// exists only because the operator asked for it explicitly.
+	"When the goal is answered, post a verdict without being asked: what holds, what does not, what is still unknown, and what you recommend. Then stop.",
+}
+
+// boardConventions are the posting rules every agent reads at bootstrap.
+//
+// They live in the descriptor rather than the typed briefing for two reasons: a
+// long tmux send-keys string is the brittle part of bootstrapping, and rules the
+// agent can re-read beat rules it saw once.
+//
+// The rules target prose, not evidence. Left ungoverned, agents write ~3KB essays
+// per post — measured on a real five-agent run — and the board becomes unreadable
+// at exactly the moment it matters. But the numbers and held-out tests inside
+// those essays are what catch a bad premise, so the instruction is to compress
+// the wording and keep the data.
+var boardConventions = []string{
+	"Open with one bold line: the claim, and any @agent-N it is aimed at.",
+	"Keep the whole post under ~12 lines. Compress prose, never evidence.",
+	"Prefer numbers, short tables and file paths over sentences explaining them.",
+	"Cite another post as #12 — that is the number the board shows — instead of restating it.",
+	"Post only when something changed: a finding, a correction, a claim, or a blocker.",
+	"No progress reports, no preamble, no summarising your own post at the end.",
+	"Say you were wrong in one line and move on.",
 }
 
 var (
@@ -198,6 +246,8 @@ func (b *Board) Write(_ context.Context, desc domain.SwarmDescriptor) error {
 		AgentCount:    desc.AgentCount,
 		Roster:        desc.Roster,
 		Goal:          desc.Goal,
+		Method:        boardMethod,
+		Conventions:   boardConventions,
 		Post: fmt.Sprintf(
 			"curl -sS -X POST %s -H 'Content-Type: application/json' "+
 				`-d '{"author":"<your-agent-id>","content":"<your message>"}'`,

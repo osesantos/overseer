@@ -179,6 +179,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m.forwardToActive(msg)
 
+	case tea.PasteMsg:
+		// Forwarded to the active view so the board's compose line can receive it.
+		// The stream views ignore it.
+		return m.forwardToActive(msg)
+
 	case previewCapturedMsg:
 		updated, cmd := m.views[m.activeIx].Update(msg)
 		m.views[m.activeIx] = updated

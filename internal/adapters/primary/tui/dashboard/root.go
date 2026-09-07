@@ -455,6 +455,26 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m.routeToPopup(msg)
 	}
 
+	// Paste follows the same ownership rules as typing, and has to be routed
+	// explicitly: it is its own message type, so it never reaches the key branch
+	// below. Sending it to exactly one input matters — the fallthrough broadcast
+	// would otherwise deliver it to the chat *and* the board compose line at once.
+	if pasteMsg, ok := msg.(tea.PasteMsg); ok {
+		if m.inspector.CapturesInput() {
+			var cmd tea.Cmd
+			m.inspector, cmd = shared.UpdateModel(m.inspector, pasteMsg)
+			return m, cmd
+		}
+		if m.chatPanelVisible {
+			var cmd tea.Cmd
+			m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, pasteMsg)
+			return m, cmd
+		}
+		// Nothing owns an input: drop it rather than broadcasting a paste into
+		// panes that would only misinterpret it.
+		return m, nil
+	}
+
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		// A view that has taken the keyboard — currently the Agents Board's
 		// compose line — keeps every key except the hard-kill escape hatch. This

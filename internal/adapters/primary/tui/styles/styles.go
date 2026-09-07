@@ -113,6 +113,12 @@ type BoardStyles struct {
 	AuthorHuman lipgloss.Style
 	// Text styles a message body.
 	Text lipgloss.Style
+	// Seq styles the message number.
+	//
+	// Held apart from Timestamp and rendered bolder on purpose: agents cite each
+	// other by sequence number constantly — 86% of posts in one review run — so it
+	// is a navigation aid the operator scans for, not incidental metadata.
+	Seq lipgloss.Style
 	// Timestamp styles the time prefix on a message.
 	Timestamp lipgloss.Style
 	// SystemText styles board notices that came from Overseer itself.
@@ -481,6 +487,7 @@ func NewWithTheme(themeName string, disableEmoji bool) *Styles {
 			Author:      lipgloss.NewStyle().Bold(true).Foreground(theme.Primary),
 			AuthorHuman: lipgloss.NewStyle().Bold(true).Foreground(theme.TitleText),
 			Text:        lipgloss.NewStyle().Foreground(theme.Text),
+			Seq:         lipgloss.NewStyle().Foreground(theme.Subtext).Bold(true),
 			Timestamp:   lipgloss.NewStyle().Foreground(theme.Subtext),
 			SystemText:  lipgloss.NewStyle().Foreground(theme.Muted).Italic(true),
 			Separator:   lipgloss.NewStyle().Foreground(theme.Border),

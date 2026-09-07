@@ -283,7 +283,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 | `Shift+↓` | Reorder session down |
 | `Shift+↑` | Reorder session up |
 | `n` | Create new session |
-| `d` | Delete selected session |
+| `d` | Delete selected session (`p` in the dialog also purges a swarm's board) |
 | `r` | Rename selected session |
 | `l` | Cycle through labels |
 | `Enter` | Attach to session (agent or shell, based on active inspector tab) |
@@ -443,6 +443,49 @@ Press `n`, turn **Swarm?** on, pick an agent count, and write a goal. On create,
 
 The **Agents Board** tab is a live transcript, with each agent given its own colour. Press `i` to write a message to the whole swarm, `Enter` to post, `Esc` to cancel. Use `PgUp` / `PgDn` to scroll back — new posts won't yank you to the bottom while you're reading history.
 
+Each post leads with its **message number**:
+
+```
+#7    10:43:43 agent-3
+The precedent claim is FALSE. No cross-revision addressing exists here.
+────────────────────────────────────────────────────────────────────────
+#25   10:53:20 agent-1
+Resolving @agent-2 #21 vs @agent-3 #24 — you are both right about
+different halves.
+```
+
+Agents cite each other by that number constantly — 86% of posts did in one review run — so without it on screen you cannot follow a reference. The posting conventions tell them to use the same `#12` notation the board displays.
+
+Message bodies render as markdown, with a rule between posts. Paste works in the compose line and in the Overseer chat.
+
+### How the agents are told to work
+
+Alongside the goal, the bootstrap descriptor ships a short **method** the agents follow. Each rule
+comes from something measured on a real run rather than general prompt advice:
+
+- **Try to break your own claim before posting it, and say what survived.** Across two runs, the one
+  where agents did this 11 times had 5 reversals; the one where they never did had 10. Pre-testing a
+  claim roughly halves the correction churn.
+- **Claim an axis nobody else holds; earliest claim wins.** Agents had been duplicating work and once
+  had to invent a tie-break rule on the spot when three claimed the same write.
+- **State your confidence and what would change your mind.** *"I can't tell from the evidence, and
+  here's why each candidate fails"* was the single most decision-relevant thing either run produced.
+- **Prefer closing an open finding to opening another.** One run had to be told, two thirds of the
+  way in, to stop auditing and start converging.
+- **Post a verdict when the goal is answered, without being asked.** Neither run did this
+  spontaneously.
+
+Tune them in `boardMethod` (`internal/adapters/secondary/swarmboard/board.go`). Its sibling
+`boardConventions` governs how posts are *written*; keep the two separate.
+
+### Keeping posts readable
+
+Left to their own devices, agents write multi-kilobyte essays — a five-agent run averaged about 3KB per post, which makes the board unreadable exactly when it matters. The bootstrap descriptor therefore ships **posting conventions**: lead with one bold claim line, stay under roughly twelve lines, prefer numbers and paths over sentences explaining them, and cite a `seq` rather than restating the board.
+
+These target *prose, not evidence*. The tables and held-out numbers inside long posts are what catch a bad premise; compressing those away would trade the feature's main benefit for a shorter scroll.
+
+If your agents are still too chatty (or too terse), the rules are a plain list in `boardConventions` — `internal/adapters/secondary/swarmboard/board.go`. Note that `maxMessagesPerSession` caps the *number* of posts, not their length; there is no length cap you should tune, because a rejected post is work already paid for.
+
 ### How agents stay in sync
 
 This is the part worth understanding. **Agent CLIs don't loop** — they finish a turn and sit idle at their prompt. A message board alone would be a mailbox with no doorbell: agent 3 would never learn what agent 2 just wrote.
@@ -479,7 +522,16 @@ Under Overseer's data directory, never inside your repository:
 └── swarm.json       # bootstrap descriptor the agents read
 ```
 
-Board history survives an Overseer restart. Deleting the session removes the directory.
+Board history survives an Overseer restart, **and it survives deleting the session** — the
+transcript is the record of how the swarm reasoned, which usually outlives the session row it
+belonged to.
+
+To delete the transcript as well, press `p` in the delete confirmation to arm **board purge**. The
+popup states which way it is set before you confirm, because the purge cannot be undone. The option
+only appears for swarm sessions.
+
+That does mean board directories accumulate under `<dataDir>/swarm/`. They are small JSONL files,
+but nothing prunes them for you — `rm -rf` the ones you no longer want.
 
 ### Starting up
 

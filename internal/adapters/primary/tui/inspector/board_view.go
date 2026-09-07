@@ -102,14 +102,28 @@ func (v *boardView) Update(msg tea.Msg) (View, tea.Cmd) {
 			return v, v.scheduleNext()
 		}
 		v.err = nil
-		if len(msg.messages) > 0 {
-			for _, posted := range msg.messages {
-				v.messages = append(v.messages, posted)
-				v.rendered = append(v.rendered, v.renderBody(posted))
+
+		// Append by Seq rather than trusting the delta to be new. Posting kicks off
+		// an immediate fetch while the scheduled poll is still in flight, and both
+		// ask for the same cursor with the same generation — so the same message
+		// arrives twice and the generation guard cannot tell them apart. Keying on
+		// Seq makes the append idempotent, whatever races upstream.
+		appended := false
+		for _, posted := range msg.messages {
+			if posted.Seq <= v.latestSeq {
+				continue
 			}
-			v.latestSeq = msg.latestSeq
+			v.messages = append(v.messages, posted)
+			v.rendered = append(v.rendered, v.renderBody(posted))
+			v.latestSeq = posted.Seq
+			appended = true
+		}
+		if appended {
 			v.refreshViewport()
-		} else if msg.latestSeq > v.latestSeq {
+		}
+		// The cursor only ever moves forward, so a slow chain replaying an old
+		// delta cannot rewind it.
+		if msg.latestSeq > v.latestSeq {
 			v.latestSeq = msg.latestSeq
 		}
 		return v, v.scheduleNext()
@@ -121,12 +135,26 @@ func (v *boardView) Update(msg tea.Msg) (View, tea.Cmd) {
 		if msg.err != nil {
 			v.err = msg.err
 		}
-		// Fetch immediately so the operator sees their own line land rather
-		// than waiting out the poll interval.
+		// Fetch immediately so the operator sees their own line land rather than
+		// waiting out the poll interval. Bumping the generation first retires the
+		// in-flight scheduled poll, so this replaces that chain instead of running
+		// alongside it — otherwise both would keep polling forever.
+		v.generation++
 		return v, v.fetch()
 
 	case tea.KeyPressMsg:
 		return v.handleKey(msg)
+
+	case tea.PasteMsg:
+		// Paste is its own message type, not a KeyPressMsg. Only meaningful while
+		// the compose line is open — there is nowhere else on the board to paste
+		// into, and swallowing it otherwise would hide it from whatever is.
+		if !v.composing {
+			return v, nil
+		}
+		var cmd tea.Cmd
+		v.input, cmd = v.input.Update(msg)
+		return v, cmd
 	}
 
 	return v, nil
@@ -285,7 +313,11 @@ func (v *boardView) renderHeader(msg domain.SwarmMessage) string {
 		author = s.Board.Author.Foreground(s.Board.AuthorColorFor(agentIndexFromAuthor(msg.Author))).Render(msg.Author)
 	}
 
-	return fmt.Sprintf("%s %s",
+	// The sequence number leads, because that is what agents cite each other by —
+	// without it on screen the operator cannot follow a reference to "seq 29".
+	// Left-padded so timestamps stay in a column as the board grows past 9 and 99.
+	return fmt.Sprintf("%s %s %s",
+		s.Board.Seq.Render(fmt.Sprintf("#%-4d", msg.Seq)),
 		s.Board.Timestamp.Render(msg.CreatedAt.Format("15:04:05")),
 		author,
 	)

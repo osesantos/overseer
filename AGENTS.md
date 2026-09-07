@@ -168,6 +168,28 @@ This is deliberately **retry, not readiness detection**. Modelling readiness wou
 
 `SessionService.SendAgentEnterAll` is the operator-facing version of the same primitive, exposed as `ctrl+e` (tab-aware) and `/enter <session>`.
 
+#### Board verbosity is a prompt problem, not a validation problem
+
+Left ungoverned, agents write multi-kilobyte essays per post — a real five-agent run averaged ~3KB across 38 posts, which makes the board unreadable at exactly the moment it matters most.
+
+Two levers, and only one of them is the right one:
+
+- **`boardConventions`** in `secondary/swarmboard/board.go` — the posting rules, shipped in the descriptor so an agent can re-read them. This is where to tune verbosity. Its sibling **`boardMethod`** governs *how agents work* rather than how they write it up; keep the two lists separate so it is obvious which you are changing.
+- **`swarmContentMaxLen`** (8000) in `domain/swarm.go` is a *sanity guard*, not a style control. Do not lower it to force brevity: a rejected post is work the agent already paid for, and it will just retry.
+
+The rules deliberately target **prose, not evidence**. The tables and held-out numbers inside those long posts are what caught a bad task premise in the run that motivated this; compressing them away would trade the feature's main benefit for a shorter scroll.
+
+Both prompts (`swarmBootstrapPrompt`, `swarmNudgePrompt`) also carry a one-line brevity clause, because agents drift back to essays over a long session. Keep them short — they go through `tmux send-keys`, where a long string is the brittle part. There are length assertions on both.
+
+#### `boardMethod` is derived from measurements, not prompt folklore
+
+Each rule answers something observed on a real run, and the motivating measurement is in a comment beside it. Two worth knowing before you edit them:
+
+- **Falsify-before-posting.** Across two runs, the one where agents attacked their own claims 11 times had 5 reversals; the one where they never did had 10. Pre-testing a claim roughly halves correction churn — this is the highest-value rule in the list.
+- **Post a verdict unprompted.** Neither run did. The second run's review artefact exists only because the operator asked for it two thirds of the way in; left alone, a swarm keeps opening findings rather than concluding.
+
+If you add a rule, tie it to something you measured on a board. The failure mode here is accumulating plausible-sounding instructions that dilute the ones that work.
+
 ### `internal/adapters/primary/tui/dashboard`
 Root Bubble Tea model. Owns:
 - All pane layout and sizing (`root.go`)
@@ -190,6 +212,12 @@ Routing order in `Update`, which matters:
 6. `handleKey`, then fallthrough to the left pane.
 
 `quitKeyBinding` is `q`/`ctrl+c`; `hardQuitKeyBinding` is `ctrl+c` only. The split exists because `q` is a character the user means to type when an input owns the keyboard — matching the combined binding too early is what used to quit the app mid-sentence in the chat panel.
+
+#### Paste is a separate message type
+
+`tea.PasteMsg` is **not** a `tea.KeyPressMsg`. Any `Update` that only switches on key presses silently drops paste — which is exactly why you could not paste into the chat panel or the board's compose line at all. A model with a `textinput` must forward `tea.PasteMsg` explicitly; `textinput` itself knows how to consume it.
+
+Paste is routed in `root.go` *before* the key branch and follows the same ownership rules as typing: the board's compose line first, then the chat panel, otherwise dropped. It must land in **exactly one** input — the fallthrough broadcast would otherwise deliver it to the chat and the board simultaneously when both are open.
 
 ### `internal/adapters/primary/tui/overseer`
 Chat panel model. Handles:
@@ -250,6 +278,19 @@ Rules if you touch either panel:
 - **Only a width change invalidates the cache.** `applySizes`/`SetSize` also run on mode changes, which must not pay for a full re-render — hence the `markdown.Width() != vpWidth` guard.
 - **System notices bypass markdown.** They are Overseer's own one-liners carrying paths and errors that reflowing would mangle.
 - **`Render` never returns empty for non-empty input.** A glamour failure degrades to the raw text; a message must never vanish because it could not be prettified.
+
+### The board appends by Seq, not by trust
+
+The board polls deltas, and **the `generation` counter cannot deduplicate them**. Posting fires an immediate fetch while the scheduled poll is still in flight; both carry the *same* generation and the *same* cursor, so both return the same message and the guard sees nothing wrong. That shipped as a visible bug — the operator's own post rendered twice until a session switch rebuilt the list.
+
+Two invariants hold it together, and both have regression tests:
+
+1. **Append is idempotent.** A message with `Seq <= latestSeq` is skipped. Never append a delta on the assumption it is new.
+2. **The cursor only moves forward.** A slow chain replaying an old delta must not rewind `latestSeq`.
+
+`Seq` is also user-facing: `renderHeader` leads with `#N` because agents cite each other by it in the large majority of posts, and `boardConventions` tells them to use the same `#12` notation. Keep the field padded — an unpadded number ragged the timestamp column once the board passes 9 messages.
+
+`swarmBoardPostedMsg` also bumps `generation` so the immediate fetch *replaces* the scheduled poll rather than racing it. That is only safe because the replacement reschedules — get it wrong and the board freezes after the first post, which is what `TestBoardView_PostRetiresTheOldPollWithoutStoppingPolling` exists to catch.
 
 ### Bordered-panel width
 
@@ -373,7 +414,8 @@ Swarm sessions break several assumptions that held when every session had exactl
 | A session has one agent | Loop `Session.AgentCount()` |
 | The active tab implies a pane | Ask `inspector.ActivePreviewKind()`; it returns `false` for the Agents Board |
 | One status per session is enough | `AgentStatusService.pollOne` reports `AgentStatusSwarm` — a distinct kind, *not* `Unknown`. Unknown means detection failed; this means it does not apply. Aggregating N panes needs a rule nobody has specified yet |
-| Teardown kills three tmux sessions | `SessionService.Delete` kills shell + every agent pane + editor, and purges the board |
+| Teardown kills three tmux sessions | `SessionService.Delete` kills shell + every agent pane + editor |
+| Deleting a session removes all its data | The board **outlives** the session by default. `Delete` only purges it when `DeleteSessionRequest.PurgeBoard` is set, which the delete form arms with `p`. Board dirs under `<dataDir>/swarm/` therefore accumulate; nothing prunes them |
 
 ---
 

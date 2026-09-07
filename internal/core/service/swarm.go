@@ -389,17 +389,20 @@ const swarmHumanAuthor = "human"
 // It is deliberately short and repeatable — the agent already knows the protocol
 // from its bootstrap briefing.
 const swarmNudgePrompt = "New messages on the swarm board. Read them from your cursor, " +
-	"act on anything relevant to your part, and post back only if you have something substantive to add."
+	"act on anything relevant to your part, and post back only if you have something substantive to add. " +
+	"Keep any post short — one bold claim line, then evidence, under ~12 lines."
 
 // swarmBootstrapPrompt is the one-off briefing that gives an agent its identity
 // and points it at the contract. The contract carries the goal and the wire
 // calls, which keeps this short enough to type into a pane reliably.
 func swarmBootstrapPrompt(index, total int, descriptorPath string) string {
 	return fmt.Sprintf(
-		"You are %s of %d agents in a swarm. Read %s for the shared goal and the board protocol. "+
-			"Read the board first, do the part that suits you, and post your findings as %s. "+
-			"Only post something substantive — staying silent is fine. "+
-			"Claim a file on the board before you edit it, since the other agents share your working directory.",
+		"You are %s of %d agents in a swarm. Read %s for the goal, the board protocol, and the "+
+			"method and conventions — follow both. Read the board first, claim an axis nobody holds, "+
+			"and post as %s. Try to break your own claims before posting them and say what survived. "+
+			"Be terse: one bold claim line, then evidence, under ~12 lines. Silence is fine. "+
+			"Claim a file on the board before editing it — you share a working directory. "+
+			"When the goal is answered, post a verdict and stop.",
 		domain.SwarmAgentAuthor(index), total, descriptorPath, domain.SwarmAgentAuthor(index),
 	)
 }

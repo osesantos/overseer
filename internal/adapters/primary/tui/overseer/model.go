@@ -142,6 +142,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.syncPrompt()
 		return m, cmd
 
+	case tea.PasteMsg:
+		// Bracketed paste arrives as its own message type, not a KeyPressMsg, so it
+		// needs forwarding explicitly — textinput knows how to consume it. Frozen
+		// while thinking, exactly like typing.
+		if m.thinking {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.input, cmd = m.input.Update(msg)
+		m.syncPrompt()
+		return m, cmd
+
 	case spinner.TickMsg:
 		if m.thinking {
 			var cmd tea.Cmd
@@ -324,3 +336,6 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 	)
 }
 
+// InputValue exposes the composed-but-unsent text. Used by the dashboard's tests
+// to assert where a paste landed.
+func (m Model) InputValue() string { return m.input.Value() }

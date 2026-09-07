@@ -420,6 +420,61 @@ func TestBoard_WriteDescriptor_WritesTheAgentContract(t *testing.T) {
 	}
 }
 
+func TestBoard_WriteDescriptor_CarriesPostingConventions(t *testing.T) {
+	// Ungoverned, agents write multi-kilobyte essays per post and the board stops
+	// being readable. The conventions live in the descriptor so an agent can
+	// re-read them, rather than only in the briefing it saw once.
+	board, resolver := newBoard(t)
+	sessionID := uuid.New()
+
+	desc, err := domain.NewSwarmDescriptor(sessionID, "http://127.0.0.1:1", 3, "goal")
+	if err != nil {
+		t.Fatalf("domain.NewSwarmDescriptor() error = %v", err)
+	}
+	if err := board.Write(context.Background(), desc); err != nil {
+		t.Fatalf("Write() error = %v", err)
+	}
+
+	data, err := os.ReadFile(resolver.SwarmDescriptorFile(sessionID))
+	if err != nil {
+		t.Fatalf("read descriptor: %v", err)
+	}
+
+	var got struct {
+		Method      []string `json:"method"`
+		Conventions []string `json:"conventions"`
+	}
+	if err := json.Unmarshal(data, &got); err != nil {
+		t.Fatalf("descriptor is not valid JSON: %v", err)
+	}
+	if len(got.Conventions) == 0 {
+		t.Fatal("descriptor carries no posting conventions")
+	}
+
+	joined := strings.ToLower(strings.Join(got.Conventions, " "))
+	for _, want := range []string{"line", "evidence"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("conventions never mention %q: %v", want, got.Conventions)
+		}
+	}
+
+	// Method is a separate list: how to work, versus how to write it up.
+	if len(got.Method) == 0 {
+		t.Fatal("descriptor carries no working method")
+	}
+	method := strings.ToLower(strings.Join(got.Method, " "))
+	for _, want := range []string{
+		"break",    // falsify your own claim before posting
+		"claim",    // take a distinct axis, earliest claim wins
+		"confiden", // state confidence and what would change your mind
+		"verdict",  // conclude without being asked
+	} {
+		if !strings.Contains(method, want) {
+			t.Fatalf("method never mentions %q: %v", want, got.Method)
+		}
+	}
+}
+
 func TestBoard_WriteDescriptor_OverwritesPreviousContract(t *testing.T) {
 	board, resolver := newBoard(t)
 	sessionID := uuid.New()

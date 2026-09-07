@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -261,5 +262,38 @@ func TestDashboard_NonSwarmSession_ComposeKeyIsNotSwallowed(t *testing.T) {
 
 	if m.inspector.CapturesInput() {
 		t.Fatal("i started compose mode on a non-swarm session")
+	}
+}
+
+func TestDashboard_PasteGoesToExactlyOneInput(t *testing.T) {
+	// Paste is its own message type and never reaches the key branch. Without
+	// explicit routing the fallthrough broadcast delivered it to every child, so a
+	// paste could land in the chat and the board compose line simultaneously.
+	m := swarmDashboard(t)
+
+	updated, _ := m.Update(letterKey("i"))
+	m = updated.(Model)
+	if !m.inspector.CapturesInput() {
+		t.Fatal("precondition: board compose not open")
+	}
+	m.chatPanelVisible = true
+
+	updated, _ = m.Update(tea.PasteMsg{Content: "only once"})
+	m = updated.(Model)
+
+	if got := m.chatPanel.InputValue(); strings.Contains(got, "only once") {
+		t.Fatalf("chat input = %q — the board owns the keyboard, the paste must not reach the chat", got)
+	}
+}
+
+func TestDashboard_PasteReachesTheChatWhenItOwnsTheKeyboard(t *testing.T) {
+	m := sizedDashboard(t)
+	m.chatPanelVisible = true
+
+	updated, _ := m.Update(tea.PasteMsg{Content: "into the chat"})
+	m = updated.(Model)
+
+	if got := m.chatPanel.InputValue(); !strings.Contains(got, "into the chat") {
+		t.Fatalf("chat input = %q, want the pasted text", got)
 	}
 }

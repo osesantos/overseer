@@ -259,6 +259,50 @@ func TestSessionService_Create_SwarmSizeOne_StaysASingleAgentSession(t *testing.
 	}
 }
 
+func TestSessionService_Delete_Swarm_KeepsTheBoardByDefault(t *testing.T) {
+	// The board records how the swarm reasoned, which usually outlives the
+	// usefulness of the session row — so deleting a session must not take the
+	// transcript with it unless asked.
+	pinWorktreeRoot(t)
+	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	expectSwarmAgentTmuxGone(tmux, sess)
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+
+	// No board.EXPECT().Purge — the mock fails the test if Purge is called.
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+}
+
+func TestSessionService_Delete_NonSwarm_PurgeBoardRequestIsIgnored(t *testing.T) {
+	// An ordinary session has no board, so the flag must not reach the port.
+	pinWorktreeRoot(t)
+	sess := testutil.MakeSession("solo", uuid.New())
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
+		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+	expectAgentAndEditorTmuxGone(tmux, sess.ID.String())
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{
+		ID:         sess.ID,
+		PurgeBoard: true,
+	}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
+	}
+}
+
 func TestSessionService_Delete_Swarm_KillsEveryAgentPaneAndPurgesBoard(t *testing.T) {
 	pinWorktreeRoot(t)
 	sess := testutil.MakeSwarmSession("hive", uuid.New(), 3)
@@ -281,7 +325,7 @@ func TestSessionService_Delete_Swarm_KillsEveryAgentPaneAndPurgesBoard(t *testin
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
-	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID, PurgeBoard: true}); err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}
 }
@@ -300,7 +344,7 @@ func TestSessionService_Delete_Swarm_BoardPurgeFailureIsNotFatal(t *testing.T) {
 	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
 
 	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
-	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID, PurgeBoard: true}); err != nil {
 		t.Fatalf("Delete() error = %v, want nil — a stale board must not block session teardown", err)
 	}
 }

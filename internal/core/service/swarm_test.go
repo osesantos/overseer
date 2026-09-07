@@ -551,6 +551,32 @@ func TestSwarmService_SubmitBriefings_NothingPendingIsANoOp(t *testing.T) {
 	}
 }
 
+func TestSwarmService_Prompts_AskForTersePosts(t *testing.T) {
+	// A five-agent run averaged ~3KB per board post, which makes the board
+	// unreadable exactly when it matters. Both prompts must push for brevity —
+	// the bootstrap because it sets the tone, the nudge because agents drift back
+	// to essays over a long session.
+	briefing := swarmBootstrapPrompt(1, 3, "/tmp/swarm.json")
+
+	for _, want := range []string{"terse", "conventions", "12 lines"} {
+		if !strings.Contains(briefing, want) {
+			t.Fatalf("bootstrap prompt never mentions %q: %q", want, briefing)
+		}
+	}
+	if !strings.Contains(swarmNudgePrompt, "short") {
+		t.Fatalf("nudge prompt does not ask for brevity: %q", swarmNudgePrompt)
+	}
+
+	// Both are typed into a pane with tmux send-keys, where a very long string is
+	// the brittle part — the detail belongs in the descriptor instead.
+	if len(briefing) > 700 {
+		t.Fatalf("bootstrap prompt is %d chars; keep it short enough to type reliably", len(briefing))
+	}
+	if len(swarmNudgePrompt) > 400 {
+		t.Fatalf("nudge prompt is %d chars; it is re-typed on every flush", len(swarmNudgePrompt))
+	}
+}
+
 func TestSwarmService_Bootstrap_RejectsNonSwarmSession(t *testing.T) {
 	sess := testutil.MakeSession("solo", uuid.New())
 	board, descriptors, sessions, tmux := newSwarmMocks(t)
