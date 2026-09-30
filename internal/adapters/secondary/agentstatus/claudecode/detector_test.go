@@ -25,6 +25,7 @@ func TestPaneDetector_Detect_RunningFixtures(t *testing.T) {
 	cases := []string{
 		"running_beaming.txt",
 		"running_doing_with_shell.txt",
+		"running_no_interrupt_hint.txt",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -68,6 +69,7 @@ func TestPaneDetector_Detect_IdleFixtures(t *testing.T) {
 	cases := []string{
 		"idle_fresh.txt",
 		"idle_after_response.txt",
+		"idle_done_footer.txt",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {

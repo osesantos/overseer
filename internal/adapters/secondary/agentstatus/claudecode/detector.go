@@ -122,8 +122,22 @@ func matchRunning(lines []string) (string, bool) {
 		if strings.Contains(l, signalRunningInterrupt) {
 			return "matched " + quote(signalRunningInterrupt), true
 		}
+		if isSpinnerLine(l) {
+			return "matched spinner " + quote(strings.TrimSpace(l)), true
+		}
 	}
 	return "", false
+}
+
+// isSpinnerLine reports whether l is Claude Code's in-progress spinner: a glyph followed by a
+// single gerund ending in an ellipsis.
+func isSpinnerLine(l string) bool {
+	glyph, rest, ok := strings.Cut(strings.TrimSpace(l), " ")
+	if !ok || !strings.Contains(signalRunningSpinnerGlyphs, glyph) {
+		return false
+	}
+	word, _, _ := strings.Cut(strings.TrimSpace(rest), " ")
+	return len(word) > len("…") && strings.HasSuffix(word, "…")
 }
 
 func quote(s string) string { return "\"" + s + "\"" }

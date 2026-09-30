@@ -192,7 +192,7 @@ func buildPullRequestJob(
 					if err != nil {
 						return nil
 					}
-					return shared.JobsBatchMsg{Cmds: fanOutPRFetches(prSvc, data)}
+					return shared.JobsBatchMsg{Cmds: fanOutPRFetches(sessionSvc, prSvc, data)}
 				},
 			)
 		},
@@ -251,7 +251,7 @@ type pollData struct {
 	Projects []domain.Project
 }
 
-func fanOutPRFetches(prSvc *service.PullRequestService, data pollData) []tea.Cmd {
+func fanOutPRFetches(sessionSvc *service.SessionService, prSvc *service.PullRequestService, data pollData) []tea.Cmd {
 	projectByID := make(map[uuid.UUID]domain.Project, len(data.Projects))
 	for _, p := range data.Projects {
 		projectByID[p.ID] = p
@@ -262,20 +262,23 @@ func fanOutPRFetches(prSvc *service.PullRequestService, data pollData) []tea.Cmd
 		if !ok {
 			continue
 		}
-		if !sess.HasWorktree() {
-			continue
-		}
-		sid, branch, repoPath := sess.ID, sess.Branch, project.Path
 		cmds = append(cmds, shared.Request(
 			func(ctx context.Context) (domain.PullRequest, error) {
+				rb, err := sessionSvc.ReviewBranch(ctx, service.ReviewBranchRequest{Session: sess, Project: project})
+				if err != nil {
+					return domain.PullRequest{}, err
+				}
+				if rb.Branch == "" {
+					return domain.PullRequest{}, domain.ErrPullRequestNotFound
+				}
 				resp, err := prSvc.GetForBranch(ctx, service.GetPullRequestForBranchRequest{
-					RepoPath: repoPath,
-					Branch:   branch,
+					RepoPath: project.Path,
+					Branch:   rb.Branch,
 				})
 				return resp.PullRequest, err
 			},
 			func(pr domain.PullRequest, err error) tea.Msg {
-				return shared.PRStatusUpdatedMsg{SessionID: sid, PR: pr, Err: err}
+				return shared.PRStatusUpdatedMsg{SessionID: sess.ID, PR: pr, Err: err}
 			},
 		))
 	}

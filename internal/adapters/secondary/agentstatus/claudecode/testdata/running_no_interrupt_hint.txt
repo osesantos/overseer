@@ -1,0 +1,9 @@
+⏺ Bash(go test ./...)
+  ⎿  Running…
+✽ Composing… (1m 12s · ↓ 2.8k tokens)
+  ⎿  Tip: Run tasks in the cloud while you keep coding locally · clau.de/web
+──────────────────────────────────────────────────────────────────────────────
+❯ 
+──────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 |  overseer |  main | █░░░░░░░░░ 10% | ⏱ 00:03:12 | 💰 $0.7287
+  ⏵⏵ auto mode on (shift+tab to cycle) · ← for agents

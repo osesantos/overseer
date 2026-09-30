@@ -1246,6 +1246,39 @@ func TestSessionService_ProjectCurrentBranch_HappyPath(t *testing.T) {
 	}
 }
 
+func TestSessionService_ReviewBranch(t *testing.T) {
+	project := testutil.MakeProject("/repo/overseer", "overseer")
+	cases := []struct {
+		name    string
+		session domain.Session
+		wantDir string
+		current string
+		want    string
+	}{
+		{"worktree reads its live branch", testutil.MakeSessionWithWorktree("wt", project.ID, "/wt/a", "feat/old"), "/wt/a", "feat/renamed", "feat/renamed"},
+		{"project mode on a feature branch", testutil.MakeSession("pm", project.ID), project.Path, "feat/foo", "feat/foo"},
+		{"project mode on the default branch", testutil.MakeSession("pm", project.ID), project.Path, "main", ""},
+		{"detached HEAD", testutil.MakeSession("pm", project.ID), project.Path, "HEAD", ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo, projects, tmux, git := newSessionMocks(t)
+			git.EXPECT().CurrentBranch(mock.Anything, tc.wantDir).Return(tc.current, nil).Once()
+			git.EXPECT().GetDefaultBranch(mock.Anything, project.Path).Return("main", nil).Maybe()
+
+			svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+			resp, err := svc.ReviewBranch(context.Background(), ReviewBranchRequest{Session: tc.session, Project: project})
+
+			if err != nil {
+				t.Fatalf("ReviewBranch() error = %v", err)
+			}
+			if resp.Branch != tc.want {
+				t.Fatalf("ReviewBranch() Branch = %q, want %q", resp.Branch, tc.want)
+			}
+		})
+	}
+}
+
 func TestSessionService_Reorder_MoveDown(t *testing.T) {
 	projectID := uuid.New()
 	a := testutil.MakeSession("A", projectID)

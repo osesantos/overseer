@@ -414,6 +414,33 @@ func (s *SessionService) ProjectCurrentBranch(ctx context.Context, req ProjectCu
 	return ProjectCurrentBranchResponse{Branch: branch}, nil
 }
 
+// --- ReviewBranch ---
+
+type ReviewBranchRequest struct {
+	Session domain.Session
+	Project domain.Project
+}
+
+type ReviewBranchResponse struct {
+	Branch string
+}
+
+// ReviewBranch reads the branch the session's working directory is live on, for a
+// pull-request lookup. Branch is empty on the default branch or a detached HEAD.
+func (s *SessionService) ReviewBranch(ctx context.Context, req ReviewBranchRequest) (ReviewBranchResponse, error) {
+	branch, err := s.git.CurrentBranch(ctx, sessionWorkingDir(req.Session, req.Project))
+	if err != nil {
+		return ReviewBranchResponse{}, fmt.Errorf("read current branch: %w", err)
+	}
+	if branch == "HEAD" {
+		return ReviewBranchResponse{}, nil
+	}
+	if defaultBranch, _ := s.git.GetDefaultBranch(ctx, req.Project.Path); branch == defaultBranch {
+		return ReviewBranchResponse{}, nil
+	}
+	return ReviewBranchResponse{Branch: branch}, nil
+}
+
 // --- Reorder ---
 
 type ReorderSessionRequest struct {

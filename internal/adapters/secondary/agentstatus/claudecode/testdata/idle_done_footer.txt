@@ -1,0 +1,8 @@
+⏺ Opened PR #883 with the review comments posted. The Proxy summary now truncates…
+✻ Baked for 59s · done 12:13 PM
+※ recap: PR #883 is open with its review comments posted. Next, check CI. (disable recaps in /config)
+──────────────────────────────────────────────────────────────────────────────
+❯ 
+──────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 |  e067a13d |  RTAFB-9480 | █░░░░░░░░░ 14% | ⏱ 01:15:51 | 💰 $2.3216
+  ⏵⏵ auto mode on (shift+tab to cycle) · PR #883 · ← for agents

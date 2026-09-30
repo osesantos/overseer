@@ -20,3 +20,8 @@ const (
 	signalWaitingTabToAmend    = "Tab to amend"
 	signalWaitingEnterToSelect = "Enter to select"
 )
+
+// signalRunningSpinnerGlyphs prefix the live spinner line ("✽ Composing… (1m 12s · ↓ 2.8k tokens)").
+// Newer Claude Code builds dropped the "esc to interrupt" hint, so this line is the running signal;
+// its finished form ("✻ Baked for 59s · done 12:13 PM") shares the glyph but not the ellipsis.
+const signalRunningSpinnerGlyphs = "·✢✳✶✻✽*"
