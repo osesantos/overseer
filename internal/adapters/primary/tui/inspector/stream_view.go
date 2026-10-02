@@ -3,7 +3,6 @@ package inspector
 import (
 	"context"
 	"fmt"
-	"strings"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -144,7 +143,7 @@ func (v *streamView) Update(msg tea.Msg) (View, tea.Cmd) {
 	if captured.err != nil {
 		v.err = captured.err
 	} else {
-		v.content = dropVariationSelectors(captured.content)
+		v.content = captured.content
 		v.ready = captured.sessionReady
 		v.err = nil
 	}
@@ -220,11 +219,4 @@ func (v *streamView) scheduleNext() tea.Cmd {
 	return tea.Tick(v.pollInterval, func(time.Time) tea.Msg {
 		return next()
 	})
-}
-
-// dropVariationSelectors strips U+FE0F. Lipgloss measures "⚙️" as two cells
-// while most terminals draw it in one, which shifts every border to the right
-// of that row; without the selector both agree on one cell.
-func dropVariationSelectors(s string) string {
-	return strings.ReplaceAll(s, "\uFE0F", "")
 }
