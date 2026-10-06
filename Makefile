@@ -2,13 +2,18 @@
 
 BIN_DIR := bin
 BINARY := $(BIN_DIR)/overseer
+BIN ?= $(HOME)/.local/bin
 
-.PHONY: build test test-integration update-golden mocks lint run clean tidy qa-tmux help
+.PHONY: build install test test-integration update-golden mocks lint run clean tidy qa-tmux help
 
 build: ## Build the overseer binary
 	mkdir -p $(BIN_DIR)
 	go build -o $(BINARY) ./cmd/overseer/
 	cp ./bin/overseer ~/go/bin/overseer
+
+install: ## Install the overseer binary into $(BIN) (default ~/.local/bin)
+	mkdir -p $(BIN)
+	go build -o $(BIN)/overseer ./cmd/overseer/
 
 test: ## Run the unit test suite
 	go test -race -cover ./...
