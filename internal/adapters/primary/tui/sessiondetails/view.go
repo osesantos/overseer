@@ -20,6 +20,7 @@ const (
 	labelLink       = "Link"
 	labelChanges    = "Changes"
 	labelChecks     = "Checks"
+	labelComments   = "Comments"
 
 	labelColumnWidth = 14
 	columnGap        = 2
@@ -140,7 +141,19 @@ func (m Model) renderPRSection(width int) []string {
 	if checksValue := renderChecksLine(s, g, pr.PR.Checks); checksValue != "" {
 		rows = append(rows, twoColumnRow(s, labelChecks, checksValue))
 	}
+
+	if commentsValue := renderCommentsLine(s, g, pr.PR.Comments); commentsValue != "" {
+		rows = append(rows, twoColumnRow(s, labelComments, commentsValue))
+	}
 	return append(rows, "")
+}
+
+func renderCommentsLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRComments) string {
+	if c.Total() == 0 {
+		return ""
+	}
+	return s.Warn.Render(fmt.Sprintf("%s %d awaiting you", g.CheckPending, c.Unresolved)) +
+		"   " + s.Good.Render(fmt.Sprintf("%s %d resolved", g.CheckPass, c.Resolved))
 }
 
 func renderChecksLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChecks) string {

@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net/url"
 	"os/exec"
 	"strings"
 	"time"
@@ -18,6 +19,18 @@ import (
 var _ domain.PullRequestPort = (*Adapter)(nil)
 
 const prJSONFields = "number,title,state,isDraft,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt"
+
+// ponytail: first 100 threads / 50 comments each; paginate if a PR ever outgrows that.
+const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!) {
+  viewer { login }
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      reviewThreads(first: 100) {
+        nodes { isResolved comments(first: 50) { nodes { author { __typename login } } } }
+      }
+    }
+  }
+}`
 
 type Commander interface {
 	Run(ctx context.Context, dir string, args ...string) (stdout []byte, stderr []byte, err error)
@@ -48,7 +61,92 @@ func (a *Adapter) GetForBranch(ctx context.Context, repoPath, branch string) (do
 		}
 		return domain.PullRequest{}, fmt.Errorf("gh pr view %s: %w (stderr: %s)", branch, err, strings.TrimSpace(string(stderr)))
 	}
-	return parseGHJSON(stdout)
+	pr, err := parseGHJSON(stdout)
+	if err != nil || (pr.State != domain.PRStateOpen && pr.State != domain.PRStateDraft) {
+		return pr, err
+	}
+	comments, err := a.reviewComments(ctx, repoPath, pr)
+	if err != nil {
+		a.logger.WarnContext(ctx, "fetch pr review threads", "pr", pr.Number, "err", err)
+		return pr, nil
+	}
+	pr.Comments = comments
+	return pr, nil
+}
+
+// reviewComments is best-effort: a failure here must not hide the rest of the PR.
+func (a *Adapter) reviewComments(ctx context.Context, repoPath string, pr domain.PullRequest) (domain.PRComments, error) {
+	owner, repo, err := ownerRepoFromURL(pr.URL)
+	if err != nil {
+		return domain.PRComments{}, err
+	}
+	stdout, stderr, err := a.cmd.Run(ctx, repoPath,
+		"api", "graphql",
+		"-f", "query="+reviewThreadsQuery,
+		"-f", "owner="+owner,
+		"-f", "repo="+repo,
+		"-F", fmt.Sprintf("number=%d", pr.Number),
+	)
+	if err != nil {
+		return domain.PRComments{}, fmt.Errorf("gh api graphql review threads: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
+	}
+	return summariseThreads(stdout)
+}
+
+func ownerRepoFromURL(prURL string) (string, string, error) {
+	u, err := url.Parse(prURL)
+	if err != nil {
+		return "", "", fmt.Errorf("parse pr url %q: %w", prURL, err)
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
+		return "", "", fmt.Errorf("pr url %q has no owner/repo", prURL)
+	}
+	return parts[0], parts[1], nil
+}
+
+type ghThreadsJSON struct {
+	Data struct {
+		Viewer struct {
+			Login string `json:"login"`
+		} `json:"viewer"`
+		Repository struct {
+			PullRequest struct {
+				ReviewThreads struct {
+					Nodes []struct {
+						IsResolved bool `json:"isResolved"`
+						Comments   struct {
+							Nodes []struct {
+								Author struct {
+									Typename string `json:"__typename"`
+									Login    string `json:"login"`
+								} `json:"author"`
+							} `json:"nodes"`
+						} `json:"comments"`
+					} `json:"nodes"`
+				} `json:"reviewThreads"`
+			} `json:"pullRequest"`
+		} `json:"repository"`
+	} `json:"data"`
+}
+
+func summariseThreads(data []byte) (domain.PRComments, error) {
+	var raw ghThreadsJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return domain.PRComments{}, fmt.Errorf("decode gh graphql json: %w", err)
+	}
+	nodes := raw.Data.Repository.PullRequest.ReviewThreads.Nodes
+	threads := make([]domain.PRReviewThread, 0, len(nodes))
+	for _, th := range nodes {
+		var authors []string
+		for _, cm := range th.Comments.Nodes {
+			if cm.Author.Typename != "Bot" {
+				authors = append(authors, cm.Author.Login)
+			}
+		}
+		threads = append(threads, domain.PRReviewThread{Resolved: th.IsResolved, Authors: authors})
+	}
+	return domain.SummariseReviewThreads(threads, raw.Data.Viewer.Login), nil
 }
 
 type ghPRJSON struct {

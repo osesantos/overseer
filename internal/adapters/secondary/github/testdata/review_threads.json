@@ -1,0 +1,10 @@
+{"data":{"viewer":{"login":"me"},"repository":{"pullRequest":{"reviewThreads":{"nodes":[
+  {"isResolved":true, "comments":{"nodes":[{"author":{"__typename":"User","login":"alice"}}]}},
+  {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"User","login":"bob"}}]}},
+  {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"User","login":"alice"}},{"author":{"__typename":"User","login":"me"}}]}},
+  {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"User","login":"me"}},{"author":{"__typename":"User","login":"alice"}}]}},
+  {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"User","login":"me"}}]}},
+  {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"Bot","login":"copilot-pull-request-reviewer"}}]}},
+  {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"Bot","login":"sonarcloud"}},{"author":{"__typename":"User","login":"me"}}]}},
+  {"isResolved":true, "comments":{"nodes":[{"author":null}]}}
+]}}}}}

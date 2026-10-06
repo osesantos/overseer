@@ -159,3 +159,26 @@ func TestPullRequestSentinelErrors_AreDistinct(t *testing.T) {
 		}
 	}
 }
+
+func TestSummariseReviewThreads(t *testing.T) {
+	tests := []struct {
+		name    string
+		threads []PRReviewThread
+		want    PRComments
+	}{
+		{name: "none", want: PRComments{}},
+		{name: "other unresolved", threads: []PRReviewThread{{Authors: []string{"alice"}}}, want: PRComments{Unresolved: 1}},
+		{name: "other resolved", threads: []PRReviewThread{{Resolved: true, Authors: []string{"alice"}}}, want: PRComments{Resolved: 1}},
+		{name: "viewer replied last", threads: []PRReviewThread{{Authors: []string{"alice", "me"}}}, want: PRComments{}},
+		{name: "reply on viewer thread", threads: []PRReviewThread{{Authors: []string{"me", "alice"}}}, want: PRComments{Unresolved: 1}},
+		{name: "viewer only", threads: []PRReviewThread{{Authors: []string{"me"}}, {Resolved: true, Authors: []string{"me"}}}, want: PRComments{}},
+		{name: "no human authors", threads: []PRReviewThread{{}}, want: PRComments{}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := SummariseReviewThreads(tt.threads, "me"); got != tt.want {
+				t.Fatalf("SummariseReviewThreads() = %+v, want %+v", got, tt.want)
+			}
+		})
+	}
+}

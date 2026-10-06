@@ -87,8 +87,11 @@ func TestAdapter_GetForBranch_PassesCorrectArgsToGH(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetForBranch() error = %v", err)
 	}
-	if len(cmd.calls) != 1 {
-		t.Fatalf("commander called %d times, want 1", len(cmd.calls))
+	if len(cmd.calls) != 2 {
+		t.Fatalf("commander called %d times, want 2 (pr view + review threads)", len(cmd.calls))
+	}
+	if got := cmd.calls[1].args[:2]; got[0] != "api" || got[1] != "graphql" {
+		t.Fatalf("second call args = %v, want api graphql", cmd.calls[1].args)
 	}
 	call := cmd.calls[0]
 	if call.dir != "/repo/path" {
@@ -210,3 +213,80 @@ func TestAdapter_New_ProductionConstructor_UsesRealCommander(t *testing.T) {
 }
 
 var _ domain.PullRequestPort = (*Adapter)(nil)
+
+func TestSummariseThreads_DropsBotsAndAppliesViewerRule(t *testing.T) {
+	got, err := summariseThreads(readFixture(t, "review_threads.json"))
+	if err != nil {
+		t.Fatalf("summariseThreads() error = %v", err)
+	}
+	if want := (domain.PRComments{Resolved: 2, Unresolved: 2}); got != want {
+		t.Fatalf("summariseThreads() = %+v, want %+v", got, want)
+	}
+}
+
+func TestSummariseThreads_MalformedJSON_ReturnsError(t *testing.T) {
+	if _, err := summariseThreads([]byte("{nope")); err == nil {
+		t.Fatal("summariseThreads() error = nil, want decode error")
+	}
+}
+
+func TestOwnerRepoFromURL(t *testing.T) {
+	tests := []struct {
+		url, owner, repo string
+		wantErr          bool
+	}{
+		{url: "https://github.com/dnlopes/overseer/pull/42", owner: "dnlopes", repo: "overseer"},
+		{url: "https://github.com/", wantErr: true},
+		{url: "", wantErr: true},
+	}
+	for _, tt := range tests {
+		owner, repo, err := ownerRepoFromURL(tt.url)
+		if (err != nil) != tt.wantErr || owner != tt.owner || repo != tt.repo {
+			t.Errorf("ownerRepoFromURL(%q) = %q, %q, %v", tt.url, owner, repo, err)
+		}
+	}
+}
+
+func TestAdapter_GetForBranch_ReviewThreadsFail_StillReturnsPR(t *testing.T) {
+	cmd := &scriptedCommander{outputs: []fakeOutput{
+		{stdout: readFixture(t, "pr_open_success.json")},
+		{err: errors.New("graphql down")},
+	}}
+	pr, err := NewWithCommander(cmd, testLogger()).GetForBranch(context.Background(), "/repo", "b")
+	if err != nil {
+		t.Fatalf("GetForBranch() error = %v, want nil", err)
+	}
+	if pr.Number != 42 || pr.Comments.Total() != 0 {
+		t.Fatalf("GetForBranch() = #%d comments %+v, want #42 with no comments", pr.Number, pr.Comments)
+	}
+}
+
+func TestAdapter_GetForBranch_OpenPR_PopulatesComments(t *testing.T) {
+	cmd := &scriptedCommander{outputs: []fakeOutput{
+		{stdout: readFixture(t, "pr_open_success.json")},
+		{stdout: readFixture(t, "review_threads.json")},
+	}}
+	pr, err := NewWithCommander(cmd, testLogger()).GetForBranch(context.Background(), "/repo", "b")
+	if err != nil {
+		t.Fatalf("GetForBranch() error = %v", err)
+	}
+	if want := (domain.PRComments{Resolved: 2, Unresolved: 2}); pr.Comments != want {
+		t.Fatalf("Comments = %+v, want %+v", pr.Comments, want)
+	}
+}
+
+type fakeOutput struct {
+	stdout []byte
+	err    error
+}
+
+type scriptedCommander struct {
+	outputs []fakeOutput
+	n       int
+}
+
+func (s *scriptedCommander) Run(context.Context, string, ...string) ([]byte, []byte, error) {
+	out := s.outputs[s.n]
+	s.n++
+	return out.stdout, nil, out.err
+}

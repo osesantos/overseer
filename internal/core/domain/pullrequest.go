@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"slices"
 	"strings"
 	"time"
 )
@@ -57,6 +58,39 @@ func (c PRChecks) OverallConclusion() CheckConclusion {
 	}
 }
 
+// PRComments counts review threads with input from someone other than the viewer.
+// Unresolved only counts threads awaiting the viewer's reply.
+type PRComments struct {
+	Resolved   int
+	Unresolved int
+}
+
+func (c PRComments) Total() int { return c.Resolved + c.Unresolved }
+
+// PRReviewThread is one review thread; Authors lists human comment authors in order, bots excluded.
+type PRReviewThread struct {
+	Resolved bool
+	Authors  []string
+}
+
+// SummariseReviewThreads ignores threads only the viewer took part in, and counts an
+// unresolved thread only when someone else spoke last.
+func SummariseReviewThreads(threads []PRReviewThread, viewer string) PRComments {
+	var c PRComments
+	for _, th := range threads {
+		if !slices.ContainsFunc(th.Authors, func(a string) bool { return a != viewer }) {
+			continue
+		}
+		switch {
+		case th.Resolved:
+			c.Resolved++
+		case th.Authors[len(th.Authors)-1] != viewer:
+			c.Unresolved++
+		}
+	}
+	return c
+}
+
 type PullRequest struct {
 	Number    int
 	Title     string
@@ -66,6 +100,7 @@ type PullRequest struct {
 	Author    string
 	Stats     PRStats
 	Checks    PRChecks
+	Comments  PRComments
 	UpdatedAt time.Time
 	FetchedAt time.Time
 }
