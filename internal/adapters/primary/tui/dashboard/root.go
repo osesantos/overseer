@@ -96,6 +96,7 @@ type Model struct {
 	minHeight       int
 	tooSmall        bool
 	styles          *styles.Styles
+	themes          <-chan struct{}
 	sessionsService service.SessionService
 	projectsService service.ProjectService
 	overseerService *service.OverseerService
@@ -164,6 +165,7 @@ func (m Model) Init() tea.Cmd {
 		m.inspector.Init(),
 		m.helpBar.Init(),
 		m.scheduler.Init(),
+		m.waitTheme(),
 		m.loadProjects(),
 		m.scheduleBranchTick(),
 		m.chatPanel.Init(),
@@ -387,6 +389,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.PreviewSessionKilledMsg:
 		m.activePopup = popupNone
 		return m, m.inspector.Init()
+	case shared.OmarchyPaletteMsg:
+		m.styles.Repaint(msg.Palette)
+		return m, m.waitTheme()
 	case shared.JobsTickMsg, shared.JobsBatchMsg:
 		var cmd tea.Cmd
 		m.scheduler, cmd = m.scheduler.Update(msg)

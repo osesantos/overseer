@@ -187,7 +187,7 @@ Overseer is configured via a YAML file. Here's a full example:
 
 ```yaml
 # config.yaml
-theme: dark
+theme: omarchy
 disableEmoji: false
 
 dashboard:
@@ -247,12 +247,23 @@ labels:
 
 | Section | Option | Description |
 |---------|--------|-------------|
-| `theme` | — | UI theme (`dark` or `light`) |
+| `theme` | — | UI theme: `omarchy` (default), or a named palette. See [Themes](#themes) |
 | `disableEmoji` | — | Set to `true` to disable emoji glyphs |
 | `dashboard` | `minWidth` | Minimum terminal width required |
 | `dashboard` | `minHeight` | Minimum terminal height required |
 | `dashboard` | `previewRefreshInterval` | How often to refresh the preview pane |
 | `logging` | `level` | Log level (`debug`, `info`, `warn`, `error`) |
+
+### Themes
+
+Overseer ships twelve palettes and, on [Omarchy](https://omarchy.org), blends in with the rest of your desktop.
+
+- 🎨 **Follows Omarchy.** When `theme` is empty or `"omarchy"`, Overseer reads the active palette from `~/.local/state/omarchy/current/theme/colors.toml`.
+- 🔁 **Repaints live.** Run `omarchy theme set <name>` and a running Overseer switches colours on the spot. No restart.
+- 🎯 **Your choice wins.** A named theme such as `theme: nord` always overrides Omarchy.
+- 🌍 **Works anywhere.** Off Omarchy, Overseer falls back to `dark`, or to whichever theme you named.
+
+Named themes: `dark`, `dracula`, `github-dark`, `tokyo-night`, `monokai`, `one-dark`, `solarized-dark`, `nord`, `catppuccin-mocha`, `porcelain`, `deep-sea`, `sunset`.
 | `storage` | `dataDir` | Directory for Overseer's data files (must be absolute) |
 | `projectDiscovery` | `paths` | List of directories to scan at startup for Git repos |
 | `launchers` | — | List of AI agent launchers (`displayName`, `command`, `agentType`) |

@@ -103,6 +103,9 @@ type JobsTickMsg struct{ JobID string }
 
 type JobsBatchMsg struct{ Cmds []tea.Cmd }
 
+// OmarchyPaletteMsg carries the palette read from the active Omarchy theme; nil when Omarchy is absent.
+type OmarchyPaletteMsg struct{ Palette map[string]string }
+
 type PRStatusUpdatedMsg struct {
 	SessionID uuid.UUID
 	PR        domain.PullRequest

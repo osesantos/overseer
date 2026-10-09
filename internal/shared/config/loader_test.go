@@ -16,8 +16,8 @@ import (
 func TestDefault_ReturnsCorrectValues(t *testing.T) {
 	cfg := config.Default()
 
-	if cfg.Theme != "dark" {
-		t.Errorf("Theme: want dark, got %s", cfg.Theme)
+	if cfg.Theme != "omarchy" {
+		t.Errorf("Theme: want omarchy, got %s", cfg.Theme)
 	}
 	if cfg.Dashboard.MinWidth != 60 {
 		t.Errorf("MinWidth: want 60, got %d", cfg.Dashboard.MinWidth)
@@ -338,8 +338,8 @@ func TestLoad_ThemeOmitted_KeepsDefault(t *testing.T) {
 		t.Fatalf("unexpected error: %v", err)
 	}
 
-	if cfg.Theme != "dark" {
-		t.Errorf("Theme: omitting field should preserve dark default, got %s", cfg.Theme)
+	if cfg.Theme != "omarchy" {
+		t.Errorf("Theme: omitting field should preserve omarchy default, got %s", cfg.Theme)
 	}
 }
 

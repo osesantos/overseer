@@ -97,7 +97,7 @@ const defaultEditorCommand = "nvim"
 
 func Default() Config {
 	return Config{
-		Theme:        "dark",
+		Theme:        "omarchy",
 		DisableEmoji: false,
 		Dashboard: DashboardConfig{
 			MinWidth:               60,

@@ -27,6 +27,7 @@ import (
 	"github.com/dnlopes/overseer/internal/core/service"
 	"github.com/dnlopes/overseer/internal/shared/config"
 	"github.com/dnlopes/overseer/internal/shared/logger"
+	"github.com/dnlopes/overseer/internal/shared/omarchy"
 	"github.com/dnlopes/overseer/internal/shared/paths"
 )
 
@@ -159,6 +160,9 @@ func main() {
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
 	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents)
+	if styles.FollowsOmarchy(cfg.Theme) {
+		dash = dash.WithThemeWatch(omarchy.Watch(omarchy.Dir()))
+	}
 	p := tea.NewProgram(altScreenModel{inner: dash})
 
 	if _, err := p.Run(); err != nil {

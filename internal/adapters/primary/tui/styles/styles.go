@@ -2,10 +2,13 @@ package styles
 
 import (
 	"image/color"
+	"maps"
 
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+
+	"github.com/dnlopes/overseer/internal/shared/omarchy"
 )
 
 // ListIndentUnit is the canonical column count per nesting level for any
@@ -282,6 +285,11 @@ type Styles struct {
 	Glyphs Glyphs
 	Chat   ChatStyles
 	Board  BoardStyles
+
+	// themeName, disableEmoji and palette are kept so Repaint can rebuild the styles in place.
+	themeName    string
+	disableEmoji bool
+	palette      map[string]string
 }
 
 // New builds *Styles using the dark theme; production code should use NewWithTheme.
@@ -289,14 +297,30 @@ func New() *Styles {
 	return NewWithTheme("dark", false)
 }
 
-// NewWithTheme builds *Styles using the named theme; unknown names fall back to dark.
+// NewWithTheme builds *Styles using the named theme, or the active Omarchy palette when the name follows Omarchy.
 func NewWithTheme(themeName string, disableEmoji bool) *Styles {
-	theme := LoadTheme(themeName)
+	palette, _ := omarchy.Palette(omarchy.Dir())
+	return newStyles(themeName, disableEmoji, palette)
+}
+
+// Repaint rebuilds every style in place from palette, so models holding s pick it up on their next View.
+func (s *Styles) Repaint(palette map[string]string) {
+	if maps.Equal(palette, s.palette) {
+		return
+	}
+	*s = *newStyles(s.themeName, s.disableEmoji, palette)
+}
+
+func newStyles(themeName string, disableEmoji bool, palette map[string]string) *Styles {
+	theme := ResolveTheme(themeName, palette)
 
 	helpKeyStyle := lipgloss.NewStyle().Foreground(theme.Text).Background(theme.HelpBarBg).Bold(true)
 	helpBarStyle := lipgloss.NewStyle().Background(theme.HelpBarBg).Padding(0, 1)
 
 	return &Styles{
+		themeName:    themeName,
+		disableEmoji: disableEmoji,
+		palette:      palette,
 		Border: BorderStyles{
 			Focused: lipgloss.NewStyle().
 				Border(lipgloss.RoundedBorder()).
