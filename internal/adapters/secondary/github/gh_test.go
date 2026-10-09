@@ -219,7 +219,7 @@ func TestSummariseThreads_DropsBotsAndAppliesViewerRule(t *testing.T) {
 	if err != nil {
 		t.Fatalf("summariseThreads() error = %v", err)
 	}
-	if want := (domain.PRComments{Resolved: 2, Unresolved: 2}); got != want {
+	if want := (domain.PRComments{Resolved: 2, Unresolved: 3, AwaitingViewer: 2}); got != want {
 		t.Fatalf("summariseThreads() = %+v, want %+v", got, want)
 	}
 }
@@ -270,7 +270,7 @@ func TestAdapter_GetForBranch_OpenPR_PopulatesComments(t *testing.T) {
 	if err != nil {
 		t.Fatalf("GetForBranch() error = %v", err)
 	}
-	if want := (domain.PRComments{Resolved: 2, Unresolved: 2}); pr.Comments != want {
+	if want := (domain.PRComments{Resolved: 2, Unresolved: 3, AwaitingViewer: 2}); pr.Comments != want {
 		t.Fatalf("Comments = %+v, want %+v", pr.Comments, want)
 	}
 }

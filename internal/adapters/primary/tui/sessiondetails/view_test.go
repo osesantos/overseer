@@ -14,8 +14,8 @@ func TestRenderCommentsLine(t *testing.T) {
 	if got := renderCommentsLine(&st.SessionDetails, st.Glyphs, domain.PRComments{}); got != "" {
 		t.Errorf("renderCommentsLine(zero) = %q, want empty", got)
 	}
-	got := testutil.StripANSI(renderCommentsLine(&st.SessionDetails, st.Glyphs, domain.PRComments{Resolved: 5, Unresolved: 2}))
-	if !strings.Contains(got, "2 awaiting you") || !strings.Contains(got, "5 resolved") {
+	got := testutil.StripANSI(renderCommentsLine(&st.SessionDetails, st.Glyphs, domain.PRComments{Resolved: 5, Unresolved: 3, AwaitingViewer: 2}))
+	if !strings.Contains(got, "3 open (2 awaiting you)") || !strings.Contains(got, "5 resolved") {
 		t.Errorf("renderCommentsLine() = %q, want open and resolved counts", got)
 	}
 }

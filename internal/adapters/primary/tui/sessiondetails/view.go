@@ -152,8 +152,11 @@ func renderCommentsLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domai
 	if c.Total() == 0 {
 		return ""
 	}
-	return s.Warn.Render(fmt.Sprintf("%s %d awaiting you", g.CheckPending, c.Unresolved)) +
-		"   " + s.Good.Render(fmt.Sprintf("%s %d resolved", g.CheckPass, c.Resolved))
+	open := fmt.Sprintf("%s %d open", g.CheckPending, c.Unresolved)
+	if c.AwaitingViewer > 0 {
+		open += fmt.Sprintf(" (%d awaiting you)", c.AwaitingViewer)
+	}
+	return s.Warn.Render(open) + "   " + s.Good.Render(fmt.Sprintf("%s %d resolved", g.CheckPass, c.Resolved))
 }
 
 func renderChecksLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChecks) string {

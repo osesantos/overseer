@@ -59,10 +59,11 @@ func (c PRChecks) OverallConclusion() CheckConclusion {
 }
 
 // PRComments counts review threads with input from someone other than the viewer.
-// Unresolved only counts threads awaiting the viewer's reply.
+// AwaitingViewer is the subset of Unresolved where someone else spoke last.
 type PRComments struct {
-	Resolved   int
-	Unresolved int
+	Resolved       int
+	Unresolved     int
+	AwaitingViewer int
 }
 
 func (c PRComments) Total() int { return c.Resolved + c.Unresolved }
@@ -73,19 +74,20 @@ type PRReviewThread struct {
 	Authors  []string
 }
 
-// SummariseReviewThreads ignores threads only the viewer took part in, and counts an
-// unresolved thread only when someone else spoke last.
+// SummariseReviewThreads ignores threads only the viewer took part in.
 func SummariseReviewThreads(threads []PRReviewThread, viewer string) PRComments {
 	var c PRComments
 	for _, th := range threads {
 		if !slices.ContainsFunc(th.Authors, func(a string) bool { return a != viewer }) {
 			continue
 		}
-		switch {
-		case th.Resolved:
+		if th.Resolved {
 			c.Resolved++
-		case th.Authors[len(th.Authors)-1] != viewer:
-			c.Unresolved++
+			continue
+		}
+		c.Unresolved++
+		if th.Authors[len(th.Authors)-1] != viewer {
+			c.AwaitingViewer++
 		}
 	}
 	return c

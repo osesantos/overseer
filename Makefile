@@ -11,9 +11,9 @@ build: ## Build the overseer binary
 	go build -o $(BINARY) ./cmd/overseer/
 	cp ./bin/overseer ~/go/bin/overseer
 
-install: ## Install the overseer binary into $(BIN) (default ~/.local/bin)
+install: build ## Build, then install the overseer binary into ~/go/bin and $(BIN) (default ~/.local/bin)
 	mkdir -p $(BIN)
-	go build -o $(BIN)/overseer ./cmd/overseer/
+	cp $(BINARY) $(BIN)/overseer
 
 test: ## Run the unit test suite
 	go test -race -cover ./...

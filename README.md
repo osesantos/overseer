@@ -124,7 +124,7 @@ make build
 
 The binary will be available at `bin/overseer`.
 
-To install it onto your `PATH` instead (default `~/.local/bin`, override with `BIN=`):
+To install it onto your `PATH` (copies to `~/go/bin` and `~/.local/bin`; override the latter with `BIN=`):
 
 ```bash
 make install

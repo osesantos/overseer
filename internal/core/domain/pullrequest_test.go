@@ -167,10 +167,10 @@ func TestSummariseReviewThreads(t *testing.T) {
 		want    PRComments
 	}{
 		{name: "none", want: PRComments{}},
-		{name: "other unresolved", threads: []PRReviewThread{{Authors: []string{"alice"}}}, want: PRComments{Unresolved: 1}},
+		{name: "other unresolved", threads: []PRReviewThread{{Authors: []string{"alice"}}}, want: PRComments{Unresolved: 1, AwaitingViewer: 1}},
 		{name: "other resolved", threads: []PRReviewThread{{Resolved: true, Authors: []string{"alice"}}}, want: PRComments{Resolved: 1}},
-		{name: "viewer replied last", threads: []PRReviewThread{{Authors: []string{"alice", "me"}}}, want: PRComments{}},
-		{name: "reply on viewer thread", threads: []PRReviewThread{{Authors: []string{"me", "alice"}}}, want: PRComments{Unresolved: 1}},
+		{name: "viewer replied last", threads: []PRReviewThread{{Authors: []string{"alice", "me"}}}, want: PRComments{Unresolved: 1}},
+		{name: "reply on viewer thread", threads: []PRReviewThread{{Authors: []string{"me", "alice"}}}, want: PRComments{Unresolved: 1, AwaitingViewer: 1}},
 		{name: "viewer only", threads: []PRReviewThread{{Authors: []string{"me"}}, {Resolved: true, Authors: []string{"me"}}}, want: PRComments{}},
 		{name: "no human authors", threads: []PRReviewThread{{}}, want: PRComments{}},
 	}
