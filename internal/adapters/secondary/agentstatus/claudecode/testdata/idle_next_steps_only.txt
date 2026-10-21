@@ -1,0 +1,40 @@
+⏺ Bash(cd ~/git/vault && printf '%s\n' "- RTAFB-9861: PR #295 opened — feat(RTAFB-9861): Add the connector catalog
+      reader (https://github.com/OutSystems/rd-ai-catalog-…)
+  ⎿  3:status: done
+  ⎿  Shell cwd was reset to /Users/jose.dos.santos/git/rd-ai-catalog-service
+  ⎿  Allowed by auto mode classifier
+
+⏺ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  🚀 PR #295 is open
+
+  🔗 https://github.com/OutSystems/rd-ai-catalog-service/pull/295
+
+  - Title: feat(RTAFB-9861): Add the connector catalog reader
+  - Base: main. Reviewers come from CODEOWNERS.
+
+  🗂️ Vault
+
+  - The plan RTAFB-9861-connector-catalog-reader is now status: done, and all 7 steps are ticked.
+  - Today's journal has the PR link under ## Log.
+
+  👉 Next
+
+  - When PR #293 (RTAFB-9860) merges, rebase this branch. The only file both PRs edit is connections-api.md, and they
+    change different paragraphs, so I expect no conflict.
+  - If you want a self-review, run ose-pr-review on #295.
+
+  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+✻ Cooked for 20s · done 11:39 AM
+
+※ recap: I built the RTAFB-9861 connector catalog reader with tests, docs and two signed commits, and opened PR #295.
+  Next, rebase the branch once PR #293 merges, then ask for review. (disable recaps in /config)
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Opus 5.5 |  rd-ai-catalog-service |  feature/RTAFB-9861-connector-catalog-reader | █░░░░░░░░░ 16% | ⏱ 01:15:03 | 💰…
+  ⏵⏵ auto mode on (shift+tab to cycle) · PR #295 · ← for agents
+                                                                                ✔ Update installed · Restart to update
+                                                                                new task? /clear to save 157.9k tokens

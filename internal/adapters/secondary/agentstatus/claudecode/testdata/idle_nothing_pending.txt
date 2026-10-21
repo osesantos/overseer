@@ -1,0 +1,40 @@
+  ⎿  saved to Journals/Oct 20th, 2026.md
+     0
+  ⎿  Allowed by auto mode classifier
+
+⏺ ════════════════════════════════════════════════════════════════════════════════════
+
+  💾 Saved. The plan has a new ## Resume here (2026-10-20) section and today's journal has the parking bullet.
+
+  📍 State as of now
+  - PR #546 head dea4f86. ✅ ADO CI green (the FK test fix worked).
+  - Ticket RTAFB-9787 On Hold; plan status blocked.
+  - No new review comments since Oct 8. No approval yet (REVIEW_REQUIRED).
+  - ⚠️ The PR is now CONFLICTING with main: something merged after your last sync. First thing on resume is a merge from
+    main + CI re-run.
+
+  📋 Resume checklist (in the plan, short form here)
+  1. Merge main into RTAFB-9787, re-run CI.
+  2. Rewrite the RTAFB-9787 description to the 3-column / 2-FK shape (still says eight columns, "No FKs"). Text shown
+     first.
+  3. Row-count ask still unanswered.
+  4. Wait for RTAFB-9788 validation → 3-team approval → merge → tag to 9788.
+  5. Follow-up PR: the execution_status <> 'SUCCESS' dump invariant.
+  6. Local tooling: dotnet restore --interactive for the feed; bash local_dev/deploy.sh for the 5433 test cluster.
+
+  Nothing else is pending on my side. See you when 9788 is done.
+
+  ════════════════════════════════════════════════════════════════════════════════════
+
+✻ Crunched for 55s · done 10:47 AM
+
+※ recap: RTAFB-9787 adds the CallWorkflow linkage columns to REM; PR #546 is green but parked on hold until the
+  Application side validates the schema. Next action: merge main into the branch to clear the conflict and re-run CI.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Fable 5.1 |  08fa20b7 |  RTAFB-9787 | ████░░░░░░ 46% | ⏱ 475:44:39 | 💰 $57.9635
+  ⏵⏵ auto mode on (shift+tab to cycle) · PR #546 · ← for agents
+                                                                                ✔ Update installed · Restart to update
+                                                                                new task? /clear to save 458.3k tokens

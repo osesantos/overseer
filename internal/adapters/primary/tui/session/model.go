@@ -378,6 +378,7 @@ func (m Model) View() tea.View {
 var agentStatusTitleOrder = []domain.AgentStatusKind{
 	domain.AgentStatusRunning,
 	domain.AgentStatusWaiting,
+	domain.AgentStatusAsking,
 	domain.AgentStatusDead,
 	domain.AgentStatusIdle,
 	domain.AgentStatusSwarm,
@@ -390,6 +391,8 @@ func agentStatusLabel(kind domain.AgentStatusKind) string {
 		return "running"
 	case domain.AgentStatusWaiting:
 		return "waiting"
+	case domain.AgentStatusAsking:
+		return "asking"
 	case domain.AgentStatusIdle:
 		return "idle"
 	case domain.AgentStatusDead:

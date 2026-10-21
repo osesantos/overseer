@@ -25,6 +25,7 @@ type Glyphs struct {
 	LabelDraft    string
 	StatusRunning string
 	StatusWaiting string
+	StatusAsking  string
 	StatusIdle    string
 	StatusDead    string
 	StatusUnknown string
@@ -60,6 +61,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 			LabelDraft:    "◌",
 			StatusRunning: "●",
 			StatusWaiting: "◐",
+			StatusAsking:  "◇",
 			StatusIdle:    "○",
 			StatusDead:    "■",
 			StatusUnknown: "?",
@@ -89,6 +91,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 		LabelDone:     "✅",
 		StatusRunning: "⚙️",
 		StatusWaiting: "🙋",
+		StatusAsking:  "💬",
 		StatusIdle:    "💤",
 		StatusDead:    "🟥",
 		StatusUnknown: "❓",
@@ -118,6 +121,8 @@ func (g Glyphs) AgentStatus(kind domain.AgentStatusKind) string {
 		return g.StatusRunning
 	case domain.AgentStatusWaiting:
 		return g.StatusWaiting
+	case domain.AgentStatusAsking:
+		return g.StatusAsking
 	case domain.AgentStatusIdle:
 		return g.StatusIdle
 	case domain.AgentStatusDead:

@@ -2,7 +2,7 @@
 // Claude Code session by tmux-pane content. It does NOT decide whether the
 // agent process is alive — that liveness check is the service layer's job
 // (see internal/core/service/agent_status.go). The detector only resolves
-// Running / Waiting / Idle / Unknown.
+// Running / Waiting / Asking / Idle / Unknown.
 package claudecode
 
 import (
@@ -77,6 +77,15 @@ func classify(lines []string, now time.Time) domain.AgentStatus {
 		}
 	}
 
+	if reason, ok := matchAsking(lines); ok {
+		return domain.AgentStatus{
+			Kind:       domain.AgentStatusAsking,
+			DetectedAt: now,
+			Source:     sourceTag,
+			Reason:     reason,
+		}
+	}
+
 	return domain.AgentStatus{
 		Kind:       domain.AgentStatusIdle,
 		DetectedAt: now,
@@ -127,6 +136,40 @@ func matchRunning(lines []string) (string, bool) {
 		}
 	}
 	return "", false
+}
+
+// matchAsking reports whether the agent's last reply hands the turn back to the operator: a sentence
+// ending in "?" or one of signalAskingPhrases.
+func matchAsking(lines []string) (string, bool) {
+	reply := strings.ToLower(strings.Join(strings.Fields(strings.Join(lastReply(lines), " ")), " "))
+	if strings.HasSuffix(reply, "?") || strings.Contains(reply, "? ") {
+		return "last reply asks a question", true
+	}
+	for _, p := range signalAskingPhrases {
+		if strings.Contains(reply, p) {
+			return "matched " + quote(p), true
+		}
+	}
+	return "", false
+}
+
+// lastReply returns the lines from the last reply marker up to the input prompt. A reply taller than
+// the scan window has no marker in view, so it starts at the window's first line.
+func lastReply(lines []string) []string {
+	end := lastLineWithPrefix(lines, signalPrompt)
+	if end < 0 {
+		end = len(lines)
+	}
+	return lines[max(lastLineWithPrefix(lines[:end], signalReplyMarker), 0):end]
+}
+
+func lastLineWithPrefix(lines []string, prefix string) int {
+	for i := len(lines) - 1; i >= 0; i-- {
+		if strings.HasPrefix(strings.TrimSpace(lines[i]), prefix) {
+			return i
+		}
+	}
+	return -1
 }
 
 // isSpinnerLine reports whether l is Claude Code's in-progress spinner: a glyph followed by a

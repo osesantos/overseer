@@ -29,8 +29,12 @@ const (
 	AgentStatusUnknown AgentStatusKind = "unknown"
 	AgentStatusRunning AgentStatusKind = "running"
 	AgentStatusWaiting AgentStatusKind = "waiting"
-	AgentStatusIdle    AgentStatusKind = "idle"
-	AgentStatusDead    AgentStatusKind = "dead"
+	// AgentStatusAsking marks an agent that finished its turn by asking the
+	// operator something in prose ("Shall I…?", "say yes to write it"). Unlike
+	// Waiting, no dialog blocks it; it only looks idle.
+	AgentStatusAsking AgentStatusKind = "asking"
+	AgentStatusIdle   AgentStatusKind = "idle"
+	AgentStatusDead   AgentStatusKind = "dead"
 	// AgentStatusSwarm marks a session whose agents are not tracked individually.
 	// A swarm has one pane per agent, and this API carries a single status per
 	// session, so there is nothing honest to report — but it is not Unknown

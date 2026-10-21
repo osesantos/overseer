@@ -1,0 +1,40 @@
+  CRC64NVME after the host's FileStorage upload loaded the host's CRT copy would hit the NRE again. Libraries on the
+  default CRC32 never touch the CRT and are safe.
+
+  ❓ What I need from you — nothing.
+
+  ⏭️ Next — If that ceiling matters, the FileStorage SDK moves to CRC32, and the host never loads the CRT integration.
+
+  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+✻ Sautéed for 20s · done 9:32 AM
+
+❯ perfect!
+
+⏺ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+  📍 Where we are — PR #412 is open with both commits, body updated, CI running. João's #1787 untouched.
+
+  🔎 Open items
+
+  - ELW: ship FileStorage.Common, .S3, .SeaweedFS at the package root, then bump OSExternalLibrariesRuntimeVersion.
+  - FileStorage SDK: decide on CRC32 to remove the CRT ceiling.
+  - Research doc in the vault still describes the first design. I can update it with the final loader design, the
+    System.Runtime finding and the CRT ceiling. Say yes when you want that.
+
+  ⏭️ Next — nothing until CI reports or you pick one of the above.
+
+  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+✻ Sautéed for 11s · done 9:33 AM
+
+※ recap: Fixing the RTAFB-9856 CRT checksum crash in the External Libraries runtime: PR #412 is open with the strict
+  loader and shared FileStorage assemblies, CI running. Next: ELW must ship the FileStorage DLLs at the package root
+  before bumping the runtime version.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Fable 5.1 |  b4c6714f |  feat/RTAFB-9856 | ███░░░░░░░ 30% | ⏱ 17:51:54 | 💰 $20.4828
+  ⏵⏵ auto mode on (shift+tab to cycle) · PR #412
+                                                                                ✔ Update installed · Restart to update

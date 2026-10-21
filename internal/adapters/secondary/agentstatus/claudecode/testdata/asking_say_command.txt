@@ -1,0 +1,40 @@
+  ⎿  Allowed by auto mode classifier
+
+⏺ Bash(python3 - <<'PY'
+      import pathlib…)
+  ⎿  ## Notes
+     > Notes to link to this day, create a note file and link it here
+     - [[RTAFB-9947-db-auth-fallback]] — plan: ROPS retries once with the opposite DB auth mechanism on 28P01 (IAM
+     … +19 lines (ctrl+o to expand)
+  ⎿  Allowed by auto mode classifier
+
+⏺ ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  ✅ Plan written and wired into the vault.
+
+  - 📄 ~/git/vault/Plans/RTAFB-9947-db-auth-fallback.md, status planning, 6 steps.
+  - 📓 Today's journal (Oct 21st) created from the template, with the plan under Notes and a Log bullet.
+  - 🧹 The repo stayed read-only, git status is clean.
+
+  Top risks
+  - NSubstitute may not proxy the internal virtual seam. A small test subclass is the fallback, no design change.
+  - The warning fires on every connection during the ~1h window. That is the signal we want, no rate limiting.
+
+  Open questions, with owners
+  - Will RDM ship the same fallback inside OutSystems.DatabaseProviders? Owner: RDM. Ours ships regardless.
+  - Next rollout step date and weekend cadence. Owner: DES/RDO, asked in the Slack thread.
+  - Who pauses RDO's reconcilers on the dev stamp for the live test. Owner: you with Ricardo Oliveira.
+
+  Next: say "implement RTAFB-9947" and I'll start step 1 on chore/RTAFB-9947-db-auth-fallback.
+  ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+
+✻ Crunched for 37s · done 9:28 AM
+
+※ recap: Goal: protect ROPS from the IAM rollout credential gap. Research doc, ticket RTAFB-9947 (in the current sprint)
+  and the implementation plan are all written to the vault. Next action: say "implement RTAFB-9947" to start coding.
+
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+❯ 
+────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────
+  Fable 5.1 |  OutSystems.RuntimeOperationsProvider.Service |  main | ██░░░░░░░░ 27% | ⏱ 17:03:50 | 💰 $14.7823
+  ⏵⏵ auto mode on (shift+tab to cycle)
+                                                                                ✔ Update installed · Restart to update
