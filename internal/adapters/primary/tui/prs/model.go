@@ -109,18 +109,36 @@ func (m Model) selectedPR() (domain.PullRequest, bool) {
 
 func (m Model) View() tea.View {
 	s := m.styles.SessionDetails
+	humans, bots := m.listed()
 	title := s.SectionTitle.Render(fmt.Sprintf("Pull requests waiting on %s", m.data.Inbox.Viewer))
-	count := s.Hint.Render(fmt.Sprintf("%d open", len(m.data.Inbox.PullRequests)))
-	header := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", count)
-	if len(m.data.Inbox.PullRequests) == 0 {
+	count := fmt.Sprintf("%d open", len(humans))
+	if bots > 0 {
+		count += fmt.Sprintf("  (%d bot PRs hidden)", bots)
+	}
+	header := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", s.Hint.Render(count))
+	if len(humans) == 0 {
 		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", s.Hint.Render("Nothing waiting on you.")))
 	}
 	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", m.tree.View()))
 }
 
-func (m Model) nodes() []components.TreeNode[prNode] {
-	byRepo := make(map[string][]domain.PullRequest)
+// listed splits the inbox into the PRs the page shows and the bot PRs it hides:
+// dependency bumps are noise next to reviews a person is waiting for.
+func (m Model) listed() (humans []domain.PullRequest, bots int) {
 	for _, pr := range m.data.Inbox.PullRequests {
+		if pr.AuthorIsBot {
+			bots++
+			continue
+		}
+		humans = append(humans, pr)
+	}
+	return humans, bots
+}
+
+func (m Model) nodes() []components.TreeNode[prNode] {
+	humans, _ := m.listed()
+	byRepo := make(map[string][]domain.PullRequest)
+	for _, pr := range humans {
 		byRepo[pr.Repo] = append(byRepo[pr.Repo], pr)
 	}
 	repos := make([]string, 0, len(byRepo))
@@ -171,8 +189,6 @@ func (m Model) prNode(pr domain.PullRequest, sessionByPR map[domain.PullRequestR
 		node.session = "reviewed"
 	case pr.Author == m.data.Inbox.Viewer:
 		node.session = "mine"
-	case pr.AuthorIsBot:
-		node.session = "bot"
 	}
 	return node
 }
@@ -191,16 +207,25 @@ func renderNode(s *styles.Styles) components.TreeRenderFunc[prNode] {
 		g := s.Glyphs
 		d := s.SessionDetails
 		pr := item.pr
-		lead := prefix + prStateStyle(d, pr.State).Render(prStateGlyph(g, pr.State)) + " " + d.Glyph.Render(fmt.Sprintf("#%-5d", pr.Number))
+		// Segments are styled only on an unfocused row: the selected row is one
+		// style over plain text, so its colours cover the whole line.
+		paint := func(style lipgloss.Style, text string) string {
+			if focused {
+				return text
+			}
+			return style.Render(text)
+		}
+		lead := prefix + paint(prStateStyle(d, pr.State), prStateGlyph(g, pr.State)) + " " + paint(d.Glyph, fmt.Sprintf("#%-5d", pr.Number))
+		checks, checksStyle := checksGlyph(d, g, pr.Checks)
 		tail := strings.Join([]string{
-			d.Value.Render(pr.Author),
-			d.Hint.Render(shared.FormatRelativeDuration(time.Since(pr.UpdatedAt))),
-			checksGlyph(d, g, pr.Checks),
-			sessionColumn(s, item),
+			paint(d.Value, pr.Author),
+			paint(d.Hint, shared.FormatRelativeDuration(time.Since(pr.UpdatedAt))),
+			paint(checksStyle, checks),
+			sessionColumn(s, item, paint),
 		}, strings.Repeat(" ", columnGap))
 
 		titleW := max(width-lipgloss.Width(lead)-lipgloss.Width(tail)-2*columnGap, titleMin)
-		title := d.Value.Render(fitTitle(pr.Title, titleW))
+		title := paint(d.Value, fitTitle(pr.Title, titleW))
 		row := lead + " " + title + strings.Repeat(" ", max(width-lipgloss.Width(lead)-1-lipgloss.Width(title)-lipgloss.Width(tail), columnGap)) + tail
 		if focused {
 			return s.ListRow.Selected.Width(width).Render(row)
@@ -217,21 +242,21 @@ func fitTitle(title string, width int) string {
 	return string(runes[:width-1]) + "…"
 }
 
-func sessionColumn(s *styles.Styles, item prNode) string {
+func sessionColumn(s *styles.Styles, item prNode, paint func(lipgloss.Style, string) string) string {
 	if item.hasSess {
-		return s.Glyphs.AgentStatus(item.status) + " " + s.SessionDetails.Special.Render(item.session)
+		return s.Glyphs.AgentStatus(item.status) + " " + paint(s.SessionDetails.Special, item.session)
 	}
-	return s.SessionDetails.Hint.Render(fmt.Sprintf("%-13s", item.session))
+	return paint(s.SessionDetails.Hint, fmt.Sprintf("%-13s", item.session))
 }
 
-func checksGlyph(d styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChecks) string {
+func checksGlyph(d styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChecks) (string, lipgloss.Style) {
 	switch c.OverallConclusion() {
 	case domain.CheckConclusionSuccess:
-		return d.Good.Render(g.CheckPass)
+		return g.CheckPass, d.Good
 	case domain.CheckConclusionFailure:
-		return d.Bad.Render(g.CheckFail)
+		return g.CheckFail, d.Bad
 	default:
-		return d.Warn.Render(g.CheckPending)
+		return g.CheckPending, d.Warn
 	}
 }
 

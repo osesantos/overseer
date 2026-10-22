@@ -717,3 +717,17 @@ func bgColorTriplet(c interface {
 	r, g, b, _ := c.RGBA()
 	return fmt.Sprintf("48;2;%d;%d;%d", r>>8, g>>8, b>>8)
 }
+
+func TestRenderSessionNode_LongName_IsCutToOneLineKeepingTheAge(t *testing.T) {
+	render := renderSessionNode(styles.New(), nil)
+	item := sessionNode{kind: sessionNodeSession, label: "PR #414 chore(RTAFB-9935): bump dependencies and split versions", updatedAt: time.Now().Add(-2 * time.Hour)}
+
+	row := ansi.Strip(render(item, 0, 1, 40, false, false, false))
+
+	if strings.Contains(row, "\n") || ansi.StringWidth(row) > 40 {
+		t.Fatalf("row wraps or overflows 40 cells: %q", row)
+	}
+	if !strings.Contains(row, "…") || !strings.HasSuffix(strings.TrimRight(row, " "), "2h") {
+		t.Fatalf("row = %q, want an ellipsised name followed by the age", row)
+	}
+}

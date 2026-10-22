@@ -45,10 +45,34 @@ func TestModel_View_GroupsByRepoAndMarksSessionState(t *testing.T) {
 
 	view := ansi.Strip(m.View().Content)
 
-	for _, want := range []string{"waiting on me", "3 open", "OutSystems/signer (2)", "OutSystems/elsewhere (1)", "#92", "review session", "#93", "bot", "#4", "no local repo"} {
+	for _, want := range []string{"waiting on me", "2 open", "(1 bot PRs hidden)", "OutSystems/signer (1)", "OutSystems/elsewhere (1)", "#92", "review session", "#4", "no local repo"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
+	}
+	if strings.Contains(view, "#93") {
+		t.Errorf("bot PR #93 is listed:\n%s", view)
+	}
+}
+
+func TestModel_View_FocusedRow_IsOneStyleRun(t *testing.T) {
+	m, _ := fixture(t)
+	updated, _ := m.Update(letter('j'))
+	m = updated.(Model)
+
+	var focused string
+	for _, line := range strings.Split(m.View().Content, "\n") {
+		if strings.Contains(ansi.Strip(line), "#4") {
+			focused = line
+		}
+	}
+	if focused == "" {
+		t.Fatal("focused PR row not found")
+	}
+	// One selection style over plain text: no inner reset before the end of the row.
+	body := strings.TrimRight(focused, " ")
+	if inner := strings.Count(body, "\x1b[0m"); inner > 1 {
+		t.Fatalf("focused row carries %d style resets, want a single run:\n%q", inner, focused)
 	}
 }
 

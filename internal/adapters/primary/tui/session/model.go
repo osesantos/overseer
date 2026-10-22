@@ -10,6 +10,7 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
@@ -555,11 +556,11 @@ func renderSessionNode(s *styles.Styles, labels []domain.Label) components.TreeR
 			filler = width - bodyW - auxGap - auxW
 			badge, badgeW, badgeGap = "", 0, 0
 		}
+		// A long name is cut to one line with an ellipsis rather than wrapped,
+		// keeping the age column in place.
 		if filler < 0 {
-			if focused {
-				return s.ListRow.Selected.Render(body)
-			}
-			return s.ListRow.Normal.Render(body)
+			body = ansi.Truncate(body, max(width-auxGap-auxW, 1), "…")
+			filler = max(width-lipgloss.Width(body)-auxGap-auxW, 0)
 		}
 
 		fillerSpaces := strings.Repeat(" ", filler)
