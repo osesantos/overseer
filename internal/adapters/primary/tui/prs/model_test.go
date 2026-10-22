@@ -24,7 +24,7 @@ func fixture(t *testing.T) (Model, domain.Session) {
 	m.SetSize(120, 20)
 	m.SetData(Data{
 		Loaded: true,
-		Inbox:  domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
+		Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
 			{Repo: "OutSystems/signer", Number: 92, Title: "fix(RRCT-1): error info", Author: "joao", State: domain.PRStateOpen, UpdatedAt: now},
 			{Repo: "OutSystems/signer", Number: 93, Title: "chore: bump", Author: "dependabot", AuthorIsBot: true, State: domain.PRStateOpen, UpdatedAt: now.Add(-time.Hour)},
 			{Repo: "OutSystems/elsewhere", Number: 4, Title: "feat: thing", Author: "ana", State: domain.PRStateOpen, UpdatedAt: now},
