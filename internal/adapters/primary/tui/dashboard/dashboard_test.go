@@ -257,8 +257,9 @@ func TestDashboard_ColonOpensTheCommandLine_AndEscCloses(t *testing.T) {
 	if !m.cmdlineActive {
 		t.Fatal(": did not open the command line")
 	}
-	if view := ansi.Strip(m.View().Content); !strings.Contains(view, ":") {
-		t.Fatalf("command line not rendered in the gap line:\n%s", view)
+	lines := strings.Split(strings.TrimRight(ansi.Strip(m.View().Content), "\n"), "\n")
+	if last := lines[len(lines)-1]; !strings.HasPrefix(strings.TrimSpace(last), ":") {
+		t.Fatalf("command line not rendered on the bottom line, got %q", last)
 	}
 
 	// q is text now, not quit.

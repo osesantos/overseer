@@ -98,7 +98,8 @@ type Model struct {
 	// pendingFocusID is a session to select once the next SessionsLoadedMsg
 	// lands, used after a review session is created from the PRs page.
 	pendingFocusID uuid.UUID
-	// cmdline is the k9s-style one-line prompt opened with ":".
+	// cmdline is the k9s-style one-line prompt opened with ":"; it replaces the
+	// help bar while open.
 	cmdline       textinput.Model
 	cmdlineActive bool
 	// review holds the auto-review settings; AutoReview can be flipped at
@@ -1163,8 +1164,12 @@ func (m Model) View() tea.View {
 
 	titlebarView := m.titlebar.View().Content
 	titlebarHeight := max(lipgloss.Height(titlebarView), 1)
+	// The ":" prompt takes the help bar's line at the bottom, k9s style.
 	helpView := m.helpBar.View().Content
-	if m.page == pagePRs {
+	switch {
+	case m.cmdlineActive:
+		helpView = m.cmdline.View()
+	case m.page == pagePRs:
 		helpView = m.prsHelpBar.View().Content
 	}
 	helpHeight := max(lipgloss.Height(helpView), 1)
@@ -1194,8 +1199,6 @@ func (m Model) View() tea.View {
 	// so no height shift occurs.
 	var gapLine string
 	switch {
-	case m.cmdlineActive:
-		gapLine = m.cmdline.View()
 	case m.discovering:
 		gapLine = m.styles.Toast.GapLine.Width(m.width).
 			Render(m.styles.Toast.Indexing.Render(" Indexing repos… "))

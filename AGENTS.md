@@ -208,7 +208,7 @@ Routing order in `Update`, which matters:
 
 1. **Popup gate** — an open popup owns every key.
 2. **Capture gate** — `m.inspector.CapturesInput()` (board compose) owns every key except `hardQuitKeyBinding`. This sits ahead of `ctrl+o` and quit on purpose: a half-typed message must not be cut short by a global shortcut.
-2b. **Command line gate** — while the `:` prompt is open (`m.cmdlineActive`) it owns every key except `ctrl+c`; Enter runs the line through `executeCommand` (same parser as the chat's `/` commands), Esc discards it. Results land in the gap-line toast when the chat is hidden.
+2b. **Command line gate** — while the `:` prompt is open (`m.cmdlineActive`) it owns every key except `ctrl+c`; Enter runs the line through `executeCommand` (same parser as the chat's `/` commands), Esc discards it. The prompt replaces the help bar at the bottom while open; results land in the gap-line toast when the chat is hidden.
 3. `ctrl+o` — toggles the chat panel.
 4. **Chat branch** — when the chat is visible, only `hardQuitKeyBinding` quits; arrows pass through to the session list, `tab` to the inspector, everything else to the chat input.
 5. `quitKeyBinding` — plain `q` or `ctrl+c`.
