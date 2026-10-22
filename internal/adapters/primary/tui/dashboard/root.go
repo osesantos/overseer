@@ -4,12 +4,14 @@ import (
 	"context"
 	"fmt"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/charmbracelet/x/ansi"
 
 	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
@@ -19,6 +21,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
 	overseerui "github.com/dnlopes/overseer/internal/adapters/primary/tui/overseer"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/prs"
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/sessiondetails"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -37,6 +40,15 @@ const (
 	ChatPanelHeightPercent = 30
 )
 
+// pageKind selects what the body shows: the sessions dashboard or a full-width
+// page opened from the command line (`:prs`).
+type pageKind int
+
+const (
+	pageSessions pageKind = iota
+	pagePRs
+)
+
 type popupKind int
 
 const (
@@ -50,9 +62,9 @@ const (
 	popupOverseerConfirm
 )
 
-// discoveryDismissMsg is an internal message that clears the discovery toast
+// toastDismissMsg is an internal message that clears the gap-line toast
 // after its auto-dismiss timer fires.
-type discoveryDismissMsg struct{}
+type toastDismissMsg struct{}
 
 type projectBranchCache struct {
 	branches      []domain.BranchInfo
@@ -61,27 +73,39 @@ type projectBranchCache struct {
 }
 
 type Model struct {
-	titlebar                TitleBarModel
-	leftPane                leftpane.Model
-	inspector               inspector.Model
-	helpBar                 shared.HelpBarModel
-	createForm              sessionui.CreateFormModel
-	deleteForm              sessionui.DeleteFormModel
-	renameForm              sessionui.RenameFormModel
-	killPreviewForm         sessionui.KillPreviewFormModel
-	helpPopup               shared.HelpPopupModel
-	scheduler               jobs.Model
-	activePopup             popupKind
+	titlebar        TitleBarModel
+	leftPane        leftpane.Model
+	inspector       inspector.Model
+	helpBar         shared.HelpBarModel
+	createForm      sessionui.CreateFormModel
+	deleteForm      sessionui.DeleteFormModel
+	renameForm      sessionui.RenameFormModel
+	killPreviewForm sessionui.KillPreviewFormModel
+	helpPopup       shared.HelpPopupModel
+	scheduler       jobs.Model
+	activePopup     popupKind
+	page            pageKind
+	prsPage         prs.Model
+	prsHelpBar      shared.HelpBarModel
+	// pendingFocusID is a session to select once the next SessionsLoadedMsg
+	// lands, used after a review session is created from the PRs page.
+	pendingFocusID uuid.UUID
+	// cmdline is the k9s-style one-line prompt opened with ":".
+	cmdline       textinput.Model
+	cmdlineActive bool
+	// reviewCommand is the configured launcher template for a review session.
+	reviewCommand           string
 	cachedProjects          []domain.Project
 	cachedSessions          []domain.Session
 	cachedBranchesByProject map[uuid.UUID]projectBranchCache
 	prStatuses              map[uuid.UUID]shared.PRStatusUpdatedMsg
 	agentStatuses           map[uuid.UUID]domain.AgentStatus
+	reviewInbox             domain.ReviewInbox
 
 	// discovery
 	discoveryPaths        []string // configured scan roots, already expanded
 	discovering           bool     // true while the background scan is in flight
-	discoveryMsg          string   // non-empty = show success toast briefly
+	toast                 string   // non-empty = show a notice in the gap line briefly
 	discoveryWarningPaths []string // non-empty = show warning popup
 	discoveryCount        int      // newly registered repos (shown in warning popup)
 
@@ -125,14 +149,24 @@ func New(
 	discoveryPaths []string,
 	swarmBoardURL string,
 	swarmMaxAgents int,
+	reviewCommand string,
 ) Model {
 	sessionsModel := sessionui.New(styles, sessionsService, labels)
 	detailsModel := sessiondetails.New(styles)
 	left := leftpane.New(styles, sessionsModel, detailsModel)
 	left.SetFocus(true)
 
+	cmdline := textinput.New()
+	cmdline.Prompt = ":"
+	cmdline.Placeholder = "prs · sessions · help"
+	cmdline.SetStyles(styles.Form.Input)
+
 	m := Model{
 		styles:                  styles,
+		prsPage:                 prs.New(styles),
+		prsHelpBar:              shared.NewHelpBarModel(styles, prsPageKeyBindings),
+		cmdline:                 cmdline,
+		reviewCommand:           reviewCommand,
 		titlebar:                newTitlebar(styles, "overseer"),
 		leftPane:                left,
 		inspector:               inspector.New(styles, sessionsService, swarmService, previewRefreshInterval),
@@ -262,6 +296,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.cachedProjects = msg.Projects
 			m.refreshProjectNameLookup()
+			m.syncPRsPage()
 			return m, m.fanOutBranchRefresh()
 		}
 		return m, nil
@@ -279,14 +314,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Batch(cmds...)
 		}
 		if msg.Count > 0 {
-			m.discoveryMsg = fmt.Sprintf("Found %d new repo(s)", msg.Count)
-			cmds = append(cmds, tea.Tick(3*time.Second, func(time.Time) tea.Msg {
-				return discoveryDismissMsg{}
-			}))
+			cmds = append(cmds, m.showToast(fmt.Sprintf("Found %d new repo(s)", msg.Count)))
 		}
 		return m, tea.Batch(cmds...)
-	case discoveryDismissMsg:
-		m.discoveryMsg = ""
+	case toastDismissMsg:
+		m.toast = ""
 		return m, nil
 	case shared.BranchesLoadedMsg:
 		if msg.Err == nil {
@@ -331,7 +363,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case shared.SwarmBootstrappedMsg:
 		if msg.Err != nil {
-			m.discoveryMsg = "Swarm bootstrap failed: " + msg.Err.Error()
+			m.toast = "Swarm bootstrap failed: " + msg.Err.Error()
 		}
 		return m, nil
 	case shared.SessionDeleteRequestedMsg:
@@ -396,6 +428,42 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.scheduler, cmd = m.scheduler.Update(msg)
 		return m, cmd
+	case shared.PullRequestsLoadedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("PR inbox: " + msg.Err.Error())
+		}
+		m.reviewInbox = msg.Inbox
+		m.syncPRsPage()
+		if len(msg.Created) == 0 {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.PageCloseMsg:
+		m.page = pageSessions
+		m.reapplySize()
+		return m, nil
+	case shared.PullRequestOpenMsg:
+		if sess, ok := m.reviewSessionFor(msg.PR); ok {
+			m.page = pageSessions
+			m.reapplySize()
+			return m, shared.Emit(shared.SessionFocusRequestedMsg{SessionID: sess.ID})
+		}
+		return m, m.startReviewCmd(msg.PR)
+	case shared.PullRequestReviewMsg:
+		if sess, ok := m.reviewSessionFor(msg.PR); ok {
+			return m, m.showToast(fmt.Sprintf("PR #%d already has a review session: %s", msg.PR.Number, sess.Name))
+		}
+		return m, m.startReviewCmd(msg.PR)
+	case shared.ReviewSessionStartedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("could not start review: " + msg.Err.Error())
+		}
+		m.page = pageSessions
+		m.pendingFocusID = msg.Session.ID
+		m.reapplySize()
+		return m, shared.Emit(shared.SessionCreatedMsg{Session: msg.Session})
 	case shared.PRStatusUpdatedMsg:
 		m.prStatuses[msg.SessionID] = msg
 		var cmd tea.Cmd
@@ -403,16 +471,23 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case shared.AgentStatusesUpdatedMsg:
 		m.agentStatuses = msg.Statuses
+		m.syncPRsPage()
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
 	case shared.SessionsLoadedMsg:
 		if msg.Err == nil {
 			m.cachedSessions = msg.Sessions
+			m.syncPRsPage()
 		}
 		// Also forward to the left pane so the session tree updates.
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		if m.pendingFocusID != uuid.Nil {
+			focus := shared.SessionFocusRequestedMsg{SessionID: m.pendingFocusID}
+			m.pendingFocusID = uuid.Nil
+			cmd = tea.Batch(cmd, shared.Emit(focus))
+		}
 		return m, cmd
 	case shared.OverseerTogglePanelMsg:
 		m.chatPanelVisible = !m.chatPanelVisible
@@ -450,7 +525,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inspector, refreshCmd = shared.UpdateModel(m.inspector, inspector.ForceRefreshMsg{})
 		return m, tea.Batch(cmd, refreshCmd)
 	case shared.OverseerCommandResultMsg:
-		// Forward command feedback to the chat panel (renders as dimmed system message).
+		// Command feedback renders in the chat panel as a dimmed system message,
+		// or in the gap line when the command came from ":" with the chat hidden.
+		if !m.chatPanelVisible {
+			return m, m.showToast(msg.Text)
+		}
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
 		return m, cmd
@@ -465,6 +544,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// below. Sending it to exactly one input matters — the fallthrough broadcast
 	// would otherwise deliver it to the chat *and* the board compose line at once.
 	if pasteMsg, ok := msg.(tea.PasteMsg); ok {
+		if m.cmdlineActive {
+			var cmd tea.Cmd
+			m.cmdline, cmd = m.cmdline.Update(pasteMsg)
+			return m, cmd
+		}
 		if m.inspector.CapturesInput() {
 			var cmd tea.Cmd
 			m.inspector, cmd = shared.UpdateModel(m.inspector, pasteMsg)
@@ -492,6 +576,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.inspector, cmd = shared.UpdateModel(m.inspector, keyMsg)
 			return m, cmd
+		}
+
+		// The command line owns every key while open, like the board compose
+		// line above: a half-typed command must not trigger a shortcut.
+		if m.cmdlineActive {
+			return m.updateCmdline(keyMsg)
 		}
 
 		// ctrl+o toggles the chat panel regardless of focus state.
@@ -528,6 +618,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if key.Matches(keyMsg, quitKeyBinding) {
 			return m, tea.Quit
+		}
+		if key.Matches(keyMsg, cmdlineKeyBinding) {
+			m.cmdlineActive = true
+			m.cmdline.SetValue("")
+			return m, m.cmdline.Focus()
+		}
+
+		// A full-width page takes the keys the sessions dashboard would get.
+		if m.page == pagePRs {
+			var cmd tea.Cmd
+			m.prsPage, cmd = shared.UpdateModel(m.prsPage, keyMsg)
+			return m, cmd
 		}
 
 		// Normal routing when the chat panel is closed.
@@ -865,6 +967,83 @@ func (m Model) cursorProjectID() uuid.UUID {
 	return uuid.Nil
 }
 
+// updateCmdline handles a key while the ":" prompt is open: Enter runs the line
+// through the same parser as the chat panel's "/" commands, Esc discards it.
+func (m Model) updateCmdline(keyMsg tea.KeyPressMsg) (tea.Model, tea.Cmd) {
+	switch {
+	case key.Matches(keyMsg, hardQuitKeyBinding):
+		return m, tea.Quit
+	case key.Matches(keyMsg, cmdlineCancelKeyBinding):
+		m.cmdlineActive = false
+		m.cmdline.Blur()
+		return m, nil
+	case key.Matches(keyMsg, cmdlineSubmitKeyBinding):
+		raw := strings.TrimSpace(m.cmdline.Value())
+		m.cmdlineActive = false
+		m.cmdline.Blur()
+		if raw == "" {
+			return m, nil
+		}
+		return m.executeCommand("/" + strings.TrimPrefix(raw, "/"))
+	}
+	var cmd tea.Cmd
+	m.cmdline, cmd = m.cmdline.Update(keyMsg)
+	return m, cmd
+}
+
+// showToast puts text in the gap line and arms its dismissal.
+func (m *Model) showToast(text string) tea.Cmd {
+	m.toast = text
+	return tea.Tick(3*time.Second, func(time.Time) tea.Msg { return toastDismissMsg{} })
+}
+
+// syncPRsPage hands the page the slices it renders from; cheap enough to run on
+// every change of inbox, sessions, projects or agent statuses.
+func (m *Model) syncPRsPage() {
+	names := make(map[string]bool, len(m.cachedProjects))
+	for _, p := range m.cachedProjects {
+		names[p.Name] = true
+	}
+	m.prsPage.SetData(prs.Data{
+		Inbox:         m.reviewInbox,
+		Sessions:      m.cachedSessions,
+		ProjectNames:  names,
+		AgentStatuses: m.agentStatuses,
+	})
+}
+
+func (m Model) reviewSessionFor(pr domain.PullRequest) (domain.Session, bool) {
+	for _, sess := range m.cachedSessions {
+		if sess.IsReview() && sess.ReviewPR == pr.Ref() {
+			return sess, true
+		}
+	}
+	return domain.Session{}, false
+}
+
+// startReviewCmd creates a review session for pr in its registered project, or
+// says why it cannot.
+func (m *Model) startReviewCmd(pr domain.PullRequest) tea.Cmd {
+	idx := slices.IndexFunc(m.cachedProjects, func(p domain.Project) bool { return p.Name == pr.RepoName() })
+	if idx < 0 {
+		return m.showToast(fmt.Sprintf("no local repo for %s — clone it under a discovery path first", pr.Repo))
+	}
+	svc := m.sessionsService
+	req := service.CreateReviewSessionRequest{
+		PullRequest:  pr,
+		ProjectID:    m.cachedProjects[idx].ID,
+		AgentCommand: strings.ReplaceAll(m.reviewCommand, domain.ReviewCommandNumberToken, strconv.Itoa(pr.Number)),
+	}
+	return shared.RequestWithTimeout(overseerRequestTimeout,
+		func(ctx context.Context) (service.CreateReviewSessionResponse, error) {
+			return svc.CreateForPullRequest(ctx, req)
+		},
+		func(resp service.CreateReviewSessionResponse, err error) tea.Msg {
+			return shared.ReviewSessionStartedMsg{Session: resp.Session, Err: err}
+		},
+	)
+}
+
 func (m *Model) refreshProjectNameLookup() {
 	names := make(map[uuid.UUID]string, len(m.cachedProjects))
 	for _, p := range m.cachedProjects {
@@ -885,6 +1064,9 @@ func (m Model) View() tea.View {
 	titlebarView := m.titlebar.View().Content
 	titlebarHeight := max(lipgloss.Height(titlebarView), 1)
 	helpView := m.helpBar.View().Content
+	if m.page == pagePRs {
+		helpView = m.prsHelpBar.View().Content
+	}
 	helpHeight := max(lipgloss.Height(helpView), 1)
 
 	bodyHeight := max(m.height-titlebarHeight-TitleBarGap-helpHeight, 1)
@@ -897,9 +1079,14 @@ func (m Model) View() tea.View {
 		bodyHeight = max(bodyHeight-chatHeight, 1)
 	}
 
-	left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
-	right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
-	body := fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
+	var body string
+	if m.page == pagePRs {
+		body = fit(m.styles, m.prsPage.View().Content, m.width, bodyHeight)
+	} else {
+		left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
+		right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
+		body = fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
+	}
 
 	// The gap line between the titlebar and body doubles as a notification
 	// slot: it shows a right-aligned toast while repo discovery is running
@@ -907,12 +1094,14 @@ func (m Model) View() tea.View {
 	// so no height shift occurs.
 	var gapLine string
 	switch {
+	case m.cmdlineActive:
+		gapLine = m.cmdline.View()
 	case m.discovering:
 		gapLine = m.styles.Toast.GapLine.Width(m.width).
 			Render(m.styles.Toast.Indexing.Render(" Indexing repos… "))
-	case m.discoveryMsg != "":
+	case m.toast != "":
 		gapLine = m.styles.Toast.GapLine.Width(m.width).
-			Render(m.styles.Toast.Done.Render(" " + m.discoveryMsg + " "))
+			Render(m.styles.Toast.Done.Render(" " + m.toast + " "))
 	}
 
 	full := lipgloss.JoinVertical(lipgloss.Left, titlebarView, gapLine, body, helpView)
@@ -992,7 +1181,10 @@ func (m *Model) reapplySize() {
 
 	m.leftPane.SetSize(leftWidth, bodyHeight)
 	m.inspector.SetSize(rightWidth, bodyHeight)
+	m.prsPage.SetSize(m.width, bodyHeight)
+	m.cmdline.SetWidth(m.width - 1)
 	m.helpBar.SetSize(m.width, HelpBarHeight)
+	m.prsHelpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)
 }
 

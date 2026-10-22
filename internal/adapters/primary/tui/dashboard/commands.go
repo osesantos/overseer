@@ -37,6 +37,15 @@ func (m Model) executeCommand(raw string) (tea.Model, tea.Cmd) {
 		return m.cmdList()
 	case "help":
 		return m.cmdHelp()
+	case "prs":
+		m.page = pagePRs
+		m.chatPanelVisible = false
+		m.reapplySize()
+		return m, nil
+	case "sessions":
+		m.page = pageSessions
+		m.reapplySize()
+		return m, nil
 	default:
 		return m.commandResult(fmt.Sprintf("unknown command %q — type /help for a list of commands", name), true)
 	}
@@ -214,9 +223,12 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 		"  /delete <session>               — open the delete-session dialog",
 		"  /new                            — open the new-session dialog",
 		"  /list                           — list all sessions",
+		"  /prs                            — open the pull request inbox page",
+		"  /sessions                       — back to the sessions page",
 		"  /help                           — show this help",
 		"",
 		"Agent mode: type anything without a leading / to chat with the Overseer Agent.",
+		"Press : anywhere to run the same commands from a one-line prompt.",
 	}, "\n")
 	return m.commandResult(help, false)
 }

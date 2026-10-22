@@ -948,3 +948,61 @@ func TestPreviewRefreshDuration_DefaultParsesTo500ms(t *testing.T) {
 		t.Errorf("PreviewRefreshDuration() = %v, want 500ms", got)
 	}
 }
+
+func TestDefault_ShipsPullRequestDefaults(t *testing.T) {
+	cfg := config.Default()
+
+	if cfg.PullRequests.PollInterval != 5*time.Minute {
+		t.Errorf("PullRequests.PollInterval: want 5m, got %v", cfg.PullRequests.PollInterval)
+	}
+	if !cfg.PullRequests.AutoReview {
+		t.Error("PullRequests.AutoReview: want true, got false")
+	}
+	if cfg.PullRequests.ReviewCommand != `claude "/ose-pr-review {{number}}"` {
+		t.Errorf("PullRequests.ReviewCommand: got %q", cfg.PullRequests.ReviewCommand)
+	}
+	if cfg.PullRequests.MaxPerPoll != 2 {
+		t.Errorf("PullRequests.MaxPerPoll: want 2, got %d", cfg.PullRequests.MaxPerPoll)
+	}
+}
+
+func TestLoad_PullRequestsValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "non-positive pollInterval", content: "pullRequests:\n  pollInterval: 0s\n"},
+		{name: "reviewCommand without the number placeholder", content: "pullRequests:\n  reviewCommand: claude\n"},
+		{name: "maxPerPoll below one", content: "pullRequests:\n  maxPerPoll: 0\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := config.Load(path)
+			if !errors.Is(err, errs.ErrInvalidInput) {
+				t.Fatalf("Load() error = %v, want %v", err, errs.ErrInvalidInput)
+			}
+		})
+	}
+}
+
+func TestLoad_PullRequestsAutoReviewOff_SkipsCommandValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	content := "pullRequests:\n  autoReview: false\n  reviewCommand: claude\n  maxPerPoll: 0\n"
+	if err := os.WriteFile(path, []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.PullRequests.AutoReview {
+		t.Error("PullRequests.AutoReview: want false")
+	}
+}

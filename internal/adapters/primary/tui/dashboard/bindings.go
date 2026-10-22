@@ -1,9 +1,12 @@
 package dashboard
 
 import (
+	"slices"
+
 	"charm.land/bubbles/v2/key"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/prs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 )
@@ -21,6 +24,9 @@ var (
 	killPreviewSessionKeyBinding = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "kill preview session"))
 	sendAgentEnterKeyBinding     = key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "send enter to agent"))
 	overseerPanelKeyBinding      = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "overseer agent"))
+	cmdlineKeyBinding            = key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "command"))
+	cmdlineSubmitKeyBinding      = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "run"))
+	cmdlineCancelKeyBinding      = key.NewBinding(key.WithKeys("esc"), key.WithHelp("esc", "cancel"))
 
 	discoveryPopupDismissBinding = key.NewBinding(key.WithKeys("enter", "esc", " "), key.WithHelp("enter/esc", "dismiss"))
 
@@ -32,7 +38,8 @@ var (
 
 	sessionsKeyBindings  = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
 	inspectorKeyBindings = []key.Binding{inspector.ToggleViewKeyBinding, killPreviewSessionKeyBinding, inspector.SwarmAgentPrevKeyBinding, inspector.SwarmAgentNextKeyBinding}
-	generalKeyBindings   = []key.Binding{helpMenuKeyBinding, overseerPanelKeyBinding, quitKeyBinding}
+	generalKeyBindings   = []key.Binding{helpMenuKeyBinding, overseerPanelKeyBinding, cmdlineKeyBinding, quitKeyBinding}
+	prsPageKeyBindings   = slices.Concat(prs.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})
 
 	sessionsHelpGroups = []shared.HelpPopupGroup{
 		{

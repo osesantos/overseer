@@ -77,6 +77,17 @@ type SwarmConfig struct {
 	BoardAddr             string        `yaml:"boardAddr"`
 }
 
+// PullRequestsConfig drives the review inbox: how often it is polled, whether
+// eligible PRs get a review session started for them, the command that launches
+// that review ({{number}} is replaced by the PR number) and how many sessions a
+// single poll may start.
+type PullRequestsConfig struct {
+	PollInterval  time.Duration `yaml:"pollInterval"`
+	AutoReview    bool          `yaml:"autoReview"`
+	ReviewCommand string        `yaml:"reviewCommand"`
+	MaxPerPoll    int           `yaml:"maxPerPoll"`
+}
+
 type Config struct {
 	Theme            string                 `yaml:"theme"`
 	DisableEmoji     bool                   `yaml:"disableEmoji"`
@@ -89,6 +100,7 @@ type Config struct {
 	AgentStatus      AgentStatusConfig      `yaml:"agentStatus"`
 	ProjectDiscovery ProjectDiscoveryConfig `yaml:"projectDiscovery"`
 	Swarm            SwarmConfig            `yaml:"swarm"`
+	PullRequests     PullRequestsConfig     `yaml:"pullRequests"`
 }
 
 // defaultEditorCommand is the editor launched in the session's Editor tab when
@@ -127,6 +139,12 @@ func Default() Config {
 			NudgeDebounce:         2 * time.Second,
 			MaxMessagesPerSession: 500,
 			BoardAddr:             "127.0.0.1:0",
+		},
+		PullRequests: PullRequestsConfig{
+			PollInterval:  5 * time.Minute,
+			AutoReview:    true,
+			ReviewCommand: `claude "/ose-pr-review {{number}}"`,
+			MaxPerPoll:    2,
 		},
 	}
 }
@@ -214,6 +232,21 @@ func (c Config) Validate() error {
 		}
 		if strings.TrimSpace(c.Swarm.BoardAddr) == "" {
 			return fmt.Errorf("config: swarm.boardAddr cannot be empty: %w", errs.ErrInvalidInput)
+		}
+	}
+
+	if c.PullRequests.PollInterval <= 0 {
+		return fmt.Errorf("config: pullRequests.pollInterval must be > 0, got %v: %w",
+			c.PullRequests.PollInterval, errs.ErrInvalidInput)
+	}
+	if c.PullRequests.AutoReview {
+		if !strings.Contains(c.PullRequests.ReviewCommand, domain.ReviewCommandNumberToken) {
+			return fmt.Errorf("config: pullRequests.reviewCommand must contain %s: %w",
+				domain.ReviewCommandNumberToken, errs.ErrInvalidInput)
+		}
+		if c.PullRequests.MaxPerPoll < 1 {
+			return fmt.Errorf("config: pullRequests.maxPerPoll must be >= 1, got %d: %w",
+				c.PullRequests.MaxPerPoll, errs.ErrInvalidInput)
 		}
 	}
 

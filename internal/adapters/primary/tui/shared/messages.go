@@ -106,6 +106,35 @@ type JobsBatchMsg struct{ Cmds []tea.Cmd }
 // OmarchyPaletteMsg carries the palette read from the active Omarchy theme; nil when Omarchy is absent.
 type OmarchyPaletteMsg struct{ Palette map[string]string }
 
+// PullRequestsLoadedMsg carries one poll of the review inbox. Created lists the
+// review sessions that poll started, so the session list knows to reload.
+type PullRequestsLoadedMsg struct {
+	Inbox   domain.ReviewInbox
+	Created []domain.Session
+	Err     error
+}
+
+// PullRequestOpenMsg is emitted by the PRs page when Enter lands on a PR: jump
+// to its review session, starting one first when none exists.
+type PullRequestOpenMsg struct{ PR domain.PullRequest }
+
+// PullRequestReviewMsg is emitted by the PRs page to start a review session by
+// hand, bypassing the auto-review eligibility rules (bots, own PRs, reviewed).
+type PullRequestReviewMsg struct{ PR domain.PullRequest }
+
+// ReviewSessionStartedMsg reports a review session started from the PRs page.
+type ReviewSessionStartedMsg struct {
+	Session domain.Session
+	Err     error
+}
+
+// PageCloseMsg asks the dashboard to return to the sessions page.
+type PageCloseMsg struct{}
+
+// SessionFocusRequestedMsg moves the session list cursor to the given session
+// and selects it, as if the operator had navigated there.
+type SessionFocusRequestedMsg struct{ SessionID uuid.UUID }
+
 type PRStatusUpdatedMsg struct {
 	SessionID uuid.UUID
 	PR        domain.PullRequest

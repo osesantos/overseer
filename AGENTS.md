@@ -20,7 +20,8 @@ Key capabilities:
 - Pull-request tracking via GitHub CLI
 - Agent-status detection (idle / running / waiting / dead) per session
 - Overseer chat panel — an LLM meta-agent (Claude Code) that can control sessions
-- Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`
+- Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`, `/prs`, `/sessions` — also runnable from the k9s-style `:` prompt
+- **Review inbox** — `:prs` lists every open PR with a review requested from the operator; the `pr-review-poll` job starts a review session (detached worktree at the PR head + the configured `pullRequests.reviewCommand`) for eligible PRs
 - Background evaluation loops (`/loop <session> <criteria>`) — runs `claude -p` in the session's working directory; 5s interval between iterations; up to 40 iterations
 - **Swarm sessions** — 2–8 agents on one goal, coordinating through a shared message board served over loopback HTTP; Overseer wakes idle agents via tmux because agent CLIs do not poll
 
@@ -100,9 +101,10 @@ overseer/
 │   │   │       ├── components/     # Pure rendering functions (TUI-01)
 │   │   │       ├── dashboard/      # Root model — wires all panes; root.go, commands.go, bindings.go
 │   │   │       ├── inspector/      # Right pane: preview tabs with polling + the swarm Agents Board
-│   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, branch cache)
+│   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, PR inbox, branch cache)
 │   │   │       ├── leftpane/       # Left pane: session list + session details
 │   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go, bindings.go)
+│   │   │       ├── prs/            # Review inbox page (`:prs`): PRs grouped by repo + review-session column
 │   │   │       ├── session/        # Session list model + create/delete/rename forms
 │   │   │       ├── sessiondetails/ # Session details card (repo, PR, loop section)
 │   │   │       ├── shared/         # Messages, helpers, emit utilities
@@ -206,9 +208,11 @@ Routing order in `Update`, which matters:
 
 1. **Popup gate** — an open popup owns every key.
 2. **Capture gate** — `m.inspector.CapturesInput()` (board compose) owns every key except `hardQuitKeyBinding`. This sits ahead of `ctrl+o` and quit on purpose: a half-typed message must not be cut short by a global shortcut.
+2b. **Command line gate** — while the `:` prompt is open (`m.cmdlineActive`) it owns every key except `ctrl+c`; Enter runs the line through `executeCommand` (same parser as the chat's `/` commands), Esc discards it. Results land in the gap-line toast when the chat is hidden.
 3. `ctrl+o` — toggles the chat panel.
 4. **Chat branch** — when the chat is visible, only `hardQuitKeyBinding` quits; arrows pass through to the session list, `tab` to the inspector, everything else to the chat input.
 5. `quitKeyBinding` — plain `q` or `ctrl+c`.
+5b. `:` opens the command line; then, when a full-width page is open (`m.page == pagePRs`), every remaining key goes to that page instead of the sessions dashboard.
 6. `handleKey`, then fallthrough to the left pane.
 
 `quitKeyBinding` is `q`/`ctrl+c`; `hardQuitKeyBinding` is `ctrl+c` only. The split exists because `q` is a character the user means to type when an input owns the keyboard — matching the combined binding too early is what used to quit the app mid-sentence in the chat panel.
@@ -243,6 +247,17 @@ Things to know before editing this package:
 - `ActivePreviewKind() (service.PreviewKind, int, bool)` is the **only** way to learn what pane the active tab shows. Never map tab *labels* back to a kind: that is exactly how `x` on the Agents Board used to silently kill the shell.
 - `CapturesInput()` reports that the board's compose line owns the keyboard; `CanCompose()` reports that the compose key would do something. The dashboard consults both.
 - `swarmBoardLoadedMsg` / `swarmBoardPostedMsg` are routed to `ixBoard` explicitly, not to `activeIx`, so the board absorbs the tail of its own polling chain after the user tabs away.
+
+### `internal/adapters/primary/tui/prs`
+The review inbox page, opened with `:prs` and closed with Esc or `:sessions`. It renders only from `prs.Data`, which the dashboard rebuilds through `syncPRsPage()` whenever the inbox, sessions, projects or agent statuses change — the page never calls a service. Enter emits `PullRequestOpenMsg` (jump to the review session, starting one when none exists), `r` emits `PullRequestReviewMsg` (start one by hand, bypassing the auto-review eligibility rules). A PR whose repository is not a registered project is marked `no local repo` and cannot be reviewed from here.
+
+#### Auto-review eligibility lives in the domain
+
+`domain.EligibleForAutoReview` is the single rule for the `pr-review-poll` job: open, not draft, human author, not the viewer, repo registered as a project (matched on `Project.Name` == GitHub repo name), no session already carrying that `ReviewPR` ref, and no review by the viewer on GitHub (any state — `ose-pr-review` stages a PENDING review, so a finished review session makes its PR ineligible without any extra bookkeeping). `pullRequests.maxPerPoll` caps how many sessions one poll starts; the first run against a full inbox spreads over several polls on purpose.
+
+Review sessions are ordinary sessions with `ReviewPR` set. Their worktree is a **detached** checkout of `pull/<n>/head` (`GitAdapter.CreateDetachedWorktree`), so there is no branch to collide with; `fanOutPRFetches` asks `gh pr view` by number for them because `ReviewBranch` sees `HEAD`.
+
+`github.Adapter.ListRequestedReviews` resolves the viewer login first because GraphQL search does not expand `@me`, and `review-requested:<login>` already includes team requests. GitHub search intermittently answers an empty page for a query that has results (seen during a degraded-performance incident), so an empty page is retried `searchRetries` times before it is believed.
 
 ### `internal/adapters/primary/boardhttp`
 Inbound HTTP adapter exposing a swarm session's board to the **agent processes**, which live outside Overseer. Requests flow inward through `SwarmService` like the TUI's do (ARCH-05).

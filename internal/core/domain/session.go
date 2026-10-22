@@ -50,8 +50,10 @@ type Session struct {
 	AgentType    AgentType `json:",omitempty"`
 	Label        string    `json:",omitempty"`
 	SwarmSize    int       `json:",omitempty"`
-	CreatedAt    time.Time
-	UpdatedAt    time.Time
+	// ReviewPR is set on sessions started to review a pull request; zero otherwise.
+	ReviewPR  PullRequestRef `json:",omitzero"`
+	CreatedAt time.Time
+	UpdatedAt time.Time
 }
 
 // NewSession constructs a Session with no worktree assigned. For a Mode 1
@@ -96,6 +98,24 @@ func (s Session) HasWorktree() bool {
 // as "not a swarm".
 func (s Session) IsSwarm() bool {
 	return s.SwarmSize >= SwarmMinAgents
+}
+
+// IsReview reports whether the session exists to review a pull request.
+func (s Session) IsReview() bool {
+	return s.ReviewPR.Number > 0
+}
+
+// AssignReviewTarget records the PR this session reviews.
+func (s *Session) AssignReviewTarget(ref PullRequestRef) error {
+	if strings.TrimSpace(ref.Repo) == "" {
+		return ErrPullRequestEmptyRepo
+	}
+	if ref.Number <= 0 {
+		return ErrPullRequestInvalidNumber
+	}
+	s.ReviewPR = ref
+	s.UpdatedAt = time.Now()
+	return nil
 }
 
 // AgentCount returns how many agent panes back this session: SwarmSize for a
@@ -312,6 +332,9 @@ type GitAdapter interface {
 	// repoPath. Used by Mode 2 sessions to surface the project's live
 	// branch without persisting it.
 	CurrentBranch(ctx context.Context, repoPath string) (string, error)
+	// CreateDetachedWorktree checks out ref from origin into a new detached
+	// worktree at worktreePath, so no local branch is created or collided with.
+	CreateDetachedWorktree(ctx context.Context, repoPath, ref, worktreePath string) error
 	// PullBranch fast-forwards branch from origin so that a worktree forked
 	// from it starts at the latest remote tip. Returns an error when the
 	// fetch fails (e.g. no remote, network error, non-fast-forward); callers

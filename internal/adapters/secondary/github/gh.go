@@ -10,6 +10,7 @@ import (
 	"log/slog"
 	"net/url"
 	"os/exec"
+	"slices"
 	"strings"
 	"time"
 
@@ -32,19 +33,48 @@ const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!
   }
 }`
 
+// ponytail: first 100 PRs and 50 reviews each; the inbox was 69 when this was written.
+const requestedReviewsQuery = `query($q: String!) {
+  search(type: ISSUE, first: 100, query: $q) {
+    issueCount
+    nodes { ... on PullRequest {
+      number title url isDraft state createdAt updatedAt headRefName
+      author { login __typename }
+      repository { nameWithOwner }
+      additions deletions changedFiles
+      reviews(first: 50) { nodes { author { login } } }
+      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
+        __typename
+        ... on CheckRun { name status conclusion }
+        ... on StatusContext { context state }
+      } } } } } }
+    } }
+  }
+}`
+
 type Commander interface {
 	Run(ctx context.Context, dir string, args ...string) (stdout []byte, stderr []byte, err error)
 }
 
+// searchRetries and searchRetryDelay cover GitHub search intermittently
+// answering an empty page for a query that has results (observed during a
+// "degraded performance" incident: 59, 0, 59 for the same query).
+const (
+	searchRetries    = 3
+	searchRetryDelay = 2 * time.Second
+)
+
 type Adapter struct {
-	cmd    Commander
-	logger *slog.Logger
+	cmd        Commander
+	logger     *slog.Logger
+	retryDelay time.Duration
 }
 
 func New(logger *slog.Logger) *Adapter {
-	return &Adapter{cmd: realCommander{}, logger: logger}
+	return &Adapter{cmd: realCommander{}, logger: logger, retryDelay: searchRetryDelay}
 }
 
+// NewWithCommander is for tests: it retries searches without waiting.
 func NewWithCommander(cmd Commander, logger *slog.Logger) *Adapter {
 	return &Adapter{cmd: cmd, logger: logger}
 }
@@ -72,6 +102,111 @@ func (a *Adapter) GetForBranch(ctx context.Context, repoPath, branch string) (do
 	}
 	pr.Comments = comments
 	return pr, nil
+}
+
+// ListRequestedReviews resolves the viewer first because GraphQL search does not
+// expand "@me"; "review-requested:<login>" already includes team requests.
+func (a *Adapter) ListRequestedReviews(ctx context.Context) (domain.ReviewInbox, error) {
+	stdout, stderr, err := a.cmd.Run(ctx, "", "api", "user", "--jq", ".login")
+	if err != nil {
+		return domain.ReviewInbox{}, fmt.Errorf("gh api user: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
+	}
+	viewer := strings.TrimSpace(string(stdout))
+
+	var prs []domain.PullRequest
+	for attempt := 1; attempt <= searchRetries; attempt++ {
+		stdout, stderr, err = a.cmd.Run(ctx, "",
+			"api", "graphql",
+			"-f", "query="+requestedReviewsQuery,
+			"-f", "q=is:pr is:open review-requested:"+viewer,
+		)
+		if err != nil {
+			return domain.ReviewInbox{}, fmt.Errorf("gh api graphql requested reviews: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
+		}
+		var total int
+		prs, total, err = parseRequestedReviews(stdout, viewer)
+		if err != nil {
+			return domain.ReviewInbox{}, err
+		}
+		if total > len(prs) {
+			a.logger.WarnContext(ctx, "review inbox truncated by the search page size", "total", total, "fetched", len(prs))
+		}
+		if len(prs) > 0 || attempt == searchRetries {
+			break
+		}
+		a.logger.WarnContext(ctx, "review inbox came back empty, retrying", "attempt", attempt)
+		select {
+		case <-ctx.Done():
+			return domain.ReviewInbox{}, ctx.Err()
+		case <-time.After(a.retryDelay):
+		}
+	}
+	return domain.ReviewInbox{Viewer: viewer, PullRequests: prs}, nil
+}
+
+type ghSearchJSON struct {
+	Data struct {
+		Search struct {
+			IssueCount int `json:"issueCount"`
+			Nodes      []struct {
+				ghPRJSON
+				CreatedAt  string `json:"createdAt"`
+				Repository struct {
+					NameWithOwner string `json:"nameWithOwner"`
+				} `json:"repository"`
+				AuthorTyped struct {
+					Login    string `json:"login"`
+					Typename string `json:"__typename"`
+				} `json:"author"`
+				Reviews struct {
+					Nodes []ghReviewJSON `json:"nodes"`
+				} `json:"reviews"`
+				Commits struct {
+					Nodes []struct {
+						Commit struct {
+							StatusCheckRollup *struct {
+								Contexts struct {
+									Nodes []ghCheckJSON `json:"nodes"`
+								} `json:"contexts"`
+							} `json:"statusCheckRollup"`
+						} `json:"commit"`
+					} `json:"nodes"`
+				} `json:"commits"`
+			} `json:"nodes"`
+		} `json:"search"`
+	} `json:"data"`
+}
+
+type ghReviewJSON struct {
+	Author struct {
+		Login string `json:"login"`
+	} `json:"author"`
+}
+
+func parseRequestedReviews(data []byte, viewer string) ([]domain.PullRequest, int, error) {
+	var raw ghSearchJSON
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return nil, 0, fmt.Errorf("decode gh search json: %w", err)
+	}
+	prs := make([]domain.PullRequest, 0, len(raw.Data.Search.Nodes))
+	for _, node := range raw.Data.Search.Nodes {
+		node.ghPRJSON.Author.Login = node.AuthorTyped.Login
+		if len(node.Commits.Nodes) > 0 && node.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
+			node.ghPRJSON.StatusCheckRollup = node.Commits.Nodes[0].Commit.StatusCheckRollup.Contexts.Nodes
+		}
+		pr, err := fromGHJSON(node.ghPRJSON)
+		if err != nil {
+			return nil, 0, err
+		}
+		pr.Repo = node.Repository.NameWithOwner
+		pr.AuthorIsBot = node.AuthorTyped.Typename == "Bot"
+		pr.ReviewedByViewer = slices.ContainsFunc(node.Reviews.Nodes, func(r ghReviewJSON) bool { return r.Author.Login == viewer })
+		if t, err := time.Parse(time.RFC3339, node.CreatedAt); err == nil {
+			pr.CreatedAt = t
+		}
+		prs = append(prs, pr)
+	}
+	return prs, raw.Data.Search.IssueCount, nil
 }
 
 // reviewComments is best-effort: a failure here must not hide the rest of the PR.
@@ -166,6 +301,8 @@ type ghPRJSON struct {
 	StatusCheckRollup []ghCheckJSON `json:"statusCheckRollup"`
 }
 
+// ghCheckJSON covers both `gh pr view` rollup entries and GraphQL contexts:
+// a CheckRun carries status/conclusion, a StatusContext only state.
 type ghCheckJSON struct {
 	Name       string `json:"name"`
 	Status     string `json:"status"`
@@ -178,6 +315,10 @@ func parseGHJSON(data []byte) (domain.PullRequest, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return domain.PullRequest{}, fmt.Errorf("decode gh json: %w", err)
 	}
+	return fromGHJSON(raw)
+}
+
+func fromGHJSON(raw ghPRJSON) (domain.PullRequest, error) {
 	state, err := mapState(raw.State)
 	if err != nil {
 		return domain.PullRequest{}, err

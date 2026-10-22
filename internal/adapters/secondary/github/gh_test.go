@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/dnlopes/overseer/internal/core/domain"
@@ -30,6 +31,8 @@ type fakeCommander struct {
 	stderr []byte
 	err    error
 	calls  []fakeCall
+	// outputs, when set, are returned one per call in order, before stdout.
+	outputs [][]byte
 }
 
 type fakeCall struct {
@@ -39,6 +42,11 @@ type fakeCall struct {
 
 func (f *fakeCommander) Run(_ context.Context, dir string, args ...string) ([]byte, []byte, error) {
 	f.calls = append(f.calls, fakeCall{dir: dir, args: args})
+	if len(f.outputs) > 0 {
+		out := f.outputs[0]
+		f.outputs = f.outputs[1:]
+		return out, f.stderr, f.err
+	}
 	return f.stdout, f.stderr, f.err
 }
 
@@ -289,4 +297,89 @@ func (s *scriptedCommander) Run(context.Context, string, ...string) ([]byte, []b
 	out := s.outputs[s.n]
 	s.n++
 	return out.stdout, nil, out.err
+}
+
+func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
+	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos\n"), readFixture(t, "search_requested_reviews.json")}}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	inbox, err := adapter.ListRequestedReviews(context.Background())
+	if err != nil {
+		t.Fatalf("ListRequestedReviews() error = %v", err)
+	}
+	if inbox.Viewer != "osesantos" {
+		t.Fatalf("Viewer = %q", inbox.Viewer)
+	}
+	if len(cmd.calls) != 2 || cmd.calls[1].dir != "" {
+		t.Fatalf("calls = %+v, want a login lookup then a repo-independent search", cmd.calls)
+	}
+	if !strings.Contains(strings.Join(cmd.calls[1].args, " "), "review-requested:osesantos") {
+		t.Fatalf("search args = %v, want the viewer login in the query", cmd.calls[1].args)
+	}
+	if len(inbox.PullRequests) != 3 {
+		t.Fatalf("PullRequests = %d, want 3", len(inbox.PullRequests))
+	}
+
+	bot := inbox.PullRequests[0]
+	if !bot.AuthorIsBot || bot.Author != "dependabot" || bot.Repo != "OutSystems/OutSystems.ExternalLibraries.SDK.FileStorage" {
+		t.Fatalf("bot PR = %+v", bot)
+	}
+	if bot.Checks != (domain.PRChecks{Total: 2, Passing: 1, Pending: 1}) {
+		t.Fatalf("bot Checks = %+v", bot.Checks)
+	}
+	if bot.CreatedAt.IsZero() || bot.UpdatedAt.IsZero() {
+		t.Fatalf("bot timestamps not parsed: %+v", bot)
+	}
+
+	human := inbox.PullRequests[1]
+	if human.AuthorIsBot || human.ReviewedByViewer || human.State != domain.PRStateOpen || human.Number != 92 {
+		t.Fatalf("human PR = %+v", human)
+	}
+	if human.Stats != (domain.PRStats{Additions: 458, Deletions: 4, ChangedFiles: 5}) {
+		t.Fatalf("human Stats = %+v", human.Stats)
+	}
+	if human.Checks.Total != 0 {
+		t.Fatalf("human Checks = %+v, want none for a null rollup", human.Checks)
+	}
+
+	reviewed := inbox.PullRequests[2]
+	if !reviewed.ReviewedByViewer || reviewed.State != domain.PRStateDraft {
+		t.Fatalf("reviewed PR = %+v", reviewed)
+	}
+}
+
+func TestAdapter_ListRequestedReviews_LoginFailure_IsAnError(t *testing.T) {
+	cmd := &fakeCommander{err: errors.New("boom"), stderr: []byte("not logged in")}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	if _, err := adapter.ListRequestedReviews(context.Background()); err == nil {
+		t.Fatal("ListRequestedReviews() error = nil, want an error")
+	}
+}
+
+func TestAdapter_ListRequestedReviews_RetriesAnEmptyPage(t *testing.T) {
+	empty := []byte(`{"data":{"search":{"issueCount":0,"nodes":[]}}}`)
+	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos"), empty, readFixture(t, "search_requested_reviews.json")}}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	inbox, err := adapter.ListRequestedReviews(context.Background())
+	if err != nil {
+		t.Fatalf("ListRequestedReviews() error = %v", err)
+	}
+	if len(inbox.PullRequests) != 3 || len(cmd.calls) != 3 {
+		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup and two searches", len(inbox.PullRequests), len(cmd.calls))
+	}
+}
+
+func TestAdapter_ListRequestedReviews_AcceptsEmptyAfterLastRetry(t *testing.T) {
+	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos")}, stdout: []byte(`{"data":{"search":{"issueCount":0,"nodes":[]}}}`)}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	inbox, err := adapter.ListRequestedReviews(context.Background())
+	if err != nil {
+		t.Fatalf("ListRequestedReviews() error = %v", err)
+	}
+	if len(inbox.PullRequests) != 0 || len(cmd.calls) != 1+searchRetries {
+		t.Fatalf("got %d PRs after %d calls, want none after %d searches", len(inbox.PullRequests), len(cmd.calls), searchRetries)
+	}
 }

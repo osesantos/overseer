@@ -94,17 +94,63 @@ func SummariseReviewThreads(threads []PRReviewThread, viewer string) PRComments 
 }
 
 type PullRequest struct {
-	Number    int
-	Title     string
-	URL       string
-	Branch    string
-	State     PRState
-	Author    string
-	Stats     PRStats
-	Checks    PRChecks
-	Comments  PRComments
-	UpdatedAt time.Time
-	FetchedAt time.Time
+	Number int
+	// Repo is the GitHub "owner/name"; empty when fetched for a local branch.
+	Repo             string
+	Title            string
+	URL              string
+	Branch           string
+	State            PRState
+	Author           string
+	AuthorIsBot      bool
+	ReviewedByViewer bool
+	Stats            PRStats
+	Checks           PRChecks
+	Comments         PRComments
+	CreatedAt        time.Time
+	UpdatedAt        time.Time
+	FetchedAt        time.Time
+}
+
+// PullRequestRef identifies a PR across repositories; it is what a review session
+// records so the same PR is never picked up twice.
+type PullRequestRef struct {
+	Repo   string
+	Number int
+}
+
+func (p PullRequest) Ref() PullRequestRef { return PullRequestRef{Repo: p.Repo, Number: p.Number} }
+
+// RepoName is the repository name without its owner, which is how a registered
+// Project is named when it was cloned under its GitHub name.
+func (p PullRequest) RepoName() string {
+	_, name, _ := strings.Cut(p.Repo, "/")
+	if name == "" {
+		return p.Repo
+	}
+	return name
+}
+
+// ReviewCommandNumberToken is the placeholder in a review launcher command
+// that the PR number replaces.
+const ReviewCommandNumberToken = "{{number}}"
+
+// ReviewInbox is every open PR with a review requested from Viewer.
+type ReviewInbox struct {
+	Viewer       string
+	PullRequests []PullRequest
+}
+
+// EligibleForAutoReview reports whether a review session should be started for
+// pr: an open, non-draft PR by another human, in a registered project, with no
+// review session yet and no review by the viewer.
+func EligibleForAutoReview(pr PullRequest, viewer string, projectNames map[string]bool, taken map[PullRequestRef]bool) bool {
+	return pr.State == PRStateOpen &&
+		!pr.AuthorIsBot &&
+		pr.Author != viewer &&
+		!pr.ReviewedByViewer &&
+		projectNames[pr.RepoName()] &&
+		!taken[pr.Ref()]
 }
 
 func NewPullRequest(number int, title, branch string, state PRState) (PullRequest, error) {
@@ -130,12 +176,18 @@ func NewPullRequest(number int, title, branch string, state PRState) (PullReques
 }
 
 type PullRequestPort interface {
+	// GetForBranch fetches the PR for a selector `gh pr view` understands: a head
+	// branch name or a PR number.
 	GetForBranch(ctx context.Context, repoPath, branch string) (PullRequest, error)
+	// ListRequestedReviews fetches every open PR with a review requested from the
+	// authenticated user, directly or through a team.
+	ListRequestedReviews(ctx context.Context) (ReviewInbox, error)
 }
 
 var (
 	ErrPullRequestNotFound      = errors.New("pull request not found")
 	ErrPullRequestInvalidNumber = errors.New("pull request number must be positive")
 	ErrPullRequestEmptyBranch   = errors.New("pull request branch cannot be empty")
+	ErrPullRequestEmptyRepo     = errors.New("pull request repo cannot be empty")
 	ErrPullRequestInvalidState  = errors.New("pull request state must be OPEN, CLOSED, MERGED, or DRAFT")
 )

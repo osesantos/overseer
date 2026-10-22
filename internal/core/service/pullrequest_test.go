@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/mock"
@@ -89,5 +90,33 @@ func TestPullRequestService_GetForBranch_ContextCancelled_PropagatesError(t *tes
 	_, err := svc.GetForBranch(ctx, GetPullRequestForBranchRequest{RepoPath: "/repo", Branch: "main"})
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("GetForBranch() error = %v, want context.Canceled chain", err)
+	}
+}
+
+func TestPullRequestService_ListRequestedReviews_PassesTheInboxThrough(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	want := domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{{Number: 1, Repo: "o/r"}}}
+	port.EXPECT().ListRequestedReviews(mock.Anything).Return(want, nil).Once()
+
+	svc := NewPullRequestService(port, testLogger())
+	resp, err := svc.ListRequestedReviews(context.Background(), ListRequestedReviewsRequest{})
+
+	if err != nil {
+		t.Fatalf("ListRequestedReviews() error = %v", err)
+	}
+	if resp.Inbox.Viewer != "me" || len(resp.Inbox.PullRequests) != 1 {
+		t.Fatalf("Inbox = %+v", resp.Inbox)
+	}
+}
+
+func TestPullRequestService_ListRequestedReviews_WrapsPortErrors(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	port.EXPECT().ListRequestedReviews(mock.Anything).Return(domain.ReviewInbox{}, errors.New("gh down")).Once()
+
+	svc := NewPullRequestService(port, testLogger())
+	_, err := svc.ListRequestedReviews(context.Background(), ListRequestedReviewsRequest{})
+
+	if err == nil || !strings.Contains(err.Error(), "gh down") {
+		t.Fatalf("ListRequestedReviews() error = %v, want wrapped port error", err)
 	}
 }

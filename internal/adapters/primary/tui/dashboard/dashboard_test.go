@@ -47,6 +47,7 @@ func newTestDashboard(t *testing.T) Model {
 		nil, // discoveryPaths
 		"",  // swarmBoardURL — swarm disabled
 		domain.SwarmMaxAgents,
+		`claude "/ose-pr-review {{number}}"`,
 	)
 }
 
@@ -200,5 +201,172 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		nil, // discoveryPaths
 		"",  // swarmBoardURL — swarm disabled
 		domain.SwarmMaxAgents,
+		`claude "/ose-pr-review {{number}}"`,
 	)
+}
+
+func TestDashboard_PullRequestsLoadedMsg_StoresTheInboxAndReloadsSessionsWhenReviewsStarted(t *testing.T) {
+	m := sizedDashboard(t)
+	created := testutil.MakeSession("PR #5 something", uuid.New())
+	inbox := domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{{Repo: "o/r", Number: 5}}}
+
+	updated, cmd := m.Update(shared.PullRequestsLoadedMsg{Inbox: inbox, Created: []domain.Session{created}})
+	m = updated.(Model)
+
+	if len(m.reviewInbox.PullRequests) != 1 {
+		t.Fatalf("reviewInbox = %+v, want the loaded inbox", m.reviewInbox)
+	}
+	if cmd == nil {
+		t.Fatal("cmd = nil, want a sessions reload after a review session was created")
+	}
+}
+
+func TestDashboard_PullRequestsLoadedMsg_NothingCreated_DoesNotReload(t *testing.T) {
+	m := sizedDashboard(t)
+
+	_, cmd := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me"}})
+
+	if cmd != nil {
+		t.Fatal("cmd != nil, want no reload when no review session was created")
+	}
+}
+
+func TestDashboard_ColonOpensTheCommandLine_AndEscCloses(t *testing.T) {
+	m := sizedDashboard(t)
+
+	updated, _ := m.Update(letterKey(":"))
+	m = updated.(Model)
+	if !m.cmdlineActive {
+		t.Fatal(": did not open the command line")
+	}
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, ":") {
+		t.Fatalf("command line not rendered in the gap line:\n%s", view)
+	}
+
+	// q is text now, not quit.
+	updated, cmd := m.Update(letterKey("q"))
+	m = updated.(Model)
+	if isQuit(t, cmd) {
+		t.Fatal("q quit the app while typing a command")
+	}
+
+	updated, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = updated.(Model)
+	if m.cmdlineActive {
+		t.Fatal("esc did not close the command line")
+	}
+}
+
+func TestDashboard_ColonPrs_OpensThePage_AndSessionsReturns(t *testing.T) {
+	m := sizedDashboard(t)
+	updated, _ := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
+		{Repo: "o/r", Number: 5, Title: "feat: thing", Author: "ana", State: domain.PRStateOpen},
+	}}})
+	m = updated.(Model)
+
+	m = typeCommand(t, m, "prs")
+	if m.page != pagePRs {
+		t.Fatal(":prs did not open the PRs page")
+	}
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "waiting on me") || !strings.Contains(view, "#5") {
+		t.Fatalf("PRs page not rendered as the body:\n%s", view)
+	}
+	if strings.Contains(view, "Select a session to preview") {
+		t.Fatal("the inspector is still rendered under the PRs page")
+	}
+
+	m = typeCommand(t, m, "sessions")
+	if m.page != pageSessions {
+		t.Fatal(":sessions did not return to the sessions page")
+	}
+}
+
+func TestDashboard_UnknownCommand_ShowsAToastWhenTheChatIsHidden(t *testing.T) {
+	m := sizedDashboard(t)
+
+	m = typeCommand(t, m, "nope")
+
+	if !strings.Contains(m.toast, "unknown command") {
+		t.Fatalf("toast = %q, want the unknown-command error", m.toast)
+	}
+}
+
+func TestDashboard_ColonIsIgnoredWhileAPopupIsOpen(t *testing.T) {
+	m := sizedDashboard(t)
+	updated, _ := m.Update(letterKey("?"))
+	m = updated.(Model)
+	if m.activePopup != popupHelp {
+		t.Fatal("precondition: help popup not open")
+	}
+
+	updated, _ = m.Update(letterKey(":"))
+	m = updated.(Model)
+
+	if m.cmdlineActive {
+		t.Fatal(": opened the command line under a popup")
+	}
+}
+
+func TestDashboard_PRsPage_EscReturnsToSessions(t *testing.T) {
+	m := sizedDashboard(t)
+	m = typeCommand(t, m, "prs")
+
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEscape})
+	m = updated.(Model)
+	updated, _ = m.Update(cmd())
+	m = updated.(Model)
+
+	if m.page != pageSessions {
+		t.Fatal("esc on the PRs page did not return to sessions")
+	}
+}
+
+func TestDashboard_OpenPRWithASession_FocusesIt(t *testing.T) {
+	m := sizedDashboard(t)
+	sess := testutil.MakeSession("PR #5 feat: thing", uuid.New())
+	_ = sess.AssignReviewTarget(domain.PullRequestRef{Repo: "o/r", Number: 5})
+	m = selectInDashboard(t, m, sess)
+	m = typeCommand(t, m, "prs")
+
+	updated, cmd := m.Update(shared.PullRequestOpenMsg{PR: domain.PullRequest{Repo: "o/r", Number: 5}})
+	m = updated.(Model)
+
+	if m.page != pageSessions {
+		t.Fatal("opening a PR with a session did not switch back to the sessions page")
+	}
+	if focus, ok := cmd().(shared.SessionFocusRequestedMsg); !ok || focus.SessionID != sess.ID {
+		t.Fatalf("got %+v, want a focus request for the review session", cmd())
+	}
+}
+
+func TestDashboard_OpenPRWithoutALocalRepo_ShowsAToast(t *testing.T) {
+	m := sizedDashboard(t)
+
+	updated, cmd := m.Update(shared.PullRequestOpenMsg{PR: domain.PullRequest{Repo: "o/missing", Number: 5}})
+	m = updated.(Model)
+
+	if cmd == nil || !strings.Contains(m.toast, "no local repo") {
+		t.Fatalf("toast = %q, want a no-local-repo notice", m.toast)
+	}
+}
+
+// typeCommand opens the command line, types text and submits it.
+func typeCommand(t *testing.T, m Model, text string) Model {
+	t.Helper()
+	updated, _ := m.Update(letterKey(":"))
+	m = updated.(Model)
+	for _, r := range text {
+		updated, _ = m.Update(letterKey(string(r)))
+		m = updated.(Model)
+	}
+	updated, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	m = updated.(Model)
+	if cmd != nil {
+		if msg := cmd(); msg != nil {
+			updated, _ = m.Update(msg)
+			m = updated.(Model)
+		}
+	}
+	return m
 }

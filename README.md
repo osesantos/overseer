@@ -228,6 +228,12 @@ swarm:
   maxMessagesPerSession: 500 # circuit breaker; 0 disables the cap
   boardAddr: "127.0.0.1:0"  # :0 picks a free port. Keep this on loopback.
 
+pullRequests:
+  pollInterval: 5m          # how often the review inbox (PRs with a review requested from you) is polled
+  autoReview: true          # start a review session for new human-authored PRs in registered projects
+  reviewCommand: 'claude "/ose-pr-review {{number}}"'  # agent launcher; {{number}} becomes the PR number
+  maxPerPoll: 2             # at most this many review sessions per poll
+
 labels:
   - code: "urgent"
     color: "#ff6b6b"

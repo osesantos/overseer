@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -258,6 +259,141 @@ func (s *SessionService) assignNextOrderForProject(ctx context.Context, sess dom
 		}
 	}
 	return nextOrder, nil
+}
+
+// --- CreateForPullRequest ---
+
+type CreateReviewSessionRequest struct {
+	PullRequest  domain.PullRequest
+	ProjectID    uuid.UUID
+	AgentCommand string
+}
+
+type CreateReviewSessionResponse struct {
+	Session domain.Session
+}
+
+// reviewTitleMaxRunes keeps review session names readable in the list.
+const reviewTitleMaxRunes = 40
+
+// CreateForPullRequest starts a session that reviews one PR: a detached worktree
+// at the PR head under the managed root, with the agent pane running
+// req.AgentCommand (already resolved for this PR number).
+func (s *SessionService) CreateForPullRequest(ctx context.Context, req CreateReviewSessionRequest) (CreateReviewSessionResponse, error) {
+	sess, err := domain.NewSession(reviewSessionName(req.PullRequest), req.ProjectID)
+	if err != nil {
+		return CreateReviewSessionResponse{}, err
+	}
+	if err := sess.AssignAgentCommand(req.AgentCommand); err != nil {
+		return CreateReviewSessionResponse{}, err
+	}
+	if err := sess.AssignAgentType(domain.InferAgentType(req.AgentCommand)); err != nil {
+		return CreateReviewSessionResponse{}, err
+	}
+	if err := sess.AssignReviewTarget(req.PullRequest.Ref()); err != nil {
+		return CreateReviewSessionResponse{}, err
+	}
+	ref := fmt.Sprintf("pull/%d/head", req.PullRequest.Number)
+	if err := sess.AssignWorktree(s.pathsResolver.SessionWorktreePath(sess.ID), ref); err != nil {
+		return CreateReviewSessionResponse{}, fmt.Errorf("assign worktree: %w", err)
+	}
+
+	project, err := s.projects.Get(ctx, req.ProjectID)
+	if err != nil {
+		return CreateReviewSessionResponse{}, fmt.Errorf("lookup project: %w", err)
+	}
+	nextOrder, err := s.assignNextOrderForProject(ctx, sess)
+	if err != nil {
+		return CreateReviewSessionResponse{}, err
+	}
+	sess.Order = nextOrder
+
+	if err := s.git.CreateDetachedWorktree(ctx, project.Path, ref, sess.WorktreePath); err != nil {
+		return CreateReviewSessionResponse{}, fmt.Errorf("create review worktree: %w", err)
+	}
+	sess, err = s.spinUpTmuxAndPersist(ctx, sess, project)
+	if err != nil {
+		if rmErr := s.git.RemoveWorktree(ctx, project.Path, sess.WorktreePath); rmErr != nil {
+			s.logger.WarnContext(ctx, "orphaned review worktree left on disk", "path", sess.WorktreePath, "error", rmErr)
+		}
+		return CreateReviewSessionResponse{}, err
+	}
+	s.logger.InfoContext(ctx, "review session created",
+		slog.String("id", sess.ID.String()),
+		slog.String("repo", req.PullRequest.Repo),
+		slog.Int("pr", req.PullRequest.Number),
+	)
+	return CreateReviewSessionResponse{Session: sess}, nil
+}
+
+func reviewSessionName(pr domain.PullRequest) string {
+	title := []rune(strings.TrimSpace(pr.Title))
+	if len(title) > reviewTitleMaxRunes {
+		title = append(title[:reviewTitleMaxRunes-1], '…')
+	}
+	return fmt.Sprintf("PR #%d %s", pr.Number, string(title))
+}
+
+// --- AutoReviewPullRequests ---
+
+type AutoReviewPullRequestsRequest struct {
+	Inbox domain.ReviewInbox
+	// CommandTemplate launches the review; domain.ReviewCommandNumberToken in it
+	// is replaced by the PR number.
+	CommandTemplate string
+	// MaxPerPoll caps how many sessions one call may start; zero means no cap.
+	MaxPerPoll int
+}
+
+type AutoReviewPullRequestsResponse struct {
+	Created []domain.Session
+}
+
+// AutoReviewPullRequests starts a review session for every eligible PR in the
+// inbox, in inbox order, up to the cap. One PR failing is logged and skipped so
+// the rest of the inbox still gets reviewed.
+func (s *SessionService) AutoReviewPullRequests(ctx context.Context, req AutoReviewPullRequestsRequest) (AutoReviewPullRequestsResponse, error) {
+	projects, err := s.projects.List(ctx)
+	if err != nil {
+		return AutoReviewPullRequestsResponse{}, fmt.Errorf("list projects: %w", err)
+	}
+	sessions, err := s.repo.List(ctx)
+	if err != nil {
+		return AutoReviewPullRequestsResponse{}, fmt.Errorf("list sessions: %w", err)
+	}
+	projectByName := make(map[string]domain.Project, len(projects))
+	projectNames := make(map[string]bool, len(projects))
+	for _, p := range projects {
+		projectByName[p.Name] = p
+		projectNames[p.Name] = true
+	}
+	taken := make(map[domain.PullRequestRef]bool, len(sessions))
+	for _, sess := range sessions {
+		if sess.IsReview() {
+			taken[sess.ReviewPR] = true
+		}
+	}
+
+	var created []domain.Session
+	for _, pr := range req.Inbox.PullRequests {
+		if req.MaxPerPoll > 0 && len(created) == req.MaxPerPoll {
+			break
+		}
+		if !domain.EligibleForAutoReview(pr, req.Inbox.Viewer, projectNames, taken) {
+			continue
+		}
+		resp, err := s.CreateForPullRequest(ctx, CreateReviewSessionRequest{
+			PullRequest:  pr,
+			ProjectID:    projectByName[pr.RepoName()].ID,
+			AgentCommand: strings.ReplaceAll(req.CommandTemplate, domain.ReviewCommandNumberToken, strconv.Itoa(pr.Number)),
+		})
+		if err != nil {
+			s.logger.WarnContext(ctx, "auto review not started", "repo", pr.Repo, "pr", pr.Number, "error", err)
+			continue
+		}
+		created = append(created, resp.Session)
+	}
+	return AutoReviewPullRequestsResponse{Created: created}, nil
 }
 
 // --- Rename ---

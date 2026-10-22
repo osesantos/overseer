@@ -37,3 +37,18 @@ func (s *PullRequestService) GetForBranch(ctx context.Context, req GetPullReques
 	}
 	return GetPullRequestForBranchResponse{PullRequest: pr}, nil
 }
+
+type ListRequestedReviewsRequest struct{}
+
+type ListRequestedReviewsResponse struct {
+	Inbox domain.ReviewInbox
+}
+
+func (s *PullRequestService) ListRequestedReviews(ctx context.Context, _ ListRequestedReviewsRequest) (ListRequestedReviewsResponse, error) {
+	inbox, err := s.port.ListRequestedReviews(ctx)
+	if err != nil {
+		return ListRequestedReviewsResponse{}, fmt.Errorf("fetch requested reviews: %w", err)
+	}
+	s.logger.InfoContext(ctx, "review inbox fetched", "viewer", inbox.Viewer, "count", len(inbox.PullRequests))
+	return ListRequestedReviewsResponse{Inbox: inbox}, nil
+}

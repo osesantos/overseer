@@ -129,6 +129,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case shared.SessionCreatedMsg:
 		return m, m.loadSessions()
+	case shared.PullRequestsLoadedMsg:
+		return m, m.loadSessions()
+	case shared.SessionFocusRequestedMsg:
+		sess, ok := m.findSession(msg.SessionID.String())
+		if !ok {
+			return m, nil
+		}
+		m.tree = m.tree.SelectID("session:" + msg.SessionID.String())
+		return m, shared.Emit(shared.SessionSelectedMsg{Session: sess})
 	case shared.SessionDeletedMsg:
 		return m, m.loadSessions()
 	case shared.SessionRenamedMsg:

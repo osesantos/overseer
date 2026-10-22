@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strconv"
 	"time"
 
 	tea "charm.land/bubbletea/v2"
@@ -32,6 +33,10 @@ import (
 )
 
 const pullRequestRefreshInterval = time.Minute
+
+// pullRequestPollTimeout bounds one inbox poll including the review sessions it
+// starts; each start fetches a PR head and spawns two tmux panes.
+const pullRequestPollTimeout = 2 * time.Minute
 
 // boardShutdownTimeout bounds how long we wait for in-flight agent requests to
 // drain when the TUI exits.
@@ -137,7 +142,7 @@ func main() {
 	agentStatusSvc := service.NewAgentStatusService(store.Sessions(), tmuxAdapter, agentStatusRegistry, log)
 
 	prJob := buildPullRequestJob(sessionSvc, projectSvc, prSvc)
-	schedulerJobs := []jobs.Job{prJob}
+	schedulerJobs := []jobs.Job{prJob, buildPullRequestReviewJob(prSvc, sessionSvc, cfg.PullRequests)}
 	if cfg.AgentStatus.Enabled {
 		schedulerJobs = append(schedulerJobs, buildAgentStatusJob(agentStatusSvc, cfg.AgentStatus.RefreshInterval))
 	}
@@ -159,7 +164,7 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, cfg.PullRequests.ReviewCommand)
 	if styles.FollowsOmarchy(cfg.Theme) {
 		dash = dash.WithThemeWatch(omarchy.Watch(omarchy.Dir()))
 	}
@@ -197,6 +202,43 @@ func buildPullRequestJob(
 						return nil
 					}
 					return shared.JobsBatchMsg{Cmds: fanOutPRFetches(sessionSvc, prSvc, data)}
+				},
+			)
+		},
+	}
+}
+
+// buildPullRequestReviewJob polls the review inbox and, when auto-review is on,
+// starts a review session for the eligible PRs of that poll.
+func buildPullRequestReviewJob(prSvc *service.PullRequestService, sessionSvc *service.SessionService, cfg config.PullRequestsConfig) jobs.Job {
+	return jobs.Job{
+		ID:       "pr-review-poll",
+		Interval: cfg.PollInterval,
+		Run: func() tea.Cmd {
+			return shared.RequestWithTimeout(pullRequestPollTimeout,
+				func(ctx context.Context) (shared.PullRequestsLoadedMsg, error) {
+					inboxResp, err := prSvc.ListRequestedReviews(ctx, service.ListRequestedReviewsRequest{})
+					if err != nil {
+						return shared.PullRequestsLoadedMsg{}, err
+					}
+					msg := shared.PullRequestsLoadedMsg{Inbox: inboxResp.Inbox}
+					if !cfg.AutoReview {
+						return msg, nil
+					}
+					reviewResp, err := sessionSvc.AutoReviewPullRequests(ctx, service.AutoReviewPullRequestsRequest{
+						Inbox:           inboxResp.Inbox,
+						CommandTemplate: cfg.ReviewCommand,
+						MaxPerPoll:      cfg.MaxPerPoll,
+					})
+					if err != nil {
+						return shared.PullRequestsLoadedMsg{}, err
+					}
+					msg.Created = reviewResp.Created
+					return msg, nil
+				},
+				func(msg shared.PullRequestsLoadedMsg, err error) tea.Msg {
+					msg.Err = err
+					return msg
 				},
 			)
 		},
@@ -268,16 +310,13 @@ func fanOutPRFetches(sessionSvc *service.SessionService, prSvc *service.PullRequ
 		}
 		cmds = append(cmds, shared.Request(
 			func(ctx context.Context) (domain.PullRequest, error) {
-				rb, err := sessionSvc.ReviewBranch(ctx, service.ReviewBranchRequest{Session: sess, Project: project})
+				selector, err := pullRequestSelector(ctx, sessionSvc, sess, project)
 				if err != nil {
 					return domain.PullRequest{}, err
 				}
-				if rb.Branch == "" {
-					return domain.PullRequest{}, domain.ErrPullRequestNotFound
-				}
 				resp, err := prSvc.GetForBranch(ctx, service.GetPullRequestForBranchRequest{
 					RepoPath: project.Path,
-					Branch:   rb.Branch,
+					Branch:   selector,
 				})
 				return resp.PullRequest, err
 			},
@@ -287,6 +326,23 @@ func fanOutPRFetches(sessionSvc *service.SessionService, prSvc *service.PullRequ
 		))
 	}
 	return cmds
+}
+
+// pullRequestSelector picks what `gh pr view` is asked for: the PR number for a
+// review session (its worktree is a detached head, so there is no branch to
+// resolve), otherwise the session's review branch.
+func pullRequestSelector(ctx context.Context, sessionSvc *service.SessionService, sess domain.Session, project domain.Project) (string, error) {
+	if sess.IsReview() {
+		return strconv.Itoa(sess.ReviewPR.Number), nil
+	}
+	rb, err := sessionSvc.ReviewBranch(ctx, service.ReviewBranchRequest{Session: sess, Project: project})
+	if err != nil {
+		return "", err
+	}
+	if rb.Branch == "" {
+		return "", domain.ErrPullRequestNotFound
+	}
+	return rb.Branch, nil
 }
 
 type altScreenModel struct {

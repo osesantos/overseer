@@ -182,3 +182,46 @@ func TestSummariseReviewThreads(t *testing.T) {
 		})
 	}
 }
+
+func TestPullRequest_RepoName_StripsOwner(t *testing.T) {
+	pr := PullRequest{Repo: "OutSystems/OutSystems.Signer.Service"}
+	if got := pr.RepoName(); got != "OutSystems.Signer.Service" {
+		t.Fatalf("RepoName() = %q", got)
+	}
+}
+
+func TestEligibleForAutoReview(t *testing.T) {
+	base := PullRequest{Repo: "org/repo", Number: 7, State: PRStateOpen, Author: "alice"}
+	projects := map[string]bool{"repo": true}
+	none := map[PullRequestRef]bool{}
+
+	tests := []struct {
+		name     string
+		pr       PullRequest
+		projects map[string]bool
+		taken    map[PullRequestRef]bool
+		want     bool
+	}{
+		{name: "open human PR in a registered repo", pr: base, projects: projects, taken: none, want: true},
+		{name: "bot author", pr: with(base, func(p *PullRequest) { p.AuthorIsBot = true }), projects: projects, taken: none, want: false},
+		{name: "own PR", pr: with(base, func(p *PullRequest) { p.Author = "me" }), projects: projects, taken: none, want: false},
+		{name: "draft", pr: with(base, func(p *PullRequest) { p.State = PRStateDraft }), projects: projects, taken: none, want: false},
+		{name: "merged", pr: with(base, func(p *PullRequest) { p.State = PRStateMerged }), projects: projects, taken: none, want: false},
+		{name: "already reviewed by the viewer", pr: with(base, func(p *PullRequest) { p.ReviewedByViewer = true }), projects: projects, taken: none, want: false},
+		{name: "repo not registered", pr: base, projects: map[string]bool{}, taken: none, want: false},
+		{name: "session already exists", pr: base, projects: projects, taken: map[PullRequestRef]bool{{Repo: "org/repo", Number: 7}: true}, want: false},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := EligibleForAutoReview(tt.pr, "me", tt.projects, tt.taken); got != tt.want {
+				t.Fatalf("EligibleForAutoReview() = %v, want %v", got, tt.want)
+			}
+		})
+	}
+}
+
+func with(pr PullRequest, mutate func(*PullRequest)) PullRequest {
+	mutate(&pr)
+	return pr
+}

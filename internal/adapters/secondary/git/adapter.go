@@ -71,6 +71,19 @@ func (a *Adapter) PullBranch(_ context.Context, repoPath, branch string) error {
 	return nil
 }
 
+// CreateDetachedWorktree fetches ref from origin and adds a detached worktree
+// at FETCH_HEAD, so a PR head can be reviewed without touching local branches.
+func (a *Adapter) CreateDetachedWorktree(_ context.Context, repoPath, ref, worktreePath string) error {
+	if _, err := a.runIn(repoPath, "fetch", "-q", "origin", ref); err != nil {
+		return fmt.Errorf("git: fetch origin %q: %w", ref, err)
+	}
+	if _, err := a.runIn(repoPath, "worktree", "add", "--detach", worktreePath, "FETCH_HEAD"); err != nil {
+		return fmt.Errorf("git: create detached worktree %q: %w", worktreePath, err)
+	}
+	a.logger.Debug("git detached worktree created", "repo", repoPath, "ref", ref, "worktree", worktreePath)
+	return nil
+}
+
 func (a *Adapter) RemoveWorktree(_ context.Context, repoPath, worktreePath string) error {
 	if _, err := a.runIn(repoPath, "worktree", "remove", "--force", worktreePath); err != nil {
 		return fmt.Errorf("git: remove worktree %q: %w", worktreePath, err)

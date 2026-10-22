@@ -109,3 +109,63 @@ func (_c *MockPullRequestPort_GetForBranch_Call) RunAndReturn(run func(ctx conte
 	_c.Call.Return(run)
 	return _c
 }
+
+// ListRequestedReviews provides a mock function for the type MockPullRequestPort
+func (_mock *MockPullRequestPort) ListRequestedReviews(ctx context.Context) (domain.ReviewInbox, error) {
+	ret := _mock.Called(ctx)
+
+	if len(ret) == 0 {
+		panic("no return value specified for ListRequestedReviews")
+	}
+
+	var r0 domain.ReviewInbox
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context) (domain.ReviewInbox, error)); ok {
+		return returnFunc(ctx)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context) domain.ReviewInbox); ok {
+		r0 = returnFunc(ctx)
+	} else {
+		r0 = ret.Get(0).(domain.ReviewInbox)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context) error); ok {
+		r1 = returnFunc(ctx)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPullRequestPort_ListRequestedReviews_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'ListRequestedReviews'
+type MockPullRequestPort_ListRequestedReviews_Call struct {
+	*mock.Call
+}
+
+// ListRequestedReviews is a helper method to define mock.On call
+//   - ctx context.Context
+func (_e *MockPullRequestPort_Expecter) ListRequestedReviews(ctx interface{}) *MockPullRequestPort_ListRequestedReviews_Call {
+	return &MockPullRequestPort_ListRequestedReviews_Call{Call: _e.mock.On("ListRequestedReviews", ctx)}
+}
+
+func (_c *MockPullRequestPort_ListRequestedReviews_Call) Run(run func(ctx context.Context)) *MockPullRequestPort_ListRequestedReviews_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		run(
+			arg0,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestPort_ListRequestedReviews_Call) Return(reviewInbox domain.ReviewInbox, err error) *MockPullRequestPort_ListRequestedReviews_Call {
+	_c.Call.Return(reviewInbox, err)
+	return _c
+}
+
+func (_c *MockPullRequestPort_ListRequestedReviews_Call) RunAndReturn(run func(ctx context.Context) (domain.ReviewInbox, error)) *MockPullRequestPort_ListRequestedReviews_Call {
+	_c.Call.Return(run)
+	return _c
+}

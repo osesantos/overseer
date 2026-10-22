@@ -584,3 +584,39 @@ func TestSession_AgentTmuxIDs_CoversEveryPane(t *testing.T) {
 		}
 	})
 }
+
+func TestSession_AssignReviewTarget_MarksTheSessionAsAReview(t *testing.T) {
+	sess, _ := NewSession("PR #7", uuid.New())
+
+	if err := sess.AssignReviewTarget(PullRequestRef{Repo: "org/repo", Number: 7}); err != nil {
+		t.Fatalf("AssignReviewTarget() error = %v", err)
+	}
+	if !sess.IsReview() {
+		t.Fatal("IsReview() = false, want true")
+	}
+	if sess.ReviewPR != (PullRequestRef{Repo: "org/repo", Number: 7}) {
+		t.Fatalf("ReviewPR = %+v", sess.ReviewPR)
+	}
+}
+
+func TestSession_AssignReviewTarget_Validation(t *testing.T) {
+	tests := []struct {
+		name string
+		ref  PullRequestRef
+		want error
+	}{
+		{name: "empty repo", ref: PullRequestRef{Number: 7}, want: ErrPullRequestEmptyRepo},
+		{name: "non-positive number", ref: PullRequestRef{Repo: "org/repo"}, want: ErrPullRequestInvalidNumber},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess, _ := NewSession("x", uuid.New())
+			if err := sess.AssignReviewTarget(tt.ref); !errors.Is(err, tt.want) {
+				t.Fatalf("AssignReviewTarget() error = %v, want %v", err, tt.want)
+			}
+			if sess.IsReview() {
+				t.Fatal("IsReview() = true after a rejected assignment")
+			}
+		})
+	}
+}

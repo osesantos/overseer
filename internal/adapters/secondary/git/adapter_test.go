@@ -420,3 +420,49 @@ func TestAdapter_CurrentBranch_NotARepo_ReturnsError(t *testing.T) {
 		t.Fatal("CurrentBranch() error = nil, want non-nil for non-repo")
 	}
 }
+
+func TestAdapter_CreateDetachedWorktree_ChecksOutTheRemoteRefDetached(t *testing.T) {
+	a, err := git.New(discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	repo := seedRepoWithRemote(t)
+	for _, args := range [][]string{
+		{"checkout", "-q", "-b", "feature"},
+		{"commit", "--allow-empty", "-q", "-m", "feature work"},
+		{"push", "-q", "origin", "feature"},
+		{"checkout", "-q", "main"},
+		{"branch", "-q", "-D", "feature"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	want, _ := exec.Command("git", "-C", repo, "rev-parse", "origin/feature").Output()
+
+	wt := filepath.Join(t.TempDir(), "wt")
+	if err := a.CreateDetachedWorktree(context.Background(), repo, "feature", wt); err != nil {
+		t.Fatalf("CreateDetachedWorktree() error = %v", err)
+	}
+
+	got, _ := exec.Command("git", "-C", wt, "rev-parse", "HEAD").Output()
+	if string(got) != string(want) {
+		t.Fatalf("worktree HEAD = %s, want %s", got, want)
+	}
+	if err := exec.Command("git", "-C", wt, "symbolic-ref", "-q", "HEAD").Run(); err == nil {
+		t.Fatal("worktree HEAD is a branch, want detached")
+	}
+	if err := a.RemoveWorktree(context.Background(), repo, wt); err != nil {
+		t.Fatalf("RemoveWorktree() error = %v", err)
+	}
+}
+
+func TestAdapter_CreateDetachedWorktree_UnknownRef_Fails(t *testing.T) {
+	a, _ := git.New(discardLogger())
+	repo := seedRepoWithRemote(t)
+
+	err := a.CreateDetachedWorktree(context.Background(), repo, "pull/999/head", filepath.Join(t.TempDir(), "wt"))
+	if err == nil {
+		t.Fatal("CreateDetachedWorktree() error = nil, want fetch failure")
+	}
+}
