@@ -383,3 +383,15 @@ func TestAdapter_ListRequestedReviews_AcceptsEmptyAfterLastRetry(t *testing.T) {
 		t.Fatalf("got %d PRs after %d calls, want none after %d searches", len(inbox.PullRequests), len(cmd.calls), searchRetries)
 	}
 }
+
+func TestAdapter_OpenInBrowser_UsesGhWebFlag(t *testing.T) {
+	cmd := &fakeCommander{}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	if err := adapter.OpenInBrowser(context.Background(), "https://github.com/o/r/pull/7"); err != nil {
+		t.Fatalf("OpenInBrowser() error = %v", err)
+	}
+	if len(cmd.calls) != 1 || strings.Join(cmd.calls[0].args, " ") != "pr view https://github.com/o/r/pull/7 --web" {
+		t.Fatalf("calls = %+v", cmd.calls)
+	}
+}

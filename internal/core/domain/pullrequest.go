@@ -188,6 +188,8 @@ type PullRequestPort interface {
 	// ListRequestedReviews fetches every open PR with a review requested from the
 	// authenticated user, directly or through a team.
 	ListRequestedReviews(ctx context.Context) (ReviewInbox, error)
+	// OpenInBrowser opens the PR page in the operator's default browser.
+	OpenInBrowser(ctx context.Context, prURL string) error
 }
 
 // PullRequestDismissalRepository remembers PRs the operator hid from the review

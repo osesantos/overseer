@@ -166,3 +166,13 @@ func TestPullRequestService_ListRequestedReviews_WrapsPortErrors(t *testing.T) {
 		t.Fatalf("ListRequestedReviews() error = %v, want wrapped port error", err)
 	}
 }
+
+func TestPullRequestService_OpenInBrowser_PassesTheURLThrough(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	port.EXPECT().OpenInBrowser(mock.Anything, "https://github.com/o/r/pull/7").Return(nil).Once()
+
+	svc := NewPullRequestService(port, mocks.NewMockPullRequestDismissalRepository(t), testLogger())
+	if _, err := svc.OpenInBrowser(context.Background(), OpenPullRequestInBrowserRequest{URL: "https://github.com/o/r/pull/7"}); err != nil {
+		t.Fatalf("OpenInBrowser() error = %v", err)
+	}
+}

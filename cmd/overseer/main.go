@@ -34,9 +34,8 @@ import (
 
 const pullRequestRefreshInterval = time.Minute
 
-// pullRequestPollTimeout bounds one inbox poll including the review sessions it
-// starts; each start fetches a PR head and spawns two tmux panes.
-const pullRequestPollTimeout = 2 * time.Minute
+// pullRequestPollTimeout bounds one inbox poll, retries included.
+const pullRequestPollTimeout = time.Minute
 
 // boardShutdownTimeout bounds how long we wait for in-flight agent requests to
 // drain when the TUI exits.
@@ -142,7 +141,7 @@ func main() {
 	agentStatusSvc := service.NewAgentStatusService(store.Sessions(), tmuxAdapter, agentStatusRegistry, log)
 
 	prJob := buildPullRequestJob(sessionSvc, projectSvc, prSvc)
-	schedulerJobs := []jobs.Job{prJob, buildPullRequestReviewJob(prSvc, sessionSvc, cfg.PullRequests)}
+	schedulerJobs := []jobs.Job{prJob, buildPullRequestReviewJob(prSvc, cfg.PullRequests.PollInterval)}
 	if cfg.AgentStatus.Enabled {
 		schedulerJobs = append(schedulerJobs, buildAgentStatusJob(agentStatusSvc, cfg.AgentStatus.RefreshInterval))
 	}
@@ -164,7 +163,11 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, cfg.PullRequests.ReviewCommand)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, dashboard.ReviewOptions{
+		Command:    cfg.PullRequests.ReviewCommand,
+		AutoReview: cfg.PullRequests.AutoReview,
+		MaxPerPoll: cfg.PullRequests.MaxPerPoll,
+	})
 	if styles.FollowsOmarchy(cfg.Theme) {
 		dash = dash.WithThemeWatch(omarchy.Watch(omarchy.Dir()))
 	}
@@ -208,37 +211,19 @@ func buildPullRequestJob(
 	}
 }
 
-// buildPullRequestReviewJob polls the review inbox and, when auto-review is on,
-// starts a review session for the eligible PRs of that poll.
-func buildPullRequestReviewJob(prSvc *service.PullRequestService, sessionSvc *service.SessionService, cfg config.PullRequestsConfig) jobs.Job {
+// buildPullRequestReviewJob polls the review inbox; the dashboard decides whether
+// to auto-review it, because that switch can be flipped from the :prs page.
+func buildPullRequestReviewJob(prSvc *service.PullRequestService, interval time.Duration) jobs.Job {
 	return jobs.Job{
 		ID:       "pr-review-poll",
-		Interval: cfg.PollInterval,
+		Interval: interval,
 		Run: func() tea.Cmd {
 			return shared.RequestWithTimeout(pullRequestPollTimeout,
-				func(ctx context.Context) (shared.PullRequestsLoadedMsg, error) {
-					inboxResp, err := prSvc.ListRequestedReviews(ctx, service.ListRequestedReviewsRequest{})
-					if err != nil {
-						return shared.PullRequestsLoadedMsg{}, err
-					}
-					msg := shared.PullRequestsLoadedMsg{Inbox: inboxResp.Inbox}
-					if !cfg.AutoReview {
-						return msg, nil
-					}
-					reviewResp, err := sessionSvc.AutoReviewPullRequests(ctx, service.AutoReviewPullRequestsRequest{
-						Inbox:           inboxResp.Inbox,
-						CommandTemplate: cfg.ReviewCommand,
-						MaxPerPoll:      cfg.MaxPerPoll,
-					})
-					if err != nil {
-						return shared.PullRequestsLoadedMsg{}, err
-					}
-					msg.Created = reviewResp.Created
-					return msg, nil
+				func(ctx context.Context) (service.ListRequestedReviewsResponse, error) {
+					return prSvc.ListRequestedReviews(ctx, service.ListRequestedReviewsRequest{})
 				},
-				func(msg shared.PullRequestsLoadedMsg, err error) tea.Msg {
-					msg.Err = err
-					return msg
+				func(resp service.ListRequestedReviewsResponse, err error) tea.Msg {
+					return shared.PullRequestsLoadedMsg{Inbox: resp.Inbox, Err: err}
 				},
 			)
 		},

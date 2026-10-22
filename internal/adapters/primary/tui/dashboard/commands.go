@@ -16,6 +16,9 @@ import (
 
 const (
 	overseerRequestTimeout = 60 * time.Second
+	// autoReviewTimeout bounds one poll's review-session starts; each fetches a
+	// PR head and spawns two tmux panes.
+	autoReviewTimeout = 2 * time.Minute
 )
 
 // executeCommand parses the raw slash-command emitted by the chat panel and

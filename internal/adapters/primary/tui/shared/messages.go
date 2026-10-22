@@ -106,12 +106,11 @@ type JobsBatchMsg struct{ Cmds []tea.Cmd }
 // OmarchyPaletteMsg carries the palette read from the active Omarchy theme; nil when Omarchy is absent.
 type OmarchyPaletteMsg struct{ Palette map[string]string }
 
-// PullRequestsLoadedMsg carries one poll of the review inbox. Created lists the
-// review sessions that poll started, so the session list knows to reload.
+// PullRequestsLoadedMsg carries one poll of the review inbox. The dashboard
+// decides whether to auto-review it (AutoReviewCompletedMsg follows when it does).
 type PullRequestsLoadedMsg struct {
-	Inbox   domain.ReviewInbox
-	Created []domain.Session
-	Err     error
+	Inbox domain.ReviewInbox
+	Err   error
 }
 
 // PullRequestOpenMsg is emitted by the PRs page when Enter lands on a PR: jump
@@ -121,6 +120,23 @@ type PullRequestOpenMsg struct{ PR domain.PullRequest }
 // PullRequestReviewMsg is emitted by the PRs page to start a review session by
 // hand, bypassing the auto-review eligibility rules (bots, own PRs, reviewed).
 type PullRequestReviewMsg struct{ PR domain.PullRequest }
+
+// PullRequestOpenInBrowserMsg is emitted by the PRs page to open the PR's GitHub
+// page in the browser.
+type PullRequestOpenInBrowserMsg struct{ PR domain.PullRequest }
+
+// PullRequestBrowserOpenedMsg reports the outcome of opening a PR in the browser.
+type PullRequestBrowserOpenedMsg struct{ Err error }
+
+// AutoReviewToggleMsg is emitted by the PRs page to flip auto-review on or off
+// for the rest of the session; the config value is only the starting point.
+type AutoReviewToggleMsg struct{}
+
+// AutoReviewCompletedMsg reports the review sessions one inbox poll started.
+type AutoReviewCompletedMsg struct {
+	Created []domain.Session
+	Err     error
+}
 
 // PullRequestDismissMsg is emitted by the PRs page to hide a PR from the inbox
 // for good.

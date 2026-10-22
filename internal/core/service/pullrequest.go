@@ -83,3 +83,16 @@ func (s *PullRequestService) Dismiss(ctx context.Context, req DismissPullRequest
 	s.logger.InfoContext(ctx, "pull request dismissed", "repo", req.Ref.Repo, "pr", req.Ref.Number)
 	return DismissPullRequestResponse{}, nil
 }
+
+type OpenPullRequestInBrowserRequest struct {
+	URL string
+}
+
+type OpenPullRequestInBrowserResponse struct{}
+
+func (s *PullRequestService) OpenInBrowser(ctx context.Context, req OpenPullRequestInBrowserRequest) (OpenPullRequestInBrowserResponse, error) {
+	if err := s.port.OpenInBrowser(ctx, req.URL); err != nil {
+		return OpenPullRequestInBrowserResponse{}, fmt.Errorf("open pull request in browser: %w", err)
+	}
+	return OpenPullRequestInBrowserResponse{}, nil
+}

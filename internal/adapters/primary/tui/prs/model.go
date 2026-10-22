@@ -38,6 +38,7 @@ type Data struct {
 	Sessions      []domain.Session
 	ProjectNames  map[string]bool
 	AgentStatuses map[uuid.UUID]domain.AgentStatus
+	AutoReview    bool
 }
 
 type prNode struct {
@@ -96,6 +97,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if pr, ok := m.selectedPR(); ok {
 			return m, shared.Emit(shared.PullRequestDismissMsg{PR: pr})
 		}
+	case key.Matches(keyMsg, BrowserKeyBinding):
+		if pr, ok := m.selectedPR(); ok {
+			return m, shared.Emit(shared.PullRequestOpenInBrowserMsg{PR: pr})
+		}
+	case key.Matches(keyMsg, AutoReviewKeyBinding):
+		return m, shared.Emit(shared.AutoReviewToggleMsg{})
 	case key.Matches(keyMsg, TopKeyBinding):
 		m.tree = m.tree.SelectIndex(0)
 		return m, nil
@@ -125,7 +132,11 @@ func (m Model) View() tea.View {
 	if bots > 0 {
 		count += fmt.Sprintf("  (%d bot PRs hidden)", bots)
 	}
-	header := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", s.Hint.Render(count))
+	autoReview := s.Warn.Render("auto-review off")
+	if m.data.AutoReview {
+		autoReview = s.Good.Render("auto-review on")
+	}
+	header := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", s.Hint.Render(count), "  ", autoReview)
 	if len(humans) == 0 {
 		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", s.Hint.Render("Nothing waiting on you.")))
 	}

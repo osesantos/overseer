@@ -327,6 +327,8 @@ Press `:` anywhere, type `prs`, Enter. Bot-authored PRs are hidden (the header s
 | `Enter` | Jump to the PR's review session, starting one if it has none |
 | `r` | Start a review session by hand (ignores the auto-review eligibility rules) |
 | `d` | Dismiss the PR: hidden from the inbox for good and never auto-reviewed |
+| `o` | Open the PR in the browser |
+| `a` | Toggle auto-review on/off for this run (the header shows the state; config sets the start value) |
 | `Esc` | Back to the sessions page (also `:sessions`) |
 
 #### Session Creation Form

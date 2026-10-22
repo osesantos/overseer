@@ -158,3 +158,34 @@ func TestModel_GAndShiftG_JumpToTopAndBottom(t *testing.T) {
 		t.Fatal("after g the cursor should be on the first repo group, not a PR")
 	}
 }
+
+func TestModel_OOnAPR_EmitsOpenInBrowser(t *testing.T) {
+	m, _ := fixture(t)
+	updated, _ := m.Update(letter('j'))
+	m = updated.(Model)
+
+	_, cmd := m.Update(letter('o'))
+
+	if msg, ok := cmd().(shared.PullRequestOpenInBrowserMsg); !ok || msg.PR.Number != 4 {
+		t.Fatalf("got %+v, want PullRequestOpenInBrowserMsg for #4", cmd())
+	}
+}
+
+func TestModel_A_EmitsAutoReviewToggle_AndHeaderShowsTheState(t *testing.T) {
+	m, _ := fixture(t)
+
+	_, cmd := m.Update(letter('a'))
+	if _, ok := cmd().(shared.AutoReviewToggleMsg); !ok {
+		t.Fatalf("got %+v, want AutoReviewToggleMsg", cmd())
+	}
+
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "auto-review off") {
+		t.Fatalf("header does not show auto-review off:\n%s", view)
+	}
+	data := m.data
+	data.AutoReview = true
+	m.SetData(data)
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "auto-review on") {
+		t.Fatalf("header does not show auto-review on:\n%s", view)
+	}
+}

@@ -130,7 +130,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case shared.SessionCreatedMsg:
 		return m, m.loadSessions()
-	case shared.PullRequestsLoadedMsg:
+	case shared.AutoReviewCompletedMsg:
 		return m, m.loadSessions()
 	case shared.SessionFocusRequestedMsg:
 		sess, ok := m.findSession(msg.SessionID.String())

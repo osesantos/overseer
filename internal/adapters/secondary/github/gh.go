@@ -209,6 +209,14 @@ func parseRequestedReviews(data []byte, viewer string) ([]domain.PullRequest, in
 	return prs, raw.Data.Search.IssueCount, nil
 }
 
+// OpenInBrowser hands the URL to `gh pr view --web`, which uses the system opener.
+func (a *Adapter) OpenInBrowser(ctx context.Context, prURL string) error {
+	if _, stderr, err := a.cmd.Run(ctx, "", "pr", "view", prURL, "--web"); err != nil {
+		return fmt.Errorf("gh pr view --web: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
+	}
+	return nil
+}
+
 // reviewComments is best-effort: a failure here must not hide the rest of the PR.
 func (a *Adapter) reviewComments(ctx context.Context, repoPath string, pr domain.PullRequest) (domain.PRComments, error) {
 	owner, repo, err := ownerRepoFromURL(pr.URL)

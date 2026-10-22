@@ -169,3 +169,60 @@ func (_c *MockPullRequestPort_ListRequestedReviews_Call) RunAndReturn(run func(c
 	_c.Call.Return(run)
 	return _c
 }
+
+// OpenInBrowser provides a mock function for the type MockPullRequestPort
+func (_mock *MockPullRequestPort) OpenInBrowser(ctx context.Context, prURL string) error {
+	ret := _mock.Called(ctx, prURL)
+
+	if len(ret) == 0 {
+		panic("no return value specified for OpenInBrowser")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string) error); ok {
+		r0 = returnFunc(ctx, prURL)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockPullRequestPort_OpenInBrowser_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'OpenInBrowser'
+type MockPullRequestPort_OpenInBrowser_Call struct {
+	*mock.Call
+}
+
+// OpenInBrowser is a helper method to define mock.On call
+//   - ctx context.Context
+//   - prURL string
+func (_e *MockPullRequestPort_Expecter) OpenInBrowser(ctx interface{}, prURL interface{}) *MockPullRequestPort_OpenInBrowser_Call {
+	return &MockPullRequestPort_OpenInBrowser_Call{Call: _e.mock.On("OpenInBrowser", ctx, prURL)}
+}
+
+func (_c *MockPullRequestPort_OpenInBrowser_Call) Run(run func(ctx context.Context, prURL string)) *MockPullRequestPort_OpenInBrowser_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestPort_OpenInBrowser_Call) Return(err error) *MockPullRequestPort_OpenInBrowser_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockPullRequestPort_OpenInBrowser_Call) RunAndReturn(run func(ctx context.Context, prURL string) error) *MockPullRequestPort_OpenInBrowser_Call {
+	_c.Call.Return(run)
+	return _c
+}

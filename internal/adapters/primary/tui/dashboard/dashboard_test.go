@@ -49,7 +49,7 @@ func newTestDashboard(t *testing.T) Model {
 		nil, // discoveryPaths
 		"",  // swarmBoardURL — swarm disabled
 		domain.SwarmMaxAgents,
-		`claude "/ose-pr-review {{number}}"`,
+		ReviewOptions{Command: `claude "/ose-pr-review {{number}}"`, AutoReview: true, MaxPerPoll: 2},
 	)
 }
 
@@ -204,33 +204,48 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		nil, // discoveryPaths
 		"",  // swarmBoardURL — swarm disabled
 		domain.SwarmMaxAgents,
-		`claude "/ose-pr-review {{number}}"`,
+		ReviewOptions{Command: `claude "/ose-pr-review {{number}}"`, AutoReview: true, MaxPerPoll: 2},
 	)
 }
 
-func TestDashboard_PullRequestsLoadedMsg_StoresTheInboxAndReloadsSessionsWhenReviewsStarted(t *testing.T) {
+func TestDashboard_PullRequestsLoadedMsg_StoresTheInboxAndAutoReviewsWhenOn(t *testing.T) {
 	m := sizedDashboard(t)
-	created := testutil.MakeSession("PR #5 something", uuid.New())
 	inbox := domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{{Repo: "o/r", Number: 5}}}
 
-	updated, cmd := m.Update(shared.PullRequestsLoadedMsg{Inbox: inbox, Created: []domain.Session{created}})
+	updated, cmd := m.Update(shared.PullRequestsLoadedMsg{Inbox: inbox})
 	m = updated.(Model)
 
 	if len(m.reviewInbox.PullRequests) != 1 {
 		t.Fatalf("reviewInbox = %+v, want the loaded inbox", m.reviewInbox)
 	}
 	if cmd == nil {
-		t.Fatal("cmd = nil, want a sessions reload after a review session was created")
+		t.Fatal("cmd = nil, want an auto-review command while auto-review is on")
 	}
 }
 
-func TestDashboard_PullRequestsLoadedMsg_NothingCreated_DoesNotReload(t *testing.T) {
+func TestDashboard_AutoReviewToggle_StopsPollsFromStartingReviews(t *testing.T) {
 	m := sizedDashboard(t)
 
-	_, cmd := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me"}})
+	updated, _ := m.Update(shared.AutoReviewToggleMsg{})
+	m = updated.(Model)
+	if m.review.AutoReview {
+		t.Fatal("toggle did not turn auto-review off")
+	}
 
+	_, cmd := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{{Repo: "o/r", Number: 5}}}})
 	if cmd != nil {
-		t.Fatal("cmd != nil, want no reload when no review session was created")
+		t.Fatal("a poll started auto-review while it is off")
+	}
+}
+
+func TestDashboard_AutoReviewCompleted_ReloadsSessionsOnlyWhenSomethingWasCreated(t *testing.T) {
+	m := sizedDashboard(t)
+
+	if _, cmd := m.Update(shared.AutoReviewCompletedMsg{}); cmd != nil {
+		t.Fatal("cmd != nil, want no reload when nothing was created")
+	}
+	if _, cmd := m.Update(shared.AutoReviewCompletedMsg{Created: []domain.Session{testutil.MakeSession("PR #5", uuid.New())}}); cmd == nil {
+		t.Fatal("cmd = nil, want a sessions reload after a review session was created")
 	}
 }
 

@@ -49,6 +49,14 @@ const (
 	pagePRs
 )
 
+// ReviewOptions is the pullRequests config the dashboard acts on: the launcher
+// template, whether polls start review sessions, and how many per poll.
+type ReviewOptions struct {
+	Command    string
+	AutoReview bool
+	MaxPerPoll int
+}
+
 type popupKind int
 
 const (
@@ -93,8 +101,9 @@ type Model struct {
 	// cmdline is the k9s-style one-line prompt opened with ":".
 	cmdline       textinput.Model
 	cmdlineActive bool
-	// reviewCommand is the configured launcher template for a review session.
-	reviewCommand           string
+	// review holds the auto-review settings; AutoReview can be flipped at
+	// runtime from the :prs page.
+	review                  ReviewOptions
 	cachedProjects          []domain.Project
 	cachedSessions          []domain.Session
 	cachedBranchesByProject map[uuid.UUID]projectBranchCache
@@ -151,7 +160,7 @@ func New(
 	discoveryPaths []string,
 	swarmBoardURL string,
 	swarmMaxAgents int,
-	reviewCommand string,
+	review ReviewOptions,
 ) Model {
 	sessionsModel := sessionui.New(styles, sessionsService, labels)
 	detailsModel := sessiondetails.New(styles)
@@ -168,7 +177,7 @@ func New(
 		prsPage:                 prs.New(styles),
 		prsHelpBar:              shared.NewHelpBarModel(styles, prsPageKeyBindings),
 		cmdline:                 cmdline,
-		reviewCommand:           reviewCommand,
+		review:                  review,
 		titlebar:                newTitlebar(styles, "overseer"),
 		leftPane:                left,
 		inspector:               inspector.New(styles, sessionsService, swarmService, previewRefreshInterval),
@@ -437,12 +446,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.reviewInbox = msg.Inbox
 		m.syncPRsPage()
+		return m, m.autoReviewCmd(msg.Inbox)
+	case shared.AutoReviewCompletedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("auto-review: " + msg.Err.Error())
+		}
 		if len(msg.Created) == 0 {
 			return m, nil
 		}
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
+	case shared.AutoReviewToggleMsg:
+		m.review.AutoReview = !m.review.AutoReview
+		m.syncPRsPage()
+		if m.review.AutoReview {
+			return m, m.showToast("auto-review on — eligible PRs get a review session on the next poll")
+		}
+		return m, m.showToast("auto-review off until you turn it back on or restart")
+	case shared.PullRequestOpenInBrowserMsg:
+		svc := m.prService
+		url := msg.PR.URL
+		return m, func() tea.Msg {
+			_, err := svc.OpenInBrowser(context.Background(), service.OpenPullRequestInBrowserRequest{URL: url})
+			return shared.PullRequestBrowserOpenedMsg{Err: err}
+		}
+	case shared.PullRequestBrowserOpenedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("could not open the browser: " + msg.Err.Error())
+		}
+		return m, nil
 	case shared.PageCloseMsg:
 		m.page = pageSessions
 		m.reapplySize()
@@ -1038,7 +1071,30 @@ func (m *Model) syncPRsPage() {
 		Sessions:      m.cachedSessions,
 		ProjectNames:  names,
 		AgentStatuses: m.agentStatuses,
+		AutoReview:    m.review.AutoReview,
 	})
+}
+
+// autoReviewCmd starts review sessions for one poll's eligible PRs; nil while
+// auto-review is off.
+func (m Model) autoReviewCmd(inbox domain.ReviewInbox) tea.Cmd {
+	if !m.review.AutoReview {
+		return nil
+	}
+	svc := m.sessionsService
+	req := service.AutoReviewPullRequestsRequest{
+		Inbox:           inbox,
+		CommandTemplate: m.review.Command,
+		MaxPerPoll:      m.review.MaxPerPoll,
+	}
+	return shared.RequestWithTimeout(autoReviewTimeout,
+		func(ctx context.Context) (service.AutoReviewPullRequestsResponse, error) {
+			return svc.AutoReviewPullRequests(ctx, req)
+		},
+		func(resp service.AutoReviewPullRequestsResponse, err error) tea.Msg {
+			return shared.AutoReviewCompletedMsg{Created: resp.Created, Err: err}
+		},
+	)
 }
 
 func (m Model) reviewSessionFor(pr domain.PullRequest) (domain.Session, bool) {
@@ -1076,7 +1132,7 @@ func (m *Model) startReviewCmd(pr domain.PullRequest) tea.Cmd {
 	req := service.CreateReviewSessionRequest{
 		PullRequest:  pr,
 		ProjectID:    m.cachedProjects[idx].ID,
-		AgentCommand: strings.ReplaceAll(m.reviewCommand, domain.ReviewCommandNumberToken, strconv.Itoa(pr.Number)),
+		AgentCommand: strings.ReplaceAll(m.review.Command, domain.ReviewCommandNumberToken, strconv.Itoa(pr.Number)),
 	}
 	return shared.RequestWithTimeout(overseerRequestTimeout,
 		func(ctx context.Context) (service.CreateReviewSessionResponse, error) {
