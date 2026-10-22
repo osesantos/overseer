@@ -23,7 +23,8 @@ func fixture(t *testing.T) (Model, domain.Session) {
 	m := New(styles.New())
 	m.SetSize(120, 20)
 	m.SetData(Data{
-		Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
+		Loaded: true,
+		Inbox:  domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
 			{Repo: "OutSystems/signer", Number: 92, Title: "fix(RRCT-1): error info", Author: "joao", State: domain.PRStateOpen, UpdatedAt: now},
 			{Repo: "OutSystems/signer", Number: 93, Title: "chore: bump", Author: "dependabot", AuthorIsBot: true, State: domain.PRStateOpen, UpdatedAt: now.Add(-time.Hour)},
 			{Repo: "OutSystems/elsewhere", Number: 4, Title: "feat: thing", Author: "ana", State: domain.PRStateOpen, UpdatedAt: now},
@@ -79,10 +80,32 @@ func TestModel_View_FocusedRow_IsOneStyleRun(t *testing.T) {
 func TestModel_View_EmptyInbox(t *testing.T) {
 	m := New(styles.New())
 	m.SetSize(80, 10)
-	m.SetData(Data{Inbox: domain.ReviewInbox{Viewer: "me"}})
+	m.SetData(Data{Loaded: true, Inbox: domain.ReviewInbox{Viewer: "me"}})
 
 	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Nothing waiting on you") {
 		t.Fatalf("view = %q", view)
+	}
+}
+
+func TestModel_View_BeforeTheFirstPoll_SaysLoading(t *testing.T) {
+	m := New(styles.New())
+	m.SetSize(80, 10)
+	m.SetData(Data{})
+
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Loading pull requests") || strings.Contains(view, "Nothing waiting") {
+		t.Fatalf("view = %q, want a loading notice", view)
+	}
+}
+
+func TestModel_View_LoadError_IsShownInsteadOfLoading(t *testing.T) {
+	m := New(styles.New())
+	m.SetSize(80, 10)
+	m.SetData(Data{LoadError: "gh: HTTP 504"})
+
+	view := ansi.Strip(m.View().Content)
+	if !strings.Contains(view, "Could not load the inbox: gh: HTTP 504") {
+		t.Fatalf("view = %q, want the load error", view)
 	}
 }
 

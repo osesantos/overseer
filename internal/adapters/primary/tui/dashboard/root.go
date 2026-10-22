@@ -111,6 +111,8 @@ type Model struct {
 	prStatuses              map[uuid.UUID]shared.PRStatusUpdatedMsg
 	agentStatuses           map[uuid.UUID]domain.AgentStatus
 	reviewInbox             domain.ReviewInbox
+	inboxLoaded             bool
+	inboxLoadError          string
 
 	// discovery
 	discoveryPaths        []string // configured scan roots, already expanded
@@ -443,9 +445,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	case shared.PullRequestsLoadedMsg:
 		if msg.Err != nil {
+			m.inboxLoadError = msg.Err.Error()
+			m.syncPRsPage()
 			return m, m.showToast("PR inbox: " + msg.Err.Error())
 		}
 		m.reviewInbox = msg.Inbox
+		m.inboxLoaded = true
+		m.inboxLoadError = ""
 		m.syncPRsPage()
 		return m, m.autoReviewCmd(msg.Inbox)
 	case shared.AutoReviewCompletedMsg:
@@ -1091,6 +1097,8 @@ func (m *Model) syncPRsPage() {
 		ProjectNames:  names,
 		AgentStatuses: m.agentStatuses,
 		AutoReview:    m.review.AutoReview,
+		Loaded:        m.inboxLoaded,
+		LoadError:     m.inboxLoadError,
 	})
 }
 

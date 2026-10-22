@@ -456,3 +456,17 @@ func TestDashboard_PRsPage_QReturnsToSessions_CtrlCQuits(t *testing.T) {
 		t.Fatal("ctrl+c must still quit from the PRs page")
 	}
 }
+
+func TestDashboard_PRsPage_SaysLoadingUntilTheFirstPollAnswers(t *testing.T) {
+	m := sizedDashboard(t)
+	m = typeCommand(t, m, "prs")
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Loading pull requests") {
+		t.Fatalf("page before the first poll:\n%s", view)
+	}
+
+	updated, _ := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me"}})
+	m = updated.(Model)
+	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "Nothing waiting on you") {
+		t.Fatalf("page after an empty poll:\n%s", view)
+	}
+}

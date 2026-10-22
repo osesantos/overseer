@@ -39,6 +39,11 @@ type Data struct {
 	ProjectNames  map[string]bool
 	AgentStatuses map[uuid.UUID]domain.AgentStatus
 	AutoReview    bool
+	// Loaded is false until the first inbox poll answers; LoadError carries the
+	// last poll failure so the page never shows "loading" or "nothing" for an
+	// inbox it could not fetch.
+	Loaded    bool
+	LoadError string
 }
 
 type prNode struct {
@@ -147,7 +152,12 @@ func (m Model) View() tea.View {
 		autoReview = s.Good.Render("auto-review on")
 	}
 	header := lipgloss.JoinHorizontal(lipgloss.Top, title, "  ", s.Hint.Render(count), "  ", autoReview)
-	if len(listed) == 0 {
+	switch {
+	case m.data.LoadError != "":
+		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", s.Bad.Render("Could not load the inbox: "+m.data.LoadError), s.Hint.Render("Retrying on the next poll.")))
+	case !m.data.Loaded:
+		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", s.Hint.Render("Loading pull requests…")))
+	case len(listed) == 0:
 		return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", s.Hint.Render("Nothing waiting on you.")))
 	}
 	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", m.tree.View()))
