@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 func TestNewPullRequest_CreatesPullRequest(t *testing.T) {
@@ -224,4 +226,30 @@ func TestEligibleForAutoReview(t *testing.T) {
 func with(pr PullRequest, mutate func(*PullRequest)) PullRequest {
 	mutate(&pr)
 	return pr
+}
+
+func TestReviewFinished(t *testing.T) {
+	review, _ := NewSession("PR #7", uuid.New())
+	_ = review.AssignReviewTarget(PullRequestRef{Repo: "o/r", Number: 7})
+	plain, _ := NewSession("work", uuid.New())
+
+	tests := []struct {
+		name string
+		sess Session
+		pr   PullRequest
+		want bool
+	}{
+		{name: "review session, merged PR", sess: review, pr: PullRequest{State: PRStateMerged}, want: true},
+		{name: "review session, closed PR", sess: review, pr: PullRequest{State: PRStateClosed}, want: true},
+		{name: "review session, open PR", sess: review, pr: PullRequest{State: PRStateOpen}, want: false},
+		{name: "review session, draft PR", sess: review, pr: PullRequest{State: PRStateDraft}, want: false},
+		{name: "ordinary session, merged PR", sess: plain, pr: PullRequest{State: PRStateMerged}, want: false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := ReviewFinished(tt.sess, tt.pr); got != tt.want {
+				t.Fatalf("ReviewFinished() = %v, want %v", got, tt.want)
+			}
+		})
+	}
 }

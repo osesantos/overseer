@@ -233,6 +233,7 @@ pullRequests:
   autoReview: true          # start a review session for new human-authored PRs in registered projects
   reviewCommand: 'claude "/ose-pr-review {{number}}"'  # agent launcher; {{number}} becomes the PR number
   maxPerPoll: 2             # at most this many review sessions per poll
+  # review sessions are deleted automatically once their PR is merged or closed
 
 labels:
   - code: "urgent"

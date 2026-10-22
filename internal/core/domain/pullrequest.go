@@ -131,6 +131,12 @@ func (p PullRequest) RepoName() string {
 	return name
 }
 
+// ReviewFinished reports whether sess exists to review pr and pr no longer needs
+// one: merged or closed. Such a session is deleted, worktree included.
+func ReviewFinished(sess Session, pr PullRequest) bool {
+	return sess.IsReview() && (pr.State == PRStateMerged || pr.State == PRStateClosed)
+}
+
 // ReviewCommandNumberToken is the placeholder in a review launcher command
 // that the PR number replaces.
 const ReviewCommandNumberToken = "{{number}}"

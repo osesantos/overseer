@@ -468,7 +468,18 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prStatuses[msg.SessionID] = msg
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		if msg.Err == nil {
+			cmd = tea.Batch(cmd, m.reapFinishedReviewCmd(msg.SessionID, msg.PR))
+		}
 		return m, cmd
+	case shared.ReviewSessionReapedMsg:
+		if msg.Err != nil {
+			return m, m.showToast(fmt.Sprintf("could not delete finished review %s: %v", msg.Session.Name, msg.Err))
+		}
+		return m, tea.Batch(
+			m.showToast(fmt.Sprintf("PR #%d is merged or closed — review session %q deleted", msg.Session.ReviewPR.Number, msg.Session.Name)),
+			shared.Emit(shared.SessionDeletedMsg{}),
+		)
 	case shared.AgentStatusesUpdatedMsg:
 		m.agentStatuses = msg.Statuses
 		m.syncPRsPage()
@@ -1019,6 +1030,21 @@ func (m Model) reviewSessionFor(pr domain.PullRequest) (domain.Session, bool) {
 		}
 	}
 	return domain.Session{}, false
+}
+
+// reapFinishedReviewCmd deletes a review session once its PR is merged or
+// closed; nil when there is nothing to do.
+func (m Model) reapFinishedReviewCmd(sessionID uuid.UUID, pr domain.PullRequest) tea.Cmd {
+	idx := slices.IndexFunc(m.cachedSessions, func(s domain.Session) bool { return s.ID == sessionID })
+	if idx < 0 || !domain.ReviewFinished(m.cachedSessions[idx], pr) {
+		return nil
+	}
+	sess := m.cachedSessions[idx]
+	svc := m.sessionsService
+	return func() tea.Msg {
+		_, err := svc.Delete(context.Background(), service.DeleteSessionRequest{ID: sess.ID})
+		return shared.ReviewSessionReapedMsg{Session: sess, Err: err}
+	}
 }
 
 // startReviewCmd creates a review session for pr in its registered project, or

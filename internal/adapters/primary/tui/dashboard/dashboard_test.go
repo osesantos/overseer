@@ -370,3 +370,35 @@ func typeCommand(t *testing.T, m Model, text string) Model {
 	}
 	return m
 }
+
+func TestDashboard_PRStatusMerged_ReapsTheReviewSession(t *testing.T) {
+	m := sizedDashboard(t)
+	review := testutil.MakeSession("PR #7 thing", uuid.New())
+	_ = review.AssignReviewTarget(domain.PullRequestRef{Repo: "o/r", Number: 7})
+	plain := testutil.MakeSession("work", uuid.New())
+	updated, _ := m.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{review, plain}})
+	m = updated.(Model)
+
+	if cmd := m.reapFinishedReviewCmd(review.ID, domain.PullRequest{State: domain.PRStateMerged}); cmd == nil {
+		t.Fatal("merged PR on a review session did not produce a delete command")
+	}
+	if cmd := m.reapFinishedReviewCmd(review.ID, domain.PullRequest{State: domain.PRStateOpen}); cmd != nil {
+		t.Fatal("open PR on a review session produced a delete command")
+	}
+	if cmd := m.reapFinishedReviewCmd(plain.ID, domain.PullRequest{State: domain.PRStateMerged}); cmd != nil {
+		t.Fatal("merged PR on an ordinary session produced a delete command")
+	}
+}
+
+func TestDashboard_ReviewSessionReaped_ToastsAndReloads(t *testing.T) {
+	m := sizedDashboard(t)
+	review := testutil.MakeSession("PR #7 thing", uuid.New())
+	_ = review.AssignReviewTarget(domain.PullRequestRef{Repo: "o/r", Number: 7})
+
+	updated, cmd := m.Update(shared.ReviewSessionReapedMsg{Session: review})
+	m = updated.(Model)
+
+	if !strings.Contains(m.toast, "PR #7") || cmd == nil {
+		t.Fatalf("toast = %q, cmd nil = %v; want a deletion notice and a reload", m.toast, cmd == nil)
+	}
+}

@@ -128,6 +128,13 @@ type ReviewSessionStartedMsg struct {
 	Err     error
 }
 
+// ReviewSessionReapedMsg reports the automatic deletion of a review session whose
+// PR was merged or closed.
+type ReviewSessionReapedMsg struct {
+	Session domain.Session
+	Err     error
+}
+
 // PageCloseMsg asks the dashboard to return to the sessions page.
 type PageCloseMsg struct{}
 
