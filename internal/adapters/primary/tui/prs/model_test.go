@@ -45,7 +45,7 @@ func TestModel_View_GroupsByRepoAndMarksSessionState(t *testing.T) {
 
 	view := ansi.Strip(m.View().Content)
 
-	for _, want := range []string{"waiting on me", "2 open", "(1 bot PRs hidden)", "OutSystems/signer (1)", "OutSystems/elsewhere (1)", "#92", "review session", "#4", "no local repo"} {
+	for _, want := range []string{"waiting on me", "2 open", "(1 bot PRs hidden, b shows them)", "OutSystems/signer (1)", "OutSystems/elsewhere (1)", "#92", "review session", "#4", "no local repo"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
@@ -187,5 +187,24 @@ func TestModel_A_EmitsAutoReviewToggle_AndHeaderShowsTheState(t *testing.T) {
 	m.SetData(data)
 	if view := ansi.Strip(m.View().Content); !strings.Contains(view, "auto-review on") {
 		t.Fatalf("header does not show auto-review on:\n%s", view)
+	}
+}
+
+func TestModel_B_TogglesBotPRs(t *testing.T) {
+	m, _ := fixture(t)
+
+	updated, _ := m.Update(letter('b'))
+	m = updated.(Model)
+	view := ansi.Strip(m.View().Content)
+	for _, want := range []string{"3 open", "(1 from bots, b hides them)", "#93", "bot"} {
+		if !strings.Contains(view, want) {
+			t.Errorf("after b the view is missing %q:\n%s", want, view)
+		}
+	}
+
+	updated, _ = m.Update(letter('b'))
+	m = updated.(Model)
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "#93") {
+		t.Fatalf("second b did not hide the bot PR again:\n%s", view)
 	}
 }
