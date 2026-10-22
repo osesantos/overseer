@@ -130,3 +130,31 @@ func TestModel_Esc_EmitsClose(t *testing.T) {
 		t.Fatalf("got %+v, want PageCloseMsg", cmd())
 	}
 }
+
+func TestModel_DOnAPR_EmitsDismiss(t *testing.T) {
+	m, _ := fixture(t)
+	updated, _ := m.Update(letter('j'))
+	m = updated.(Model)
+
+	_, cmd := m.Update(letter('d'))
+
+	if msg, ok := cmd().(shared.PullRequestDismissMsg); !ok || msg.PR.Number != 4 {
+		t.Fatalf("got %+v, want PullRequestDismissMsg for #4", cmd())
+	}
+}
+
+func TestModel_GAndShiftG_JumpToTopAndBottom(t *testing.T) {
+	m, _ := fixture(t)
+
+	updated, _ := m.Update(letter('G'))
+	m = updated.(Model)
+	if pr, ok := m.selectedPR(); !ok || pr.Number != 92 {
+		t.Fatalf("after G selected = %+v, want the last row (#92)", pr)
+	}
+
+	updated, _ = m.Update(letter('g'))
+	m = updated.(Model)
+	if _, ok := m.selectedPR(); ok {
+		t.Fatal("after g the cursor should be on the first repo group, not a PR")
+	}
+}

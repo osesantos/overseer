@@ -32,6 +32,7 @@ packages:
       TmuxAdapter:
       GitAdapter:
       PullRequestPort:
+      PullRequestDismissalRepository:
       AgentStatusDetector:
       AgentStatusDetectorRegistry:
       SwarmBoardRepository:

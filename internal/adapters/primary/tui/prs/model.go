@@ -92,6 +92,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if pr, ok := m.selectedPR(); ok {
 			return m, shared.Emit(shared.PullRequestReviewMsg{PR: pr})
 		}
+	case key.Matches(keyMsg, DismissKeyBinding):
+		if pr, ok := m.selectedPR(); ok {
+			return m, shared.Emit(shared.PullRequestDismissMsg{PR: pr})
+		}
+	case key.Matches(keyMsg, TopKeyBinding):
+		m.tree = m.tree.SelectIndex(0)
+		return m, nil
+	case key.Matches(keyMsg, BottomKeyBinding):
+		m.tree = m.tree.SelectIndex(m.tree.RowCount() - 1)
+		return m, nil
 	}
 	var cmd tea.Cmd
 	m.tree, cmd = m.tree.Update(keyMsg)

@@ -122,6 +122,16 @@ type PullRequestOpenMsg struct{ PR domain.PullRequest }
 // hand, bypassing the auto-review eligibility rules (bots, own PRs, reviewed).
 type PullRequestReviewMsg struct{ PR domain.PullRequest }
 
+// PullRequestDismissMsg is emitted by the PRs page to hide a PR from the inbox
+// for good.
+type PullRequestDismissMsg struct{ PR domain.PullRequest }
+
+// PullRequestDismissedMsg reports the outcome of a dismissal.
+type PullRequestDismissedMsg struct {
+	Ref domain.PullRequestRef
+	Err error
+}
+
 // ReviewSessionStartedMsg reports a review session started from the PRs page.
 type ReviewSessionStartedMsg struct {
 	Session domain.Session

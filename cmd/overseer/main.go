@@ -104,7 +104,7 @@ func main() {
 
 	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, swarmBoard, resolver, defaultLauncher, cfg.EditorCommand, log)
 	projectSvc := service.NewProjectService(store.Projects(), gitAdapter, log)
-	prSvc := service.NewPullRequestService(githubAdapter, log)
+	prSvc := service.NewPullRequestService(githubAdapter, store.Dismissals(), log)
 	swarmSvc := service.NewSwarmService(swarmBoard, swarmBoard, store.Sessions(), tmuxAdapter, resolver, cfg.Swarm.MaxMessagesPerSession, log)
 
 	// The board server is what lets the agent processes talk to each other. It
@@ -164,7 +164,7 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, cfg.PullRequests.ReviewCommand)
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, cfg.PullRequests.ReviewCommand)
 	if styles.FollowsOmarchy(cfg.Theme) {
 		dash = dash.WithThemeWatch(omarchy.Watch(omarchy.Dir()))
 	}

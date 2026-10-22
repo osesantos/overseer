@@ -190,6 +190,13 @@ type PullRequestPort interface {
 	ListRequestedReviews(ctx context.Context) (ReviewInbox, error)
 }
 
+// PullRequestDismissalRepository remembers PRs the operator hid from the review
+// inbox; a dismissed PR is neither listed nor auto-reviewed.
+type PullRequestDismissalRepository interface {
+	Add(ctx context.Context, ref PullRequestRef) error
+	List(ctx context.Context) ([]PullRequestRef, error)
+}
+
 var (
 	ErrPullRequestNotFound      = errors.New("pull request not found")
 	ErrPullRequestInvalidNumber = errors.New("pull request number must be positive")

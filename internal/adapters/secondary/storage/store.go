@@ -8,6 +8,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -21,17 +22,19 @@ import (
 const currentSchemaVersion = 1
 
 type fileSchema struct {
-	SchemaVersion int              `json:"schemaVersion"`
-	Projects      []domain.Project `json:"projects"`
-	Sessions      []domain.Session `json:"sessions"`
+	SchemaVersion         int                     `json:"schemaVersion"`
+	Projects              []domain.Project        `json:"projects"`
+	Sessions              []domain.Session        `json:"sessions"`
+	DismissedPullRequests []domain.PullRequestRef `json:"dismissedPullRequests,omitempty"`
 }
 
 type Store struct {
-	path     string
-	mu       sync.Mutex
-	sessions map[uuid.UUID]domain.Session
-	projects map[uuid.UUID]domain.Project
-	logger   *slog.Logger
+	path      string
+	mu        sync.Mutex
+	sessions  map[uuid.UUID]domain.Session
+	projects  map[uuid.UUID]domain.Project
+	dismissed map[domain.PullRequestRef]struct{}
+	logger    *slog.Logger
 }
 
 func New(path string, logger *slog.Logger) (*Store, error) {
@@ -39,10 +42,11 @@ func New(path string, logger *slog.Logger) (*Store, error) {
 		return nil, fmt.Errorf("storage: ensure dir: %w", err)
 	}
 	s := &Store{
-		path:     path,
-		sessions: make(map[uuid.UUID]domain.Session),
-		projects: make(map[uuid.UUID]domain.Project),
-		logger:   logger,
+		path:      path,
+		sessions:  make(map[uuid.UUID]domain.Session),
+		projects:  make(map[uuid.UUID]domain.Project),
+		dismissed: make(map[domain.PullRequestRef]struct{}),
+		logger:    logger,
 	}
 	if err := s.load(); err != nil {
 		return nil, err
@@ -50,8 +54,9 @@ func New(path string, logger *slog.Logger) (*Store, error) {
 	return s, nil
 }
 
-func (s *Store) Sessions() *SessionStore { return &SessionStore{store: s} }
-func (s *Store) Projects() *ProjectStore { return &ProjectStore{store: s} }
+func (s *Store) Sessions() *SessionStore     { return &SessionStore{store: s} }
+func (s *Store) Projects() *ProjectStore     { return &ProjectStore{store: s} }
+func (s *Store) Dismissals() *DismissalStore { return &DismissalStore{store: s} }
 
 func (s *Store) load() error {
 	data, err := os.ReadFile(s.path)
@@ -70,6 +75,9 @@ func (s *Store) load() error {
 
 	for _, project := range schema.Projects {
 		s.projects[project.ID] = project
+	}
+	for _, ref := range schema.DismissedPullRequests {
+		s.dismissed[ref] = struct{}{}
 	}
 	for _, sess := range schema.Sessions {
 		if sess.AgentType == "" {
@@ -112,7 +120,14 @@ func (s *Store) persist() error {
 	for _, sess := range s.sessions {
 		sessions = append(sessions, sess)
 	}
-	schema := fileSchema{SchemaVersion: currentSchemaVersion, Projects: projects, Sessions: sessions}
+	dismissed := make([]domain.PullRequestRef, 0, len(s.dismissed))
+	for ref := range s.dismissed {
+		dismissed = append(dismissed, ref)
+	}
+	sort.Slice(dismissed, func(i, j int) bool {
+		return dismissed[i].Repo < dismissed[j].Repo || (dismissed[i].Repo == dismissed[j].Repo && dismissed[i].Number < dismissed[j].Number)
+	})
+	schema := fileSchema{SchemaVersion: currentSchemaVersion, Projects: projects, Sessions: sessions, DismissedPullRequests: dismissed}
 	data, err := json.MarshalIndent(schema, "", "  ")
 	if err != nil {
 		return fmt.Errorf("storage: marshal: %w", err)
@@ -161,6 +176,29 @@ func (s *SessionStore) Delete(_ context.Context, id uuid.UUID) error {
 	}
 	delete(s.store.sessions, id)
 	return s.store.persist()
+}
+
+var _ domain.PullRequestDismissalRepository = (*DismissalStore)(nil)
+
+type DismissalStore struct {
+	store *Store
+}
+
+func (d *DismissalStore) Add(_ context.Context, ref domain.PullRequestRef) error {
+	d.store.mu.Lock()
+	defer d.store.mu.Unlock()
+	d.store.dismissed[ref] = struct{}{}
+	return d.store.persist()
+}
+
+func (d *DismissalStore) List(_ context.Context) ([]domain.PullRequestRef, error) {
+	d.store.mu.Lock()
+	defer d.store.mu.Unlock()
+	result := make([]domain.PullRequestRef, 0, len(d.store.dismissed))
+	for ref := range d.store.dismissed {
+		result = append(result, ref)
+	}
+	return result, nil
 }
 
 var _ domain.ProjectRepository = (*ProjectStore)(nil)

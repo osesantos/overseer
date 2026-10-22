@@ -519,4 +519,33 @@ func TestStore_PersistsBothAggregatesInSameFile(t *testing.T) {
 	}
 }
 
+func TestDismissalStore_AddPersistsAcrossReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	store, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ref := domain.PullRequestRef{Repo: "o/r", Number: 7}
+	if err := store.Dismissals().Add(context.Background(), ref); err != nil {
+		t.Fatalf("Add() error = %v", err)
+	}
 
+	reloaded, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() reload error = %v", err)
+	}
+	refs, err := reloaded.Dismissals().List(context.Background())
+	if err != nil {
+		t.Fatalf("List() error = %v", err)
+	}
+	if len(refs) != 1 || refs[0] != ref {
+		t.Fatalf("List() = %+v, want [%+v]", refs, ref)
+	}
+}
+
+func TestDismissalStore_EmptyStoreListsNothing(t *testing.T) {
+	refs, err := newStore(t).Dismissals().List(context.Background())
+	if err != nil || len(refs) != 0 {
+		t.Fatalf("List() = %+v, %v; want empty", refs, err)
+	}
+}

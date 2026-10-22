@@ -316,6 +316,19 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 | `x` | Kill the preview tmux session |
 | `g` / `G` | Go to next / previous project group |
 
+#### Pull Request Inbox (`:prs`)
+
+Press `:` anywhere, type `prs`, Enter. Bot-authored PRs are hidden (the header says how many).
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `g` / `G` | Jump to the top / bottom |
+| `Enter` | Jump to the PR's review session, starting one if it has none |
+| `r` | Start a review session by hand (ignores the auto-review eligibility rules) |
+| `d` | Dismiss the PR: hidden from the inbox for good and never auto-reviewed |
+| `Esc` | Back to the sessions page (also `:sessions`) |
+
 #### Session Creation Form
 
 | Key | Action |

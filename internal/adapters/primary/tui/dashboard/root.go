@@ -123,6 +123,7 @@ type Model struct {
 	themes          <-chan struct{}
 	sessionsService service.SessionService
 	projectsService service.ProjectService
+	prService       service.PullRequestService
 	overseerService *service.OverseerService
 	swarmService    *service.SwarmService
 	launchers       []domain.Launcher
@@ -139,6 +140,7 @@ func New(
 	styles *styles.Styles,
 	sessionsService service.SessionService,
 	projectsService service.ProjectService,
+	prService service.PullRequestService,
 	overseerService *service.OverseerService,
 	swarmService *service.SwarmService,
 	scheduler jobs.Model,
@@ -174,6 +176,7 @@ func New(
 		scheduler:               scheduler,
 		sessionsService:         sessionsService,
 		projectsService:         projectsService,
+		prService:               prService,
 		overseerService:         overseerService,
 		swarmService:            swarmService,
 		swarmBoardURL:           swarmBoardURL,
@@ -456,6 +459,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.showToast(fmt.Sprintf("PR #%d already has a review session: %s", msg.PR.Number, sess.Name))
 		}
 		return m, m.startReviewCmd(msg.PR)
+	case shared.PullRequestDismissMsg:
+		svc := m.prService
+		ref := msg.PR.Ref()
+		return m, func() tea.Msg {
+			_, err := svc.Dismiss(context.Background(), service.DismissPullRequestRequest{Ref: ref})
+			return shared.PullRequestDismissedMsg{Ref: ref, Err: err}
+		}
+	case shared.PullRequestDismissedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("could not dismiss PR: " + msg.Err.Error())
+		}
+		m.reviewInbox.PullRequests = slices.DeleteFunc(slices.Clone(m.reviewInbox.PullRequests),
+			func(pr domain.PullRequest) bool { return pr.Ref() == msg.Ref })
+		m.syncPRsPage()
+		return m, m.showToast(fmt.Sprintf("PR #%d hidden from the inbox", msg.Ref.Number))
 	case shared.ReviewSessionStartedMsg:
 		if msg.Err != nil {
 			return m, m.showToast("could not start review: " + msg.Err.Error())

@@ -32,11 +32,13 @@ func newTestDashboard(t *testing.T) Model {
 
 	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
+	prSvc := service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockPullRequestDismissalRepository(t), slog.Default())
 
 	return New(
 		styles.New(),
 		*sessSvc,
 		*projSvc,
+		*prSvc,
 		nil, // overseerService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
@@ -191,6 +193,7 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		styles.NewWithTheme("dark", true),
 		*sessSvc,
 		*projSvc,
+		*service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockPullRequestDismissalRepository(t), slog.Default()),
 		nil, // overseerService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
@@ -400,5 +403,24 @@ func TestDashboard_ReviewSessionReaped_ToastsAndReloads(t *testing.T) {
 
 	if !strings.Contains(m.toast, "PR #7") || cmd == nil {
 		t.Fatalf("toast = %q, cmd nil = %v; want a deletion notice and a reload", m.toast, cmd == nil)
+	}
+}
+
+func TestDashboard_PullRequestDismissed_RemovesItFromTheInbox(t *testing.T) {
+	m := sizedDashboard(t)
+	updated, _ := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
+		{Repo: "o/r", Number: 5, Title: "keep", Author: "ana", State: domain.PRStateOpen},
+		{Repo: "o/r", Number: 6, Title: "drop", Author: "ana", State: domain.PRStateOpen},
+	}}})
+	m = updated.(Model)
+
+	updated, cmd := m.Update(shared.PullRequestDismissedMsg{Ref: domain.PullRequestRef{Repo: "o/r", Number: 6}})
+	m = updated.(Model)
+
+	if len(m.reviewInbox.PullRequests) != 1 || m.reviewInbox.PullRequests[0].Number != 5 {
+		t.Fatalf("inbox = %+v, want only #5", m.reviewInbox.PullRequests)
+	}
+	if cmd == nil || !strings.Contains(m.toast, "#6") {
+		t.Fatalf("toast = %q, want a hidden notice for #6", m.toast)
 	}
 }
