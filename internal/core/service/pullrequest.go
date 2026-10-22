@@ -11,13 +11,13 @@ import (
 )
 
 type PullRequestService struct {
-	port       domain.PullRequestPort
-	dismissals domain.PullRequestDismissalRepository
-	logger     *slog.Logger
+	port     domain.PullRequestPort
+	settings domain.ReviewSettingsRepository
+	logger   *slog.Logger
 }
 
-func NewPullRequestService(port domain.PullRequestPort, dismissals domain.PullRequestDismissalRepository, logger *slog.Logger) *PullRequestService {
-	return &PullRequestService{port: port, dismissals: dismissals, logger: logger}
+func NewPullRequestService(port domain.PullRequestPort, settings domain.ReviewSettingsRepository, logger *slog.Logger) *PullRequestService {
+	return &PullRequestService{port: port, settings: settings, logger: logger}
 }
 
 type GetPullRequestForBranchRequest struct {
@@ -46,24 +46,66 @@ type ListRequestedReviewsResponse struct {
 	Inbox domain.ReviewInbox
 }
 
-// ListRequestedReviews is the inbox minus the PRs the operator dismissed, so
-// neither the page nor auto-review ever sees a dismissed PR.
+// ListRequestedReviews is the inbox minus the PRs the operator dismissed, with
+// the PRs whose review session was closed by hand marked as reviewed, so neither
+// the page nor auto-review ever acts on them again.
 func (s *PullRequestService) ListRequestedReviews(ctx context.Context, _ ListRequestedReviewsRequest) (ListRequestedReviewsResponse, error) {
 	inbox, err := s.port.ListRequestedReviews(ctx)
 	if err != nil {
 		return ListRequestedReviewsResponse{}, fmt.Errorf("fetch requested reviews: %w", err)
 	}
-	dismissed, err := s.dismissals.List(ctx)
+	settings, err := s.settings.Load(ctx)
 	if err != nil {
-		return ListRequestedReviewsResponse{}, fmt.Errorf("list dismissed pull requests: %w", err)
+		return ListRequestedReviewsResponse{}, fmt.Errorf("load review settings: %w", err)
 	}
-	hidden := make(map[domain.PullRequestRef]bool, len(dismissed))
-	for _, ref := range dismissed {
-		hidden[ref] = true
+	inbox.PullRequests = slices.DeleteFunc(inbox.PullRequests, func(pr domain.PullRequest) bool {
+		return slices.Contains(settings.Dismissed, pr.Ref())
+	})
+	for i := range inbox.PullRequests {
+		if slices.Contains(settings.Handled, inbox.PullRequests[i].Ref()) {
+			inbox.PullRequests[i].ReviewedByViewer = true
+		}
 	}
-	inbox.PullRequests = slices.DeleteFunc(inbox.PullRequests, func(pr domain.PullRequest) bool { return hidden[pr.Ref()] })
-	s.logger.InfoContext(ctx, "review inbox fetched", "viewer", inbox.Viewer, "count", len(inbox.PullRequests), "dismissed", len(dismissed))
+	s.logger.InfoContext(ctx, "review inbox fetched", "viewer", inbox.Viewer, "count", len(inbox.PullRequests),
+		"dismissed", len(settings.Dismissed), "handled", len(settings.Handled))
 	return ListRequestedReviewsResponse{Inbox: inbox}, nil
+}
+
+type ResolveAutoReviewRequest struct {
+	// Default is the config value, used until the operator toggles it.
+	Default bool
+}
+
+type ResolveAutoReviewResponse struct {
+	On bool
+}
+
+// ResolveAutoReview returns the persisted toggle when the operator set one,
+// otherwise the config default.
+func (s *PullRequestService) ResolveAutoReview(ctx context.Context, req ResolveAutoReviewRequest) (ResolveAutoReviewResponse, error) {
+	settings, err := s.settings.Load(ctx)
+	if err != nil {
+		return ResolveAutoReviewResponse{}, fmt.Errorf("load review settings: %w", err)
+	}
+	if settings.AutoReview != nil {
+		return ResolveAutoReviewResponse{On: *settings.AutoReview}, nil
+	}
+	return ResolveAutoReviewResponse{On: req.Default}, nil
+}
+
+type SetAutoReviewRequest struct {
+	On bool
+}
+
+type SetAutoReviewResponse struct{}
+
+// SetAutoReview persists the toggle so it survives restarts.
+func (s *PullRequestService) SetAutoReview(ctx context.Context, req SetAutoReviewRequest) (SetAutoReviewResponse, error) {
+	if err := s.settings.SetAutoReview(ctx, req.On); err != nil {
+		return SetAutoReviewResponse{}, fmt.Errorf("persist auto-review toggle: %w", err)
+	}
+	s.logger.InfoContext(ctx, "auto-review toggled", "on", req.On)
+	return SetAutoReviewResponse{}, nil
 }
 
 type DismissPullRequestRequest struct {
@@ -77,7 +119,7 @@ func (s *PullRequestService) Dismiss(ctx context.Context, req DismissPullRequest
 	if req.Ref.Repo == "" || req.Ref.Number <= 0 {
 		return DismissPullRequestResponse{}, domain.ErrPullRequestInvalidNumber
 	}
-	if err := s.dismissals.Add(ctx, req.Ref); err != nil {
+	if err := s.settings.Dismiss(ctx, req.Ref); err != nil {
 		return DismissPullRequestResponse{}, fmt.Errorf("dismiss pull request %s#%d: %w", req.Ref.Repo, req.Ref.Number, err)
 	}
 	s.logger.InfoContext(ctx, "pull request dismissed", "repo", req.Ref.Repo, "pr", req.Ref.Number)

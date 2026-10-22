@@ -11,6 +11,7 @@ import (
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/shared/paths"
 	"github.com/dnlopes/overseer/internal/testutil"
+	"github.com/dnlopes/overseer/internal/testutil/mocks"
 )
 
 func humanPR(repo string, number int, author string) domain.PullRequest {
@@ -193,5 +194,23 @@ func TestSessionService_AutoReviewPullRequests_OneFailureDoesNotStopTheRest(t *t
 	}
 	if len(resp.Created) != 1 || resp.Created[0].ReviewPR.Number != 6 {
 		t.Fatalf("Created = %+v, want only PR 6", resp.Created)
+	}
+}
+
+func TestSessionService_Delete_ReviewSession_MarksThePRHandled(t *testing.T) {
+	projectID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	sess, _ := domain.NewSession("PR #7", projectID)
+	_ = sess.AssignReviewTarget(domain.PullRequestRef{Repo: "o/r", Number: 7})
+	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+	tmux.EXPECT().GetSession(mock.Anything, mock.Anything).Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Times(3)
+	repo.EXPECT().Delete(mock.Anything, sess.ID).Return(nil).Once()
+	reviews := mocks.NewMockReviewSettingsRepository(t)
+	reviews.EXPECT().MarkHandled(mock.Anything, domain.PullRequestRef{Repo: "o/r", Number: 7}).Return(nil).Once()
+
+	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
+	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, reviews, paths.NewResolver(""), launcher, "nvim", testLogger())
+	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
+		t.Fatalf("Delete() error = %v", err)
 	}
 }

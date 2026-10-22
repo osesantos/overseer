@@ -470,7 +470,7 @@ func newSessionServiceWithRepo(t *testing.T) (service.SessionService, *mocks.Moc
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo
+	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo
 }
 
 func keyPress(value string) tea.KeyPressMsg {

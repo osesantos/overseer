@@ -30,9 +30,9 @@ func newTestDashboard(t *testing.T) Model {
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
-	prSvc := service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockPullRequestDismissalRepository(t), slog.Default())
+	prSvc := service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), slog.Default())
 
 	return New(
 		styles.New(),
@@ -186,14 +186,14 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 
 	return New(
 		styles.NewWithTheme("dark", true),
 		*sessSvc,
 		*projSvc,
-		*service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockPullRequestDismissalRepository(t), slog.Default()),
+		*service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), slog.Default()),
 		nil, // overseerService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
@@ -438,5 +438,21 @@ func TestDashboard_PullRequestDismissed_RemovesItFromTheInbox(t *testing.T) {
 	}
 	if cmd == nil || !strings.Contains(m.toast, "#6") {
 		t.Fatalf("toast = %q, want a hidden notice for #6", m.toast)
+	}
+}
+
+func TestDashboard_PRsPage_QReturnsToSessions_CtrlCQuits(t *testing.T) {
+	m := sizedDashboard(t)
+	m = typeCommand(t, m, "prs")
+
+	updated, cmd := m.Update(letterKey("q"))
+	m = updated.(Model)
+	if isQuit(t, cmd) || m.page != pageSessions {
+		t.Fatal("q on the PRs page must return to the sessions page, not quit")
+	}
+
+	m = typeCommand(t, m, "prs")
+	if _, cmd := m.Update(ctrlC()); !isQuit(t, cmd) {
+		t.Fatal("ctrl+c must still quit from the PRs page")
 	}
 }

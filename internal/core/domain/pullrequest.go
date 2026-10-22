@@ -96,13 +96,15 @@ func SummariseReviewThreads(threads []PRReviewThread, viewer string) PRComments 
 type PullRequest struct {
 	Number int
 	// Repo is the GitHub "owner/name"; empty when fetched for a local branch.
-	Repo             string
-	Title            string
-	URL              string
-	Branch           string
-	State            PRState
-	Author           string
-	AuthorIsBot      bool
+	Repo        string
+	Title       string
+	URL         string
+	Branch      string
+	State       PRState
+	Author      string
+	AuthorIsBot bool
+	// ReviewedByViewer: a review by the viewer exists on GitHub, or the viewer
+	// closed a review session for this PR by hand. Either way, no auto-review.
 	ReviewedByViewer bool
 	Stats            PRStats
 	Checks           PRChecks
@@ -192,11 +194,22 @@ type PullRequestPort interface {
 	OpenInBrowser(ctx context.Context, prURL string) error
 }
 
-// PullRequestDismissalRepository remembers PRs the operator hid from the review
-// inbox; a dismissed PR is neither listed nor auto-reviewed.
-type PullRequestDismissalRepository interface {
-	Add(ctx context.Context, ref PullRequestRef) error
-	List(ctx context.Context) ([]PullRequestRef, error)
+// ReviewSettings is what the operator decided about the inbox, kept across
+// restarts: an auto-review override (nil means use the config value), PRs hidden
+// from the inbox, and PRs whose review session was closed by hand and must not
+// be opened again.
+type ReviewSettings struct {
+	AutoReview *bool            `json:",omitempty"`
+	Dismissed  []PullRequestRef `json:",omitempty"`
+	Handled    []PullRequestRef `json:",omitempty"`
+}
+
+// ReviewSettingsRepository persists ReviewSettings; every mutation is atomic.
+type ReviewSettingsRepository interface {
+	Load(ctx context.Context) (ReviewSettings, error)
+	Dismiss(ctx context.Context, ref PullRequestRef) error
+	MarkHandled(ctx context.Context, ref PullRequestRef) error
+	SetAutoReview(ctx context.Context, on bool) error
 }
 
 var (

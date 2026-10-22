@@ -24,6 +24,7 @@ type SessionService struct {
 	tmux            domain.TmuxAdapter
 	git             domain.GitAdapter
 	board           domain.SwarmBoardRepository
+	reviews         domain.ReviewSettingsRepository
 	pathsResolver   paths.Resolver
 	defaultLauncher domain.Launcher
 	editorCommand   string
@@ -35,12 +36,15 @@ type SessionService struct {
 // editorCommand is the single editor launched by AttachEditor, falling back to
 // "nvim" when empty. board is used only to purge a swarm session's message
 // board during teardown — the swarm use-cases themselves live in SwarmService.
+// reviews records a deleted review session's PR as handled, so the next inbox
+// poll does not open it again.
 func NewSessionService(
 	repo domain.SessionRepository,
 	projects domain.ProjectRepository,
 	tmux domain.TmuxAdapter,
 	git domain.GitAdapter,
 	board domain.SwarmBoardRepository,
+	reviews domain.ReviewSettingsRepository,
 	resolver paths.Resolver,
 	defaultLauncher domain.Launcher,
 	editorCommand string,
@@ -52,6 +56,7 @@ func NewSessionService(
 		tmux:            tmux,
 		git:             git,
 		board:           board,
+		reviews:         reviews,
 		pathsResolver:   resolver,
 		defaultLauncher: defaultLauncher,
 		editorCommand:   editorCommand,
@@ -1072,6 +1077,13 @@ func (s *SessionService) Delete(ctx context.Context, req DeleteSessionRequest) (
 
 	if err := s.repo.Delete(ctx, sess.ID); err != nil {
 		return DeleteSessionResponse{}, fmt.Errorf("delete session: %w", err)
+	}
+
+	if sess.IsReview() {
+		if err := s.reviews.MarkHandled(ctx, sess.ReviewPR); err != nil {
+			s.logger.WarnContext(ctx, "could not mark the PR as handled; auto-review may open it again",
+				slog.String("repo", sess.ReviewPR.Repo), slog.Int("pr", sess.ReviewPR.Number), slog.String("error", err.Error()))
+		}
 	}
 
 	s.logger.InfoContext(ctx, "session deleted",

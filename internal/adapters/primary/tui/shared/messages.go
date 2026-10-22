@@ -132,6 +132,9 @@ type PullRequestBrowserOpenedMsg struct{ Err error }
 // for the rest of the session; the config value is only the starting point.
 type AutoReviewToggleMsg struct{}
 
+// AutoReviewSavedMsg reports whether the toggle was persisted.
+type AutoReviewSavedMsg struct{ Err error }
+
 // AutoReviewCompletedMsg reports the review sessions one inbox poll started.
 type AutoReviewCompletedMsg struct {
 	Created []domain.Session

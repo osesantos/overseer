@@ -327,10 +327,11 @@ Press `:` anywhere, type `prs`, Enter. Bot-authored PRs are hidden by default (t
 | `Enter` | Jump to the PR's review session, starting one if it has none |
 | `r` | Start a review session by hand (ignores the auto-review eligibility rules) |
 | `d` | Dismiss the PR: hidden from the inbox for good and never auto-reviewed |
+| | Deleting a review session from the sessions list marks its PR as handled: still listed, never auto-reviewed again |
 | `o` | Open the PR in the browser |
-| `a` | Toggle auto-review on/off for this run (the header shows the state; config sets the start value) |
+| `a` | Toggle auto-review on/off; the choice is saved in `data.json` and survives restarts (config only sets the first value) |
 | `b` | Show / hide bot-authored PRs (dependabot and friends) |
-| `Esc` | Back to the sessions page (also `:sessions`) |
+| `Esc` / `q` | Back to the sessions page (also `:sessions`); `Ctrl+C` quits |
 
 #### Session Creation Form
 

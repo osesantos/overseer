@@ -519,33 +519,50 @@ func TestStore_PersistsBothAggregatesInSameFile(t *testing.T) {
 	}
 }
 
-func TestDismissalStore_AddPersistsAcrossReload(t *testing.T) {
+func TestReviewStore_SettingsPersistAcrossReload(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "data.json")
 	store, err := storage.New(path, discardLogger())
 	if err != nil {
 		t.Fatalf("New() error = %v", err)
 	}
-	ref := domain.PullRequestRef{Repo: "o/r", Number: 7}
-	if err := store.Dismissals().Add(context.Background(), ref); err != nil {
-		t.Fatalf("Add() error = %v", err)
+	ctx := context.Background()
+	dismissed := domain.PullRequestRef{Repo: "o/r", Number: 7}
+	handled := domain.PullRequestRef{Repo: "o/r", Number: 8}
+	if err := store.Reviews().Dismiss(ctx, dismissed); err != nil {
+		t.Fatalf("Dismiss() error = %v", err)
+	}
+	if err := store.Reviews().Dismiss(ctx, dismissed); err != nil {
+		t.Fatalf("second Dismiss() error = %v", err)
+	}
+	if err := store.Reviews().MarkHandled(ctx, handled); err != nil {
+		t.Fatalf("MarkHandled() error = %v", err)
+	}
+	if err := store.Reviews().SetAutoReview(ctx, false); err != nil {
+		t.Fatalf("SetAutoReview() error = %v", err)
 	}
 
 	reloaded, err := storage.New(path, discardLogger())
 	if err != nil {
 		t.Fatalf("New() reload error = %v", err)
 	}
-	refs, err := reloaded.Dismissals().List(context.Background())
+	got, err := reloaded.Reviews().Load(ctx)
 	if err != nil {
-		t.Fatalf("List() error = %v", err)
+		t.Fatalf("Load() error = %v", err)
 	}
-	if len(refs) != 1 || refs[0] != ref {
-		t.Fatalf("List() = %+v, want [%+v]", refs, ref)
+	if len(got.Dismissed) != 1 || got.Dismissed[0] != dismissed {
+		t.Fatalf("Dismissed = %+v, want [%+v] once", got.Dismissed, dismissed)
+	}
+	if len(got.Handled) != 1 || got.Handled[0] != handled {
+		t.Fatalf("Handled = %+v, want [%+v]", got.Handled, handled)
+	}
+	if got.AutoReview == nil || *got.AutoReview {
+		t.Fatalf("AutoReview = %v, want an explicit false", got.AutoReview)
 	}
 }
 
-func TestDismissalStore_EmptyStoreListsNothing(t *testing.T) {
-	refs, err := newStore(t).Dismissals().List(context.Background())
-	if err != nil || len(refs) != 0 {
-		t.Fatalf("List() = %+v, %v; want empty", refs, err)
+func TestReviewStore_EmptyStoreHasNoOverride(t *testing.T) {
+	got, err := newStore(t).Reviews().Load(context.Background())
+	if err != nil || got.AutoReview != nil || len(got.Dismissed) != 0 || len(got.Handled) != 0 {
+		t.Fatalf("Load() = %+v, %v; want empty settings", got, err)
 	}
 }

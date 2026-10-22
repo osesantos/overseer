@@ -66,7 +66,7 @@ func newTestSessionService(
 	logger *slog.Logger,
 ) *SessionService {
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return NewSessionService(repo, projects, tmux, git, noopBoard{}, paths.NewResolver(""), launcher, "nvim", logger)
+	return NewSessionService(repo, projects, tmux, git, noopBoard{}, noopReviews{}, paths.NewResolver(""), launcher, "nvim", logger)
 }
 
 func newTestSessionServiceWithBoard(
@@ -78,7 +78,7 @@ func newTestSessionServiceWithBoard(
 	logger *slog.Logger,
 ) *SessionService {
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return NewSessionService(repo, projects, tmux, git, board, paths.NewResolver(""), launcher, "nvim", logger)
+	return NewSessionService(repo, projects, tmux, git, board, noopReviews{}, paths.NewResolver(""), launcher, "nvim", logger)
 }
 
 // noopBoard satisfies the board port for tests that never exercise a swarm, so
@@ -93,6 +93,17 @@ func (noopBoard) ListSince(context.Context, uuid.UUID, int) ([]domain.SwarmMessa
 }
 func (noopBoard) Count(context.Context, uuid.UUID) (int, error) { return 0, nil }
 func (noopBoard) Purge(context.Context, uuid.UUID) error        { return nil }
+
+// noopReviews satisfies the review settings port for tests that never delete a
+// review session.
+type noopReviews struct{}
+
+func (noopReviews) Load(context.Context) (domain.ReviewSettings, error) {
+	return domain.ReviewSettings{}, nil
+}
+func (noopReviews) Dismiss(context.Context, domain.PullRequestRef) error     { return nil }
+func (noopReviews) MarkHandled(context.Context, domain.PullRequestRef) error { return nil }
+func (noopReviews) SetAutoReview(context.Context, bool) error                { return nil }
 
 func expectProjectLookup(t *testing.T, projects *mocks.MockProjectRepository, projectID uuid.UUID, name string) string {
 	t.Helper()
@@ -1525,7 +1536,7 @@ func TestSessionService_AttachAgent_NoSessionCommandAndNoDefaultLauncher_Returns
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
 
-	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, paths.NewResolver(""), domain.Launcher{}, "nvim", testLogger())
+	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, noopReviews{}, paths.NewResolver(""), domain.Launcher{}, "nvim", testLogger())
 	_, err := svc.AttachAgent(context.Background(), AttachAgentRequest{ID: sess.ID})
 
 	if !errors.Is(err, domain.ErrSessionNoAgentCommandAvailable) {
@@ -1847,7 +1858,7 @@ func TestSessionService_AttachEditor_EmptyEditorCommand_FallsBackToNvim(t *testi
 	tmux.EXPECT().AttachCommand(mock.Anything, editorTmuxID).Return(wantCmd, nil).Once()
 
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, paths.NewResolver(""), launcher, "", testLogger())
+	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, noopReviews{}, paths.NewResolver(""), launcher, "", testLogger())
 	if _, err := svc.AttachEditor(context.Background(), AttachEditorRequest{ID: sess.ID}); err != nil {
 		t.Fatalf("AttachEditor() error = %v", err)
 	}

@@ -461,10 +461,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.AutoReviewToggleMsg:
 		m.review.AutoReview = !m.review.AutoReview
 		m.syncPRsPage()
-		if m.review.AutoReview {
-			return m, m.showToast("auto-review on — eligible PRs get a review session on the next poll")
+		on := m.review.AutoReview
+		svc := m.prService
+		persist := func() tea.Msg {
+			_, err := svc.SetAutoReview(context.Background(), service.SetAutoReviewRequest{On: on})
+			return shared.AutoReviewSavedMsg{Err: err}
 		}
-		return m, m.showToast("auto-review off until you turn it back on or restart")
+		if on {
+			return m, tea.Batch(persist, m.showToast("auto-review on — eligible PRs get a review session on the next poll"))
+		}
+		return m, tea.Batch(persist, m.showToast("auto-review off — stays off across restarts until you turn it back on"))
+	case shared.AutoReviewSavedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("auto-review toggle not saved: " + msg.Err.Error())
+		}
+		return m, nil
 	case shared.PullRequestOpenInBrowserMsg:
 		svc := m.prService
 		url := msg.PR.URL
@@ -679,6 +690,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, cmd
 		}
 
+		// On a full-width page q goes back to the sessions screen; only ctrl+c
+		// quits the app from there.
+		if m.page == pagePRs && key.Matches(keyMsg, quitKeyBinding) && !key.Matches(keyMsg, hardQuitKeyBinding) {
+			m.page = pageSessions
+			m.reapplySize()
+			return m, nil
+		}
 		if key.Matches(keyMsg, quitKeyBinding) {
 			return m, tea.Quit
 		}

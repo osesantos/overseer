@@ -101,9 +101,14 @@ func main() {
 
 	swarmBoard := swarmboard.New(resolver, log)
 
-	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, swarmBoard, resolver, defaultLauncher, cfg.EditorCommand, log)
+	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, swarmBoard, store.Reviews(), resolver, defaultLauncher, cfg.EditorCommand, log)
 	projectSvc := service.NewProjectService(store.Projects(), gitAdapter, log)
-	prSvc := service.NewPullRequestService(githubAdapter, store.Dismissals(), log)
+	prSvc := service.NewPullRequestService(githubAdapter, store.Reviews(), log)
+	autoReview, err := prSvc.ResolveAutoReview(context.Background(), service.ResolveAutoReviewRequest{Default: cfg.PullRequests.AutoReview})
+	if err != nil {
+		log.Error("resolve auto-review toggle", "error", err)
+		os.Exit(1)
+	}
 	swarmSvc := service.NewSwarmService(swarmBoard, swarmBoard, store.Sessions(), tmuxAdapter, resolver, cfg.Swarm.MaxMessagesPerSession, log)
 
 	// The board server is what lets the agent processes talk to each other. It
@@ -165,7 +170,7 @@ func main() {
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
 	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, dashboard.ReviewOptions{
 		Command:    cfg.PullRequests.ReviewCommand,
-		AutoReview: cfg.PullRequests.AutoReview,
+		AutoReview: autoReview.On,
 		MaxPerPoll: cfg.PullRequests.MaxPerPoll,
 	})
 	if styles.FollowsOmarchy(cfg.Theme) {

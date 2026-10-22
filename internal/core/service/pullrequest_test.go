@@ -19,7 +19,7 @@ func TestPullRequestService_GetForBranch_HappyPath(t *testing.T) {
 		GetForBranch(mock.Anything, "/repo", "feature/jobs").
 		Return(wantPR, nil).Once()
 
-	svc := NewPullRequestService(port, noDismissals(t), testLogger())
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
 	resp, err := svc.GetForBranch(context.Background(), GetPullRequestForBranchRequest{
 		RepoPath: "/repo",
 		Branch:   "feature/jobs",
@@ -42,7 +42,7 @@ func TestPullRequestService_GetForBranch_NotFound_ReturnsSentinelUnwrapped(t *te
 		GetForBranch(mock.Anything, "/repo", "main").
 		Return(domain.PullRequest{}, domain.ErrPullRequestNotFound).Once()
 
-	svc := NewPullRequestService(port, noDismissals(t), testLogger())
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
 	_, err := svc.GetForBranch(context.Background(), GetPullRequestForBranchRequest{
 		RepoPath: "/repo",
 		Branch:   "main",
@@ -60,7 +60,7 @@ func TestPullRequestService_GetForBranch_PortError_IsWrapped(t *testing.T) {
 		GetForBranch(mock.Anything, "/repo", "main").
 		Return(domain.PullRequest{}, boom).Once()
 
-	svc := NewPullRequestService(port, noDismissals(t), testLogger())
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
 	_, err := svc.GetForBranch(context.Background(), GetPullRequestForBranchRequest{
 		RepoPath: "/repo",
 		Branch:   "main",
@@ -83,7 +83,7 @@ func TestPullRequestService_GetForBranch_ContextCancelled_PropagatesError(t *tes
 		GetForBranch(mock.Anything, "/repo", "main").
 		Return(domain.PullRequest{}, context.Canceled).Once()
 
-	svc := NewPullRequestService(port, noDismissals(t), testLogger())
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
@@ -93,47 +93,85 @@ func TestPullRequestService_GetForBranch_ContextCancelled_PropagatesError(t *tes
 	}
 }
 
-// noDismissals is a dismissal repo that never hides anything, for tests whose
-// subject is something else.
-func noDismissals(t *testing.T) *mocks.MockPullRequestDismissalRepository {
+// noSettings is a settings repo with nothing persisted, for tests whose subject
+// is something else.
+func noSettings(t *testing.T) *mocks.MockReviewSettingsRepository {
 	t.Helper()
-	d := mocks.NewMockPullRequestDismissalRepository(t)
-	d.EXPECT().List(mock.Anything).Return(nil, nil).Maybe()
-	return d
+	r := mocks.NewMockReviewSettingsRepository(t)
+	r.EXPECT().Load(mock.Anything).Return(domain.ReviewSettings{}, nil).Maybe()
+	return r
 }
 
-func TestPullRequestService_ListRequestedReviews_DropsDismissedPRs(t *testing.T) {
+func TestPullRequestService_ListRequestedReviews_AppliesDismissedAndHandled(t *testing.T) {
 	port := mocks.NewMockPullRequestPort(t)
 	port.EXPECT().ListRequestedReviews(mock.Anything).Return(domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
-		{Number: 1, Repo: "o/r"}, {Number: 2, Repo: "o/r"},
+		{Number: 1, Repo: "o/r"}, {Number: 2, Repo: "o/r"}, {Number: 3, Repo: "o/r"},
 	}}, nil).Once()
-	dismissals := mocks.NewMockPullRequestDismissalRepository(t)
-	dismissals.EXPECT().List(mock.Anything).Return([]domain.PullRequestRef{{Repo: "o/r", Number: 1}}, nil).Once()
+	settings := mocks.NewMockReviewSettingsRepository(t)
+	settings.EXPECT().Load(mock.Anything).Return(domain.ReviewSettings{
+		Dismissed: []domain.PullRequestRef{{Repo: "o/r", Number: 1}},
+		Handled:   []domain.PullRequestRef{{Repo: "o/r", Number: 2}},
+	}, nil).Once()
 
-	svc := NewPullRequestService(port, dismissals, testLogger())
+	svc := NewPullRequestService(port, settings, testLogger())
 	resp, err := svc.ListRequestedReviews(context.Background(), ListRequestedReviewsRequest{})
 
 	if err != nil {
 		t.Fatalf("ListRequestedReviews() error = %v", err)
 	}
-	if len(resp.Inbox.PullRequests) != 1 || resp.Inbox.PullRequests[0].Number != 2 {
-		t.Fatalf("PullRequests = %+v, want only #2", resp.Inbox.PullRequests)
+	prs := resp.Inbox.PullRequests
+	if len(prs) != 2 || prs[0].Number != 2 || prs[1].Number != 3 {
+		t.Fatalf("PullRequests = %+v, want #2 and #3", prs)
+	}
+	if !prs[0].ReviewedByViewer || prs[1].ReviewedByViewer {
+		t.Fatalf("ReviewedByViewer: #2=%v #3=%v, want the handled one marked", prs[0].ReviewedByViewer, prs[1].ReviewedByViewer)
+	}
+}
+
+func TestPullRequestService_ResolveAutoReview_PersistedToggleWinsOverConfig(t *testing.T) {
+	off := false
+	settings := mocks.NewMockReviewSettingsRepository(t)
+	settings.EXPECT().Load(mock.Anything).Return(domain.ReviewSettings{AutoReview: &off}, nil).Once()
+
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), settings, testLogger())
+	resp, err := svc.ResolveAutoReview(context.Background(), ResolveAutoReviewRequest{Default: true})
+
+	if err != nil || resp.On {
+		t.Fatalf("ResolveAutoReview() = %v, %v; want off from the persisted toggle", resp.On, err)
+	}
+}
+
+func TestPullRequestService_ResolveAutoReview_FallsBackToConfig(t *testing.T) {
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), noSettings(t), testLogger())
+	resp, err := svc.ResolveAutoReview(context.Background(), ResolveAutoReviewRequest{Default: true})
+	if err != nil || !resp.On {
+		t.Fatalf("ResolveAutoReview() = %v, %v; want the config default", resp.On, err)
+	}
+}
+
+func TestPullRequestService_SetAutoReview_Persists(t *testing.T) {
+	settings := mocks.NewMockReviewSettingsRepository(t)
+	settings.EXPECT().SetAutoReview(mock.Anything, false).Return(nil).Once()
+
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), settings, testLogger())
+	if _, err := svc.SetAutoReview(context.Background(), SetAutoReviewRequest{On: false}); err != nil {
+		t.Fatalf("SetAutoReview() error = %v", err)
 	}
 }
 
 func TestPullRequestService_Dismiss_PersistsTheRef(t *testing.T) {
-	dismissals := mocks.NewMockPullRequestDismissalRepository(t)
+	settings := mocks.NewMockReviewSettingsRepository(t)
 	ref := domain.PullRequestRef{Repo: "o/r", Number: 7}
-	dismissals.EXPECT().Add(mock.Anything, ref).Return(nil).Once()
+	settings.EXPECT().Dismiss(mock.Anything, ref).Return(nil).Once()
 
-	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), dismissals, testLogger())
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), settings, testLogger())
 	if _, err := svc.Dismiss(context.Background(), DismissPullRequestRequest{Ref: ref}); err != nil {
 		t.Fatalf("Dismiss() error = %v", err)
 	}
 }
 
 func TestPullRequestService_Dismiss_RejectsAnEmptyRef(t *testing.T) {
-	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockPullRequestDismissalRepository(t), testLogger())
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), testLogger())
 	if _, err := svc.Dismiss(context.Background(), DismissPullRequestRequest{}); !errors.Is(err, domain.ErrPullRequestInvalidNumber) {
 		t.Fatalf("Dismiss() error = %v, want ErrPullRequestInvalidNumber", err)
 	}
@@ -144,7 +182,7 @@ func TestPullRequestService_ListRequestedReviews_PassesTheInboxThrough(t *testin
 	want := domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{{Number: 1, Repo: "o/r"}}}
 	port.EXPECT().ListRequestedReviews(mock.Anything).Return(want, nil).Once()
 
-	svc := NewPullRequestService(port, noDismissals(t), testLogger())
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
 	resp, err := svc.ListRequestedReviews(context.Background(), ListRequestedReviewsRequest{})
 
 	if err != nil {
@@ -159,7 +197,7 @@ func TestPullRequestService_ListRequestedReviews_WrapsPortErrors(t *testing.T) {
 	port := mocks.NewMockPullRequestPort(t)
 	port.EXPECT().ListRequestedReviews(mock.Anything).Return(domain.ReviewInbox{}, errors.New("gh down")).Once()
 
-	svc := NewPullRequestService(port, noDismissals(t), testLogger())
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
 	_, err := svc.ListRequestedReviews(context.Background(), ListRequestedReviewsRequest{})
 
 	if err == nil || !strings.Contains(err.Error(), "gh down") {
@@ -171,7 +209,7 @@ func TestPullRequestService_OpenInBrowser_PassesTheURLThrough(t *testing.T) {
 	port := mocks.NewMockPullRequestPort(t)
 	port.EXPECT().OpenInBrowser(mock.Anything, "https://github.com/o/r/pull/7").Return(nil).Once()
 
-	svc := NewPullRequestService(port, mocks.NewMockPullRequestDismissalRepository(t), testLogger())
+	svc := NewPullRequestService(port, mocks.NewMockReviewSettingsRepository(t), testLogger())
 	if _, err := svc.OpenInBrowser(context.Background(), OpenPullRequestInBrowserRequest{URL: "https://github.com/o/r/pull/7"}); err != nil {
 		t.Fatalf("OpenInBrowser() error = %v", err)
 	}
