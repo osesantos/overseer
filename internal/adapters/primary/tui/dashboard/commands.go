@@ -45,6 +45,11 @@ func (m Model) executeCommand(raw string) (tea.Model, tea.Cmd) {
 		m.chatPanelVisible = false
 		m.reapplySize()
 		return m, nil
+	case "triage":
+		m.page = pageTriage
+		m.chatPanelVisible = false
+		m.reapplySize()
+		return m, nil
 	case "sessions":
 		m.page = pageSessions
 		m.reapplySize()
@@ -227,6 +232,7 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 		"  /new                            — open the new-session dialog",
 		"  /list                           — list all sessions",
 		"  /prs                            — open the pull request inbox page",
+		"  /triage                         — open the support ticket (RDODCF / RDINC) inbox page",
 		"  /sessions                       — back to the sessions page",
 		"  /help                           — show this help",
 		"",

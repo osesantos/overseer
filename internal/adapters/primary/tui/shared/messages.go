@@ -164,6 +164,61 @@ type ReviewSessionReapedMsg struct {
 	Err     error
 }
 
+// IssuesLoadedMsg carries one poll of the triage inbox. The dashboard reaps
+// finished triage sessions and decides whether to auto-triage it.
+type IssuesLoadedMsg struct {
+	Inbox domain.TriageInbox
+	Err   error
+}
+
+// IssueOpenMsg is emitted by the triage page when Enter lands on an issue: jump
+// to its triage session, starting one first when none exists.
+type IssueOpenMsg struct{ Issue domain.Issue }
+
+// IssueTriageMsg is emitted by the triage page to start a triage session by
+// hand, bypassing the auto-triage eligibility rules (assigned, old, handled).
+type IssueTriageMsg struct{ Issue domain.Issue }
+
+// IssueOpenInBrowserMsg is emitted by the triage page to open the issue in the browser.
+type IssueOpenInBrowserMsg struct{ Issue domain.Issue }
+
+// IssueBrowserOpenedMsg reports the outcome of opening an issue in the browser.
+type IssueBrowserOpenedMsg struct{ Err error }
+
+// IssueDismissMsg is emitted by the triage page to hide an issue from the inbox for good.
+type IssueDismissMsg struct{ Issue domain.Issue }
+
+// IssueDismissedMsg reports the outcome of a dismissal.
+type IssueDismissedMsg struct {
+	Key string
+	Err error
+}
+
+// AutoTriageToggleMsg is emitted by the triage page to flip auto-triage on or off.
+type AutoTriageToggleMsg struct{}
+
+// AutoTriageSavedMsg reports whether the toggle was persisted.
+type AutoTriageSavedMsg struct{ Err error }
+
+// AutoTriageCompletedMsg reports the triage sessions one inbox poll started.
+type AutoTriageCompletedMsg struct {
+	Created []domain.Session
+	Err     error
+}
+
+// TriageSessionStartedMsg reports a triage session started from the triage page.
+type TriageSessionStartedMsg struct {
+	Session domain.Session
+	Err     error
+}
+
+// TriageSessionReapedMsg reports the automatic deletion of a triage session
+// whose issue is done.
+type TriageSessionReapedMsg struct {
+	Session domain.Session
+	Err     error
+}
+
 // PageCloseMsg asks the dashboard to return to the sessions page.
 type PageCloseMsg struct{}
 

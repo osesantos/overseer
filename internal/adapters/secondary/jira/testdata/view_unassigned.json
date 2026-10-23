@@ -1,0 +1,17 @@
+{
+  "key": "RDODCF-4652",
+  "fields": {
+    "summary": "Deployment Failure: [TEST] [self-hosted] Step system-tests FAILED for timermanager:6.1.14",
+    "status": {
+      "name": "Backlog",
+      "statusCategory": {
+        "key": "new"
+      }
+    },
+    "assignee": null,
+    "priority": {
+      "name": "Normal"
+    },
+    "created": "2026-07-02T11:59:33.557+0100"
+  }
+}

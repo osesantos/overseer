@@ -1006,3 +1006,72 @@ func TestLoad_PullRequestsAutoReviewOff_SkipsCommandValidation(t *testing.T) {
 		t.Error("PullRequests.AutoReview: want false")
 	}
 }
+
+func TestDefault_Triage(t *testing.T) {
+	cfg := config.Default()
+
+	if cfg.Triage.PollInterval != 5*time.Minute {
+		t.Errorf("Triage.PollInterval: want 5m, got %v", cfg.Triage.PollInterval)
+	}
+	if !cfg.Triage.AutoTriage {
+		t.Error("Triage.AutoTriage: want true, got false")
+	}
+	if !strings.Contains(cfg.Triage.JQL, `cf[15370] = "Extended Runtime"`) {
+		t.Errorf("Triage.JQL: got %q", cfg.Triage.JQL)
+	}
+	if cfg.Triage.ProjectName != "vault" {
+		t.Errorf("Triage.ProjectName: want vault, got %q", cfg.Triage.ProjectName)
+	}
+	if cfg.Triage.Commands["RDODCF"] != `claude "/ose-rdodcf-triage {{key}}"` || cfg.Triage.Commands["RDINC"] != `claude "/ose-rdinc-triage {{key}}"` {
+		t.Errorf("Triage.Commands: got %v", cfg.Triage.Commands)
+	}
+	if cfg.Triage.MaxPerPoll != 1 {
+		t.Errorf("Triage.MaxPerPoll: want 1, got %d", cfg.Triage.MaxPerPoll)
+	}
+	if cfg.Triage.MaxAge != 7*24*time.Hour {
+		t.Errorf("Triage.MaxAge: want 168h, got %v", cfg.Triage.MaxAge)
+	}
+}
+
+func TestLoad_TriageValidation(t *testing.T) {
+	tests := []struct {
+		name    string
+		content string
+	}{
+		{name: "non-positive pollInterval", content: "triage:\n  pollInterval: 0s\n"},
+		{name: "empty jql", content: "triage:\n  jql: \"\"\n"},
+		{name: "empty projectName", content: "triage:\n  projectName: \"\"\n"},
+		{name: "maxPerPoll below one", content: "triage:\n  maxPerPoll: 0\n"},
+		{name: "non-positive maxAge", content: "triage:\n  maxAge: 0s\n"},
+		{name: "command without the key placeholder", content: "triage:\n  commands:\n    RDODCF: claude\n"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "config.yaml")
+			if err := os.WriteFile(path, []byte(tt.content), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := config.Load(path)
+			if !errors.Is(err, errs.ErrInvalidInput) {
+				t.Fatalf("Load() error = %v, want %v", err, errs.ErrInvalidInput)
+			}
+		})
+	}
+}
+
+func TestLoad_TriageCommands_BlankEntryDisablesThatProject(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "config.yaml")
+	if err := os.WriteFile(path, []byte("triage:\n  commands:\n    RDINC: \"\"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := config.Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if got := cfg.Triage.Launchers(); len(got) != 1 || got["RDODCF"] == "" {
+		t.Fatalf("Triage.Launchers() = %v, want only RDODCF", got)
+	}
+}

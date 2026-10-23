@@ -1,0 +1,19 @@
+{
+  "key": "RDINC-94264",
+  "fields": {
+    "summary": "Cannot Terminate Older Revisions of Workflows",
+    "status": {
+      "name": "Waiting for customer",
+      "statusCategory": {
+        "key": "undefined"
+      }
+    },
+    "assignee": {
+      "displayName": "Rafael Seara"
+    },
+    "priority": {
+      "name": "High"
+    },
+    "created": "2026-10-12T10:21:23.872+0100"
+  }
+}

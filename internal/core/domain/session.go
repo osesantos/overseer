@@ -51,9 +51,11 @@ type Session struct {
 	Label        string    `json:",omitempty"`
 	SwarmSize    int       `json:",omitempty"`
 	// ReviewPR is set on sessions started to review a pull request; zero otherwise.
-	ReviewPR  PullRequestRef `json:",omitzero"`
-	CreatedAt time.Time
-	UpdatedAt time.Time
+	ReviewPR PullRequestRef `json:",omitzero"`
+	// TriageIssue is the issue key on sessions started to triage a ticket; empty otherwise.
+	TriageIssue string `json:",omitempty"`
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // NewSession constructs a Session with no worktree assigned. For a Mode 1
@@ -114,6 +116,22 @@ func (s *Session) AssignReviewTarget(ref PullRequestRef) error {
 		return ErrPullRequestInvalidNumber
 	}
 	s.ReviewPR = ref
+	s.UpdatedAt = time.Now()
+	return nil
+}
+
+// IsTriage reports whether the session exists to triage a support ticket.
+func (s Session) IsTriage() bool {
+	return s.TriageIssue != ""
+}
+
+// AssignTriageTarget records the issue this session triages.
+func (s *Session) AssignTriageTarget(key string) error {
+	key = strings.TrimSpace(key)
+	if key == "" {
+		return ErrIssueEmptyKey
+	}
+	s.TriageIssue = key
 	s.UpdatedAt = time.Now()
 	return nil
 }

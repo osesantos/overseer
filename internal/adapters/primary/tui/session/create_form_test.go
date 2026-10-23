@@ -253,7 +253,7 @@ func newCreateFormSessionServiceWithMocks(t *testing.T) (service.SessionService,
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo, projects, tmux, git
+	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), mocks.NewMockTriageSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo, projects, tmux, git
 }
 
 // expectAgentAndEditorTmuxGone stubs the session-service Delete teardown's

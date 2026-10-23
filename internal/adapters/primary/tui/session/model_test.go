@@ -72,6 +72,48 @@ func TestModel_ReviewSessionsRenderBelowADivider(t *testing.T) {
 	}
 }
 
+func TestModel_TriageSessionsRenderInTheirOwnBlockBelowReviews(t *testing.T) {
+	signerID, vaultID := uuid.New(), uuid.New()
+	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
+	model.SetProjectNames(map[uuid.UUID]string{signerID: "signer", vaultID: "vault"})
+	model.SetSize(80, 20)
+	review := testutil.MakeSession("PR #92 feat: thing", signerID)
+	_ = review.AssignReviewTarget(domain.PullRequestRef{Repo: "o/signer", Number: 92})
+	triaging := testutil.MakeSession("RDODCF-7699 deploy failure", vaultID)
+	_ = triaging.AssignTriageTarget("RDODCF-7699")
+	mine := testutil.MakeSession("alpha", signerID)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{triaging, review, mine}})
+	view := ansi.Strip(updated.(Model).View().Content)
+
+	order := []int{
+		strings.Index(view, "alpha"),
+		strings.Index(view, "── PR reviews"),
+		strings.Index(view, "PR #92"),
+		strings.Index(view, "── Triage"),
+		strings.Index(view, "RDODCF-7699"),
+	}
+	for i, pos := range order {
+		if pos < 0 || (i > 0 && pos < order[i-1]) {
+			t.Fatalf("want alpha, reviews divider, review, triage divider, triage session in that order:\n%s", view)
+		}
+	}
+}
+
+func TestModel_TriageDividerWithoutReviews_StillRenders(t *testing.T) {
+	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
+	model.SetSize(80, 20)
+	triaging := testutil.MakeSession("RDINC-1 alert", uuid.New())
+	_ = triaging.AssignTriageTarget("RDINC-1")
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{triaging}})
+	view := ansi.Strip(updated.(Model).View().Content)
+
+	if !strings.Contains(view, "── Triage") || strings.Contains(view, "PR reviews") {
+		t.Fatalf("want only the triage divider:\n%s", view)
+	}
+}
+
 func TestModel_NoDividerWithoutReviewSessions(t *testing.T) {
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
 	model.SetSize(80, 20)
@@ -502,7 +544,7 @@ func newSessionServiceWithRepo(t *testing.T) (service.SessionService, *mocks.Moc
 	tmux := mocks.NewMockTmuxAdapter(t)
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo
+	return *service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), mocks.NewMockTriageSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default()), repo
 }
 
 func keyPress(value string) tea.KeyPressMsg {

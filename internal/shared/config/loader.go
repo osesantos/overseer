@@ -88,6 +88,32 @@ type PullRequestsConfig struct {
 	MaxPerPoll    int           `yaml:"maxPerPoll"`
 }
 
+// TriageConfig drives the support-ticket inbox: how often JQL is polled, whether
+// eligible tickets get a triage session started, the registered project the
+// sessions run in, the launcher per Jira project ({{key}} is replaced by the
+// issue key; a blank entry turns that project off), how many sessions a poll
+// may start and how old a ticket may be to still be auto-triaged.
+type TriageConfig struct {
+	PollInterval time.Duration     `yaml:"pollInterval"`
+	AutoTriage   bool              `yaml:"autoTriage"`
+	JQL          string            `yaml:"jql"`
+	ProjectName  string            `yaml:"projectName"`
+	Commands     map[string]string `yaml:"commands"`
+	MaxPerPoll   int               `yaml:"maxPerPoll"`
+	MaxAge       time.Duration     `yaml:"maxAge"`
+}
+
+// Launchers is Commands without the blank entries that turn a project off.
+func (t TriageConfig) Launchers() map[string]string {
+	out := make(map[string]string, len(t.Commands))
+	for project, cmd := range t.Commands {
+		if strings.TrimSpace(cmd) != "" {
+			out[project] = cmd
+		}
+	}
+	return out
+}
+
 type Config struct {
 	Theme            string                 `yaml:"theme"`
 	DisableEmoji     bool                   `yaml:"disableEmoji"`
@@ -101,6 +127,7 @@ type Config struct {
 	ProjectDiscovery ProjectDiscoveryConfig `yaml:"projectDiscovery"`
 	Swarm            SwarmConfig            `yaml:"swarm"`
 	PullRequests     PullRequestsConfig     `yaml:"pullRequests"`
+	Triage           TriageConfig           `yaml:"triage"`
 }
 
 // defaultEditorCommand is the editor launched in the session's Editor tab when
@@ -145,6 +172,18 @@ func Default() Config {
 			AutoReview:    true,
 			ReviewCommand: `claude "/ose-pr-review {{number}}"`,
 			MaxPerPoll:    2,
+		},
+		Triage: TriageConfig{
+			PollInterval: 5 * time.Minute,
+			AutoTriage:   true,
+			JQL:          `project in (RDODCF, RDINC) AND cf[15370] = "Extended Runtime" AND statusCategory != Done ORDER BY created DESC`,
+			ProjectName:  "vault",
+			Commands: map[string]string{
+				"RDODCF": `claude "/ose-rdodcf-triage {{key}}"`,
+				"RDINC":  `claude "/ose-rdinc-triage {{key}}"`,
+			},
+			MaxPerPoll: 1,
+			MaxAge:     7 * 24 * time.Hour,
 		},
 	}
 }
@@ -248,6 +287,10 @@ func (c Config) Validate() error {
 			return fmt.Errorf("config: pullRequests.maxPerPoll must be >= 1, got %d: %w",
 				c.PullRequests.MaxPerPoll, errs.ErrInvalidInput)
 		}
+	}
+
+	if err := c.Triage.validate(); err != nil {
+		return err
 	}
 
 	seenLabelCodes := make(map[string]struct{}, len(c.Labels))
@@ -355,4 +398,25 @@ func (c Config) ExpandedDiscoveryPaths() ([]string, error) {
 		out = append(out, p)
 	}
 	return out, nil
+}
+
+func (t TriageConfig) validate() error {
+	switch {
+	case t.PollInterval <= 0:
+		return fmt.Errorf("config: triage.pollInterval must be > 0, got %v: %w", t.PollInterval, errs.ErrInvalidInput)
+	case strings.TrimSpace(t.JQL) == "":
+		return fmt.Errorf("config: triage.jql cannot be empty: %w", errs.ErrInvalidInput)
+	case strings.TrimSpace(t.ProjectName) == "":
+		return fmt.Errorf("config: triage.projectName cannot be empty: %w", errs.ErrInvalidInput)
+	case t.MaxPerPoll < 1:
+		return fmt.Errorf("config: triage.maxPerPoll must be >= 1, got %d: %w", t.MaxPerPoll, errs.ErrInvalidInput)
+	case t.MaxAge <= 0:
+		return fmt.Errorf("config: triage.maxAge must be > 0, got %v: %w", t.MaxAge, errs.ErrInvalidInput)
+	}
+	for project, cmd := range t.Launchers() {
+		if !strings.Contains(cmd, domain.TriageCommandKeyToken) {
+			return fmt.Errorf("config: triage.commands.%s must contain %s: %w", project, domain.TriageCommandKeyToken, errs.ErrInvalidInput)
+		}
+	}
+	return nil
 }

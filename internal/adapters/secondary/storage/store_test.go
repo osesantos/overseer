@@ -566,3 +566,61 @@ func TestReviewStore_EmptyStoreHasNoOverride(t *testing.T) {
 		t.Fatalf("Load() = %+v, %v; want empty settings", got, err)
 	}
 }
+
+func TestTriageStore_SettingsPersistAcrossReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	store, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	if err := store.Triage().Dismiss(ctx, "RDODCF-1"); err != nil {
+		t.Fatalf("Dismiss() error = %v", err)
+	}
+	if err := store.Triage().Dismiss(ctx, "RDODCF-1"); err != nil {
+		t.Fatalf("second Dismiss() error = %v", err)
+	}
+	if err := store.Triage().MarkHandled(ctx, "RDINC-2"); err != nil {
+		t.Fatalf("MarkHandled() error = %v", err)
+	}
+	if err := store.Triage().SetAutoTriage(ctx, false); err != nil {
+		t.Fatalf("SetAutoTriage() error = %v", err)
+	}
+
+	reloaded, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() reload error = %v", err)
+	}
+	got, err := reloaded.Triage().Load(ctx)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(got.Dismissed) != 1 || got.Dismissed[0] != "RDODCF-1" {
+		t.Fatalf("Dismissed = %v, want [RDODCF-1]", got.Dismissed)
+	}
+	if len(got.Handled) != 1 || got.Handled[0] != "RDINC-2" {
+		t.Fatalf("Handled = %v, want [RDINC-2]", got.Handled)
+	}
+	if got.AutoTriage == nil || *got.AutoTriage {
+		t.Fatalf("AutoTriage = %v, want false", got.AutoTriage)
+	}
+}
+
+func TestTriageStore_FileWithoutTriageBlock_LoadsEmptySettings(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	if err := os.WriteFile(path, []byte(`{"schemaVersion":1,"projects":[],"sessions":[],"review":{"Dismissed":[{"Repo":"o/r","Number":1}]}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	store, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	got, err := store.Triage().Load(context.Background())
+	if err != nil || got.AutoTriage != nil || len(got.Dismissed) != 0 || len(got.Handled) != 0 {
+		t.Fatalf("Load() = %+v, %v; want empty settings", got, err)
+	}
+	review, _ := store.Reviews().Load(context.Background())
+	if len(review.Dismissed) != 1 {
+		t.Fatalf("review settings lost: %+v", review)
+	}
+}

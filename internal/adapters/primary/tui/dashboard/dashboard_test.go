@@ -30,7 +30,7 @@ func newTestDashboard(t *testing.T) Model {
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), mocks.NewMockTriageSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 	prSvc := service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), slog.Default())
 
@@ -39,6 +39,7 @@ func newTestDashboard(t *testing.T) Model {
 		*sessSvc,
 		*projSvc,
 		*prSvc,
+		*service.NewIssueService(mocks.NewMockIssueTrackerPort(t), mocks.NewMockTriageSettingsRepository(t), slog.Default()),
 		nil, // overseerService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
@@ -50,6 +51,7 @@ func newTestDashboard(t *testing.T) Model {
 		"",  // swarmBoardURL — swarm disabled
 		domain.SwarmMaxAgents,
 		ReviewOptions{Command: `claude "/ose-pr-review {{number}}"`, AutoReview: true, MaxPerPoll: 2},
+		TriageOptions{Commands: map[string]string{"RDODCF": `claude "/ose-rdodcf-triage {{key}}"`}, ProjectName: "vault", AutoTriage: true, MaxPerPoll: 1, MaxAge: 7 * 24 * time.Hour},
 	)
 }
 
@@ -186,7 +188,7 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 	git := mocks.NewMockGitAdapter(t)
 	defaultLauncher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
 
-	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
+	sessSvc := service.NewSessionService(repo, projects, tmux, git, swarmboard.New(paths.NewResolver(""), slog.Default()), mocks.NewMockReviewSettingsRepository(t), mocks.NewMockTriageSettingsRepository(t), paths.NewResolver(""), defaultLauncher, "nvim", slog.Default())
 	projSvc := service.NewProjectService(projects, git, slog.Default())
 
 	return New(
@@ -194,6 +196,7 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		*sessSvc,
 		*projSvc,
 		*service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), slog.Default()),
+		*service.NewIssueService(mocks.NewMockIssueTrackerPort(t), mocks.NewMockTriageSettingsRepository(t), slog.Default()),
 		nil, // overseerService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
@@ -205,6 +208,7 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		"",  // swarmBoardURL — swarm disabled
 		domain.SwarmMaxAgents,
 		ReviewOptions{Command: `claude "/ose-pr-review {{number}}"`, AutoReview: true, MaxPerPoll: 2},
+		TriageOptions{Commands: map[string]string{"RDODCF": `claude "/ose-rdodcf-triage {{key}}"`}, ProjectName: "vault", AutoTriage: true, MaxPerPoll: 1, MaxAge: 7 * 24 * time.Hour},
 	)
 }
 

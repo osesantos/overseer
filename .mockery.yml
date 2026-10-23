@@ -33,6 +33,8 @@ packages:
       GitAdapter:
       PullRequestPort:
       ReviewSettingsRepository:
+      IssueTrackerPort:
+      TriageSettingsRepository:
       AgentStatusDetector:
       AgentStatusDetectorRegistry:
       SwarmBoardRepository:

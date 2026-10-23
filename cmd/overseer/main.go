@@ -21,6 +21,7 @@ import (
 	claudeadapter "github.com/dnlopes/overseer/internal/adapters/secondary/claude"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/git"
 	githubcli "github.com/dnlopes/overseer/internal/adapters/secondary/github"
+	jiraadapter "github.com/dnlopes/overseer/internal/adapters/secondary/jira"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/storage"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/swarmboard"
 	"github.com/dnlopes/overseer/internal/adapters/secondary/tmux"
@@ -36,6 +37,9 @@ const pullRequestRefreshInterval = time.Minute
 
 // pullRequestPollTimeout bounds one inbox poll, retries included.
 const pullRequestPollTimeout = time.Minute
+
+// triagePollTimeout bounds one triage poll: a search plus one view per ticket.
+const triagePollTimeout = time.Minute
 
 // boardShutdownTimeout bounds how long we wait for in-flight agent requests to
 // drain when the TUI exits.
@@ -101,12 +105,18 @@ func main() {
 
 	swarmBoard := swarmboard.New(resolver, log)
 
-	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, swarmBoard, store.Reviews(), resolver, defaultLauncher, cfg.EditorCommand, log)
+	sessionSvc := service.NewSessionService(store.Sessions(), store.Projects(), tmuxAdapter, gitAdapter, swarmBoard, store.Reviews(), store.Triage(), resolver, defaultLauncher, cfg.EditorCommand, log)
 	projectSvc := service.NewProjectService(store.Projects(), gitAdapter, log)
 	prSvc := service.NewPullRequestService(githubAdapter, store.Reviews(), log)
 	autoReview, err := prSvc.ResolveAutoReview(context.Background(), service.ResolveAutoReviewRequest{Default: cfg.PullRequests.AutoReview})
 	if err != nil {
 		log.Error("resolve auto-review toggle", "error", err)
+		os.Exit(1)
+	}
+	issueSvc := service.NewIssueService(jiraadapter.New(log), store.Triage(), log)
+	autoTriage, err := issueSvc.ResolveAutoTriage(context.Background(), service.ResolveAutoTriageRequest{Default: cfg.Triage.AutoTriage})
+	if err != nil {
+		log.Error("resolve auto-triage toggle", "error", err)
 		os.Exit(1)
 	}
 	swarmSvc := service.NewSwarmService(swarmBoard, swarmBoard, store.Sessions(), tmuxAdapter, resolver, cfg.Swarm.MaxMessagesPerSession, log)
@@ -146,7 +156,11 @@ func main() {
 	agentStatusSvc := service.NewAgentStatusService(store.Sessions(), tmuxAdapter, agentStatusRegistry, log)
 
 	prJob := buildPullRequestJob(sessionSvc, projectSvc, prSvc)
-	schedulerJobs := []jobs.Job{prJob, buildPullRequestReviewJob(prSvc, cfg.PullRequests.PollInterval)}
+	schedulerJobs := []jobs.Job{
+		prJob,
+		buildPullRequestReviewJob(prSvc, cfg.PullRequests.PollInterval),
+		buildTriagePollJob(issueSvc, sessionSvc, cfg.Triage.JQL, cfg.Triage.PollInterval),
+	}
 	if cfg.AgentStatus.Enabled {
 		schedulerJobs = append(schedulerJobs, buildAgentStatusJob(agentStatusSvc, cfg.AgentStatus.RefreshInterval))
 	}
@@ -168,10 +182,16 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, dashboard.ReviewOptions{
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, *issueSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, dashboard.ReviewOptions{
 		Command:    cfg.PullRequests.ReviewCommand,
 		AutoReview: autoReview.On,
 		MaxPerPoll: cfg.PullRequests.MaxPerPoll,
+	}, dashboard.TriageOptions{
+		Commands:    cfg.Triage.Launchers(),
+		ProjectName: cfg.Triage.ProjectName,
+		AutoTriage:  autoTriage.On,
+		MaxPerPoll:  cfg.Triage.MaxPerPoll,
+		MaxAge:      cfg.Triage.MaxAge,
 	})
 	if styles.FollowsOmarchy(cfg.Theme) {
 		dash = dash.WithThemeWatch(omarchy.Watch(omarchy.Dir()))
@@ -229,6 +249,35 @@ func buildPullRequestReviewJob(prSvc *service.PullRequestService, interval time.
 				},
 				func(resp service.ListRequestedReviewsResponse, err error) tea.Msg {
 					return shared.PullRequestsLoadedMsg{Inbox: resp.Inbox, Err: err}
+				},
+			)
+		},
+	}
+}
+
+// buildTriagePollJob polls the triage inbox, plus the issues triage sessions
+// still track, so the dashboard can reap finished triages and auto-triage new ones.
+func buildTriagePollJob(issueSvc *service.IssueService, sessionSvc *service.SessionService, jql string, interval time.Duration) jobs.Job {
+	return jobs.Job{
+		ID:       "triage-poll",
+		Interval: interval,
+		Run: func() tea.Cmd {
+			return shared.RequestWithTimeout(triagePollTimeout,
+				func(ctx context.Context) (service.ListTriageInboxResponse, error) {
+					sessions, err := sessionSvc.List(ctx, service.ListSessionsRequest{})
+					if err != nil {
+						return service.ListTriageInboxResponse{}, fmt.Errorf("list sessions: %w", err)
+					}
+					var tracked []string
+					for _, sess := range sessions.Sessions {
+						if sess.IsTriage() {
+							tracked = append(tracked, sess.TriageIssue)
+						}
+					}
+					return issueSvc.ListTriageInbox(ctx, service.ListTriageInboxRequest{Query: jql, TrackedKeys: tracked})
+				},
+				func(resp service.ListTriageInboxResponse, err error) tea.Msg {
+					return shared.IssuesLoadedMsg{Inbox: resp.Inbox, Err: err}
 				},
 			)
 		},

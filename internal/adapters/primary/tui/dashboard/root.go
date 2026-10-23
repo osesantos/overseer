@@ -26,6 +26,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/sessiondetails"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/triage"
 	"github.com/dnlopes/overseer/internal/core/domain"
 	"github.com/dnlopes/overseer/internal/core/service"
 )
@@ -47,6 +48,7 @@ type pageKind int
 const (
 	pageSessions pageKind = iota
 	pagePRs
+	pageTriage
 )
 
 // ReviewOptions is the pullRequests config the dashboard acts on: the launcher
@@ -55,6 +57,17 @@ type ReviewOptions struct {
 	Command    string
 	AutoReview bool
 	MaxPerPoll int
+}
+
+// TriageOptions is the triage config the dashboard acts on: the launcher per
+// Jira project, the project sessions run in, whether polls start triage
+// sessions, how many per poll and how old a ticket may be.
+type TriageOptions struct {
+	Commands    map[string]string
+	ProjectName string
+	AutoTriage  bool
+	MaxPerPoll  int
+	MaxAge      time.Duration
 }
 
 type popupKind int
@@ -95,6 +108,8 @@ type Model struct {
 	page            pageKind
 	prsPage         prs.Model
 	prsHelpBar      shared.HelpBarModel
+	triagePage      triage.Model
+	triageHelpBar   shared.HelpBarModel
 	// pendingFocusID is a session to select once the next SessionsLoadedMsg
 	// lands, used after a review session is created from the PRs page.
 	pendingFocusID uuid.UUID
@@ -104,7 +119,10 @@ type Model struct {
 	cmdlineActive bool
 	// review holds the auto-review settings; AutoReview can be flipped at
 	// runtime from the :prs page.
-	review                  ReviewOptions
+	review ReviewOptions
+	// triage holds the auto-triage settings; AutoTriage can be flipped at
+	// runtime from the :triage page.
+	triage                  TriageOptions
 	cachedProjects          []domain.Project
 	cachedSessions          []domain.Session
 	cachedBranchesByProject map[uuid.UUID]projectBranchCache
@@ -113,6 +131,9 @@ type Model struct {
 	reviewInbox             domain.ReviewInbox
 	inboxLoaded             bool
 	inboxLoadError          string
+	triageInbox             domain.TriageInbox
+	triageLoaded            bool
+	triageLoadError         string
 
 	// discovery
 	discoveryPaths        []string // configured scan roots, already expanded
@@ -136,6 +157,7 @@ type Model struct {
 	sessionsService service.SessionService
 	projectsService service.ProjectService
 	prService       service.PullRequestService
+	issueService    service.IssueService
 	overseerService *service.OverseerService
 	swarmService    *service.SwarmService
 	launchers       []domain.Launcher
@@ -153,6 +175,7 @@ func New(
 	sessionsService service.SessionService,
 	projectsService service.ProjectService,
 	prService service.PullRequestService,
+	issueService service.IssueService,
 	overseerService *service.OverseerService,
 	swarmService *service.SwarmService,
 	scheduler jobs.Model,
@@ -164,6 +187,7 @@ func New(
 	swarmBoardURL string,
 	swarmMaxAgents int,
 	review ReviewOptions,
+	triageOpts TriageOptions,
 ) Model {
 	sessionsModel := sessionui.New(styles, sessionsService, labels)
 	detailsModel := sessiondetails.New(styles)
@@ -172,13 +196,16 @@ func New(
 
 	cmdline := textinput.New()
 	cmdline.Prompt = ":"
-	cmdline.Placeholder = "prs · sessions · help"
+	cmdline.Placeholder = "prs · triage · sessions · help"
 	cmdline.SetStyles(styles.Form.Input)
 
 	m := Model{
 		styles:                  styles,
 		prsPage:                 prs.New(styles),
 		prsHelpBar:              shared.NewHelpBarModel(styles, prsPageKeyBindings),
+		triagePage:              triage.New(styles),
+		triageHelpBar:           shared.NewHelpBarModel(styles, triagePageKeyBindings),
+		triage:                  triageOpts,
 		cmdline:                 cmdline,
 		review:                  review,
 		titlebar:                newTitlebar(styles, "overseer"),
@@ -189,6 +216,7 @@ func New(
 		sessionsService:         sessionsService,
 		projectsService:         projectsService,
 		prService:               prService,
+		issueService:            issueService,
 		overseerService:         overseerService,
 		swarmService:            swarmService,
 		swarmBoardURL:           swarmBoardURL,
@@ -482,6 +510,104 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.showToast("auto-review toggle not saved: " + msg.Err.Error())
 		}
 		return m, nil
+	case shared.IssuesLoadedMsg:
+		if msg.Err != nil {
+			m.triageLoadError = msg.Err.Error()
+			m.syncTriagePage()
+			return m, m.showToast("triage inbox: " + msg.Err.Error())
+		}
+		m.triageInbox = msg.Inbox
+		m.triageLoaded = true
+		m.triageLoadError = ""
+		m.syncTriagePage()
+		return m, tea.Batch(append(m.reapFinishedTriageCmds(msg.Inbox), m.autoTriageCmd(msg.Inbox))...)
+	case shared.AutoTriageCompletedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("auto-triage: " + msg.Err.Error())
+		}
+		if len(msg.Created) == 0 {
+			return m, nil
+		}
+		var cmd tea.Cmd
+		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		return m, cmd
+	case shared.AutoTriageToggleMsg:
+		m.triage.AutoTriage = !m.triage.AutoTriage
+		m.syncTriagePage()
+		on := m.triage.AutoTriage
+		svc := m.issueService
+		persist := func() tea.Msg {
+			_, err := svc.SetAutoTriage(context.Background(), service.SetAutoTriageRequest{On: on})
+			return shared.AutoTriageSavedMsg{Err: err}
+		}
+		if on {
+			return m, tea.Batch(persist, m.showToast("auto-triage on — fresh unassigned tickets get a triage session on the next poll"))
+		}
+		return m, tea.Batch(persist, m.showToast("auto-triage off — stays off across restarts until you turn it back on"))
+	case shared.AutoTriageSavedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("auto-triage toggle not saved: " + msg.Err.Error())
+		}
+		return m, nil
+	case shared.IssueOpenMsg:
+		if sess, ok := m.triageSessionFor(msg.Issue.Key); ok {
+			m.page = pageSessions
+			m.reapplySize()
+			return m, shared.Emit(shared.SessionFocusRequestedMsg{SessionID: sess.ID})
+		}
+		return m, m.startTriageCmd(msg.Issue)
+	case shared.IssueTriageMsg:
+		if sess, ok := m.triageSessionFor(msg.Issue.Key); ok {
+			return m, m.showToast(fmt.Sprintf("%s already has a triage session: %s", msg.Issue.Key, sess.Name))
+		}
+		return m, m.startTriageCmd(msg.Issue)
+	case shared.IssueDismissMsg:
+		svc := m.issueService
+		issueKey := msg.Issue.Key
+		return m, func() tea.Msg {
+			_, err := svc.Dismiss(context.Background(), service.DismissIssueRequest{Key: issueKey})
+			return shared.IssueDismissedMsg{Key: issueKey, Err: err}
+		}
+	case shared.IssueDismissedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("could not dismiss ticket: " + msg.Err.Error())
+		}
+		m.triageInbox.Issues = slices.Clone(m.triageInbox.Issues)
+		for i := range m.triageInbox.Issues {
+			if m.triageInbox.Issues[i].Key == msg.Key {
+				m.triageInbox.Issues[i].Dismissed = true
+			}
+		}
+		m.syncTriagePage()
+		return m, m.showToast(msg.Key + " hidden from the inbox")
+	case shared.IssueOpenInBrowserMsg:
+		svc := m.issueService
+		issueKey := msg.Issue.Key
+		return m, func() tea.Msg {
+			_, err := svc.OpenInBrowser(context.Background(), service.OpenIssueInBrowserRequest{Key: issueKey})
+			return shared.IssueBrowserOpenedMsg{Err: err}
+		}
+	case shared.IssueBrowserOpenedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("could not open the browser: " + msg.Err.Error())
+		}
+		return m, nil
+	case shared.TriageSessionStartedMsg:
+		if msg.Err != nil {
+			return m, m.showToast("could not start triage: " + msg.Err.Error())
+		}
+		m.page = pageSessions
+		m.pendingFocusID = msg.Session.ID
+		m.reapplySize()
+		return m, shared.Emit(shared.SessionCreatedMsg{Session: msg.Session})
+	case shared.TriageSessionReapedMsg:
+		if msg.Err != nil {
+			return m, m.showToast(fmt.Sprintf("could not delete finished triage %s: %v", msg.Session.Name, msg.Err))
+		}
+		return m, tea.Batch(
+			m.showToast(fmt.Sprintf("%s is done — triage session %q deleted", msg.Session.TriageIssue, msg.Session.Name)),
+			shared.Emit(shared.SessionDeletedMsg{}),
+		)
 	case shared.PullRequestOpenInBrowserMsg:
 		svc := m.prService
 		url := msg.PR.URL
@@ -556,6 +682,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.AgentStatusesUpdatedMsg:
 		m.agentStatuses = msg.Statuses
 		m.syncPRsPage()
+		m.syncTriagePage()
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
@@ -563,6 +690,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err == nil {
 			m.cachedSessions = msg.Sessions
 			m.syncPRsPage()
+			m.syncTriagePage()
 		}
 		// Also forward to the left pane so the session tree updates.
 		var cmd tea.Cmd
@@ -702,7 +830,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// On a full-width page q goes back to the sessions screen; only ctrl+c
 		// quits the app from there.
-		if m.page == pagePRs && key.Matches(keyMsg, quitKeyBinding) && !key.Matches(keyMsg, hardQuitKeyBinding) {
+		if m.page != pageSessions && key.Matches(keyMsg, quitKeyBinding) && !key.Matches(keyMsg, hardQuitKeyBinding) {
 			m.page = pageSessions
 			m.reapplySize()
 			return m, nil
@@ -717,9 +845,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// A full-width page takes the keys the sessions dashboard would get.
-		if m.page == pagePRs {
+		switch m.page {
+		case pagePRs:
 			var cmd tea.Cmd
 			m.prsPage, cmd = shared.UpdateModel(m.prsPage, keyMsg)
+			return m, cmd
+		case pageTriage:
+			var cmd tea.Cmd
+			m.triagePage, cmd = shared.UpdateModel(m.triagePage, keyMsg)
 			return m, cmd
 		}
 
@@ -1183,6 +1316,100 @@ func (m *Model) startReviewCmd(pr domain.PullRequest) tea.Cmd {
 	)
 }
 
+// syncTriagePage hands the triage page the slices it renders from.
+func (m *Model) syncTriagePage() {
+	launchers := make(map[string]bool, len(m.triage.Commands))
+	for project := range m.triage.Commands {
+		launchers[project] = true
+	}
+	m.triagePage.SetData(triage.Data{
+		Inbox:         m.triageInbox,
+		Sessions:      m.cachedSessions,
+		Launchers:     launchers,
+		AgentStatuses: m.agentStatuses,
+		AutoTriage:    m.triage.AutoTriage,
+		Loaded:        m.triageLoaded,
+		LoadError:     m.triageLoadError,
+	})
+}
+
+// autoTriageCmd starts triage sessions for one poll's eligible issues; nil while
+// auto-triage is off.
+func (m Model) autoTriageCmd(inbox domain.TriageInbox) tea.Cmd {
+	if !m.triage.AutoTriage {
+		return nil
+	}
+	svc := m.sessionsService
+	req := service.AutoTriageIssuesRequest{
+		Inbox:       inbox,
+		Commands:    m.triage.Commands,
+		ProjectName: m.triage.ProjectName,
+		MaxPerPoll:  m.triage.MaxPerPoll,
+		MaxAge:      m.triage.MaxAge,
+		Now:         time.Now(),
+	}
+	return shared.RequestWithTimeout(autoReviewTimeout,
+		func(ctx context.Context) (service.AutoTriageIssuesResponse, error) {
+			return svc.AutoTriageIssues(ctx, req)
+		},
+		func(resp service.AutoTriageIssuesResponse, err error) tea.Msg {
+			return shared.AutoTriageCompletedMsg{Created: resp.Created, Err: err}
+		},
+	)
+}
+
+func (m Model) triageSessionFor(issueKey string) (domain.Session, bool) {
+	idx := slices.IndexFunc(m.cachedSessions, func(s domain.Session) bool { return s.IsTriage() && s.TriageIssue == issueKey })
+	if idx < 0 {
+		return domain.Session{}, false
+	}
+	return m.cachedSessions[idx], true
+}
+
+// reapFinishedTriageCmds deletes every triage session whose issue is done.
+func (m Model) reapFinishedTriageCmds(inbox domain.TriageInbox) []tea.Cmd {
+	var cmds []tea.Cmd
+	svc := m.sessionsService
+	for _, issue := range inbox.Issues {
+		sess, ok := m.triageSessionFor(issue.Key)
+		if !ok || !domain.TriageFinished(sess, issue) {
+			continue
+		}
+		cmds = append(cmds, func() tea.Msg {
+			_, err := svc.Delete(context.Background(), service.DeleteSessionRequest{ID: sess.ID})
+			return shared.TriageSessionReapedMsg{Session: sess, Err: err}
+		})
+	}
+	return cmds
+}
+
+// startTriageCmd creates a triage session for issue in the triage project, or
+// says why it cannot.
+func (m *Model) startTriageCmd(issue domain.Issue) tea.Cmd {
+	command, ok := m.triage.Commands[issue.Project]
+	if !ok {
+		return m.showToast(fmt.Sprintf("no triage launcher for %s — add triage.commands.%s to the config", issue.Project, issue.Project))
+	}
+	idx := slices.IndexFunc(m.cachedProjects, func(p domain.Project) bool { return p.Name == m.triage.ProjectName })
+	if idx < 0 {
+		return m.showToast(fmt.Sprintf("triage project %q is not registered", m.triage.ProjectName))
+	}
+	svc := m.sessionsService
+	req := service.CreateTriageSessionRequest{
+		Issue:        issue,
+		ProjectID:    m.cachedProjects[idx].ID,
+		AgentCommand: strings.ReplaceAll(command, domain.TriageCommandKeyToken, issue.Key),
+	}
+	return shared.RequestWithTimeout(overseerRequestTimeout,
+		func(ctx context.Context) (service.CreateTriageSessionResponse, error) {
+			return svc.CreateForIssue(ctx, req)
+		},
+		func(resp service.CreateTriageSessionResponse, err error) tea.Msg {
+			return shared.TriageSessionStartedMsg{Session: resp.Session, Err: err}
+		},
+	)
+}
+
 func (m *Model) refreshProjectNameLookup() {
 	names := make(map[uuid.UUID]string, len(m.cachedProjects))
 	for _, p := range m.cachedProjects {
@@ -1209,6 +1436,8 @@ func (m Model) View() tea.View {
 		helpView = m.cmdline.View()
 	case m.page == pagePRs:
 		helpView = m.prsHelpBar.View().Content
+	case m.page == pageTriage:
+		helpView = m.triageHelpBar.View().Content
 	}
 	helpHeight := max(lipgloss.Height(helpView), 1)
 
@@ -1223,9 +1452,12 @@ func (m Model) View() tea.View {
 	}
 
 	var body string
-	if m.page == pagePRs {
+	switch m.page {
+	case pagePRs:
 		body = fit(m.styles, m.prsPage.View().Content, m.width, bodyHeight)
-	} else {
+	case pageTriage:
+		body = fit(m.styles, m.triagePage.View().Content, m.width, bodyHeight)
+	default:
 		left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
 		right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
 		body = fit(m.styles, lipgloss.JoinHorizontal(lipgloss.Top, left, right), m.width, bodyHeight)
@@ -1323,9 +1555,11 @@ func (m *Model) reapplySize() {
 	m.leftPane.SetSize(leftWidth, bodyHeight)
 	m.inspector.SetSize(rightWidth, bodyHeight)
 	m.prsPage.SetSize(m.width, bodyHeight)
+	m.triagePage.SetSize(m.width, bodyHeight)
 	m.cmdline.SetWidth(m.width - 1)
 	m.helpBar.SetSize(m.width, HelpBarHeight)
 	m.prsHelpBar.SetSize(m.width, HelpBarHeight)
+	m.triageHelpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)
 }
 

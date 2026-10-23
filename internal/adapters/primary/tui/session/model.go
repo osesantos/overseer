@@ -23,6 +23,7 @@ import (
 const (
 	unassignedProjectLabel = "(no project)"
 	reviewsDividerLabel    = "PR reviews"
+	triageDividerLabel     = "Triage"
 )
 
 type sessionGroupingMode int
@@ -134,7 +135,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	case shared.SessionCreatedMsg:
 		return m, m.loadSessions()
-	case shared.AutoReviewCompletedMsg:
+	case shared.AutoReviewCompletedMsg, shared.AutoTriageCompletedMsg:
 		return m, m.loadSessions()
 	case shared.SessionFocusRequestedMsg:
 		sess, ok := m.findSession(msg.SessionID.String())
@@ -447,23 +448,33 @@ func (m Model) loadSessions() tea.Cmd {
 	}
 }
 
-// sessionTreeNodes lists the operator's own sessions first and the PR review
-// sessions below a divider, each block grouped the same way.
+// sessionTreeNodes lists the operator's own sessions first, then the PR review
+// sessions and the ticket triage sessions, each below its own divider and each
+// block grouped the same way.
 func (m Model) sessionTreeNodes() []components.TreeNode[sessionNode] {
-	var mine, reviews []domain.Session
+	var mine, reviews, triages []domain.Session
 	for _, sess := range m.sessions {
-		if sess.IsReview() {
+		switch {
+		case sess.IsReview():
 			reviews = append(reviews, sess)
-		} else {
+		case sess.IsTriage():
+			triages = append(triages, sess)
+		default:
 			mine = append(mine, sess)
 		}
 	}
 	nodes := m.blockNodes(mine, "project:")
-	if len(reviews) == 0 {
+	nodes = m.appendBlock(nodes, reviews, "divider:reviews", reviewsDividerLabel, "review-project:")
+	return m.appendBlock(nodes, triages, "divider:triage", triageDividerLabel, "triage-project:")
+}
+
+// appendBlock adds a divider and its block of sessions; an empty block adds nothing.
+func (m Model) appendBlock(nodes []components.TreeNode[sessionNode], sessions []domain.Session, dividerID, label, groupIDPrefix string) []components.TreeNode[sessionNode] {
+	if len(sessions) == 0 {
 		return nodes
 	}
-	divider := components.TreeNode[sessionNode]{ID: "divider:reviews", Item: sessionNode{kind: sessionNodeDivider, label: reviewsDividerLabel}}
-	return append(append(nodes, divider), m.blockNodes(reviews, "review-project:")...)
+	divider := components.TreeNode[sessionNode]{ID: dividerID, Item: sessionNode{kind: sessionNodeDivider, label: label}}
+	return append(append(nodes, divider), m.blockNodes(sessions, groupIDPrefix)...)
 }
 
 // blockNodes builds one block of the list; groupIDPrefix keeps a project's group

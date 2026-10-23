@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os/exec"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -25,6 +26,7 @@ type SessionService struct {
 	git             domain.GitAdapter
 	board           domain.SwarmBoardRepository
 	reviews         domain.ReviewSettingsRepository
+	triage          domain.TriageSettingsRepository
 	pathsResolver   paths.Resolver
 	defaultLauncher domain.Launcher
 	editorCommand   string
@@ -36,8 +38,8 @@ type SessionService struct {
 // editorCommand is the single editor launched by AttachEditor, falling back to
 // "nvim" when empty. board is used only to purge a swarm session's message
 // board during teardown — the swarm use-cases themselves live in SwarmService.
-// reviews records a deleted review session's PR as handled, so the next inbox
-// poll does not open it again.
+// reviews and triage record a deleted review or triage session's PR or issue as
+// handled, so the next inbox poll does not open it again.
 func NewSessionService(
 	repo domain.SessionRepository,
 	projects domain.ProjectRepository,
@@ -45,6 +47,7 @@ func NewSessionService(
 	git domain.GitAdapter,
 	board domain.SwarmBoardRepository,
 	reviews domain.ReviewSettingsRepository,
+	triage domain.TriageSettingsRepository,
 	resolver paths.Resolver,
 	defaultLauncher domain.Launcher,
 	editorCommand string,
@@ -57,6 +60,7 @@ func NewSessionService(
 		git:             git,
 		board:           board,
 		reviews:         reviews,
+		triage:          triage,
 		pathsResolver:   resolver,
 		defaultLauncher: defaultLauncher,
 		editorCommand:   editorCommand,
@@ -332,11 +336,15 @@ func (s *SessionService) CreateForPullRequest(ctx context.Context, req CreateRev
 }
 
 func reviewSessionName(pr domain.PullRequest) string {
-	title := []rune(strings.TrimSpace(pr.Title))
-	if len(title) > reviewTitleMaxRunes {
-		title = append(title[:reviewTitleMaxRunes-1], '…')
+	return fmt.Sprintf("PR #%d %s", pr.Number, truncateTitle(pr.Title))
+}
+
+func truncateTitle(title string) string {
+	runes := []rune(strings.TrimSpace(title))
+	if len(runes) > reviewTitleMaxRunes {
+		runes = append(runes[:reviewTitleMaxRunes-1], '…')
 	}
-	return fmt.Sprintf("PR #%d %s", pr.Number, string(title))
+	return string(runes)
 }
 
 // --- AutoReviewPullRequests ---
@@ -399,6 +407,125 @@ func (s *SessionService) AutoReviewPullRequests(ctx context.Context, req AutoRev
 		created = append(created, resp.Session)
 	}
 	return AutoReviewPullRequestsResponse{Created: created}, nil
+}
+
+// --- CreateForIssue ---
+
+type CreateTriageSessionRequest struct {
+	Issue        domain.Issue
+	ProjectID    uuid.UUID
+	AgentCommand string
+}
+
+type CreateTriageSessionResponse struct {
+	Session domain.Session
+}
+
+// CreateForIssue starts a session that triages one support ticket: a project
+// session (no worktree, a triage changes no code) with the agent pane running
+// req.AgentCommand (already resolved for this issue key).
+func (s *SessionService) CreateForIssue(ctx context.Context, req CreateTriageSessionRequest) (CreateTriageSessionResponse, error) {
+	sess, err := domain.NewSession(strings.TrimSpace(req.Issue.Key+" "+truncateTitle(req.Issue.Summary)), req.ProjectID)
+	if err != nil {
+		return CreateTriageSessionResponse{}, err
+	}
+	if err := sess.AssignAgentCommand(req.AgentCommand); err != nil {
+		return CreateTriageSessionResponse{}, err
+	}
+	if err := sess.AssignAgentType(domain.InferAgentType(req.AgentCommand)); err != nil {
+		return CreateTriageSessionResponse{}, err
+	}
+	if err := sess.AssignTriageTarget(req.Issue.Key); err != nil {
+		return CreateTriageSessionResponse{}, err
+	}
+	project, err := s.projects.Get(ctx, req.ProjectID)
+	if err != nil {
+		return CreateTriageSessionResponse{}, fmt.Errorf("lookup project: %w", err)
+	}
+	nextOrder, err := s.assignNextOrderForProject(ctx, sess)
+	if err != nil {
+		return CreateTriageSessionResponse{}, err
+	}
+	sess.Order = nextOrder
+
+	sess, err = s.spinUpTmuxAndPersist(ctx, sess, project)
+	if err != nil {
+		return CreateTriageSessionResponse{}, err
+	}
+	s.logger.InfoContext(ctx, "triage session created",
+		slog.String("id", sess.ID.String()),
+		slog.String("issue", req.Issue.Key),
+	)
+	return CreateTriageSessionResponse{Session: sess}, nil
+}
+
+// --- AutoTriageIssues ---
+
+type AutoTriageIssuesRequest struct {
+	Inbox domain.TriageInbox
+	// Commands is the launcher per Jira project; domain.TriageCommandKeyToken in
+	// it is replaced by the issue key. A project without one is never triaged.
+	Commands map[string]string
+	// ProjectName is the registered project the triage sessions run in.
+	ProjectName string
+	// MaxPerPoll caps how many sessions one call may start; zero means no cap.
+	MaxPerPoll int
+	MaxAge     time.Duration
+	Now        time.Time
+}
+
+type AutoTriageIssuesResponse struct {
+	Created []domain.Session
+}
+
+// AutoTriageIssues starts a triage session for every eligible issue, oldest
+// first, up to the cap. One issue failing is logged and skipped.
+func (s *SessionService) AutoTriageIssues(ctx context.Context, req AutoTriageIssuesRequest) (AutoTriageIssuesResponse, error) {
+	projects, err := s.projects.List(ctx)
+	if err != nil {
+		return AutoTriageIssuesResponse{}, fmt.Errorf("list projects: %w", err)
+	}
+	idx := slices.IndexFunc(projects, func(p domain.Project) bool { return p.Name == req.ProjectName })
+	if idx < 0 {
+		return AutoTriageIssuesResponse{}, fmt.Errorf("triage project %q: %w", req.ProjectName, domain.ErrProjectNotFound)
+	}
+	sessions, err := s.repo.List(ctx)
+	if err != nil {
+		return AutoTriageIssuesResponse{}, fmt.Errorf("list sessions: %w", err)
+	}
+	taken := make(map[string]bool, len(sessions))
+	for _, sess := range sessions {
+		if sess.IsTriage() {
+			taken[sess.TriageIssue] = true
+		}
+	}
+	launchers := make(map[string]bool, len(req.Commands))
+	for project := range req.Commands {
+		launchers[project] = true
+	}
+
+	eligible := slices.DeleteFunc(slices.Clone(req.Inbox.Issues), func(i domain.Issue) bool {
+		return !domain.EligibleForAutoTriage(i, req.Now, req.MaxAge, launchers, taken)
+	})
+	slices.SortStableFunc(eligible, func(a, b domain.Issue) int { return a.CreatedAt.Compare(b.CreatedAt) })
+
+	var created []domain.Session
+	for _, issue := range eligible {
+		if req.MaxPerPoll > 0 && len(created) == req.MaxPerPoll {
+			break
+		}
+		resp, err := s.CreateForIssue(ctx, CreateTriageSessionRequest{
+			Issue:        issue,
+			ProjectID:    projects[idx].ID,
+			AgentCommand: strings.ReplaceAll(req.Commands[issue.Project], domain.TriageCommandKeyToken, issue.Key),
+		})
+		if err != nil {
+			s.logger.WarnContext(ctx, "auto triage not started", "issue", issue.Key, "error", err)
+			continue
+		}
+		created = append(created, resp.Session)
+	}
+	return AutoTriageIssuesResponse{Created: created}, nil
 }
 
 // --- Rename ---
@@ -1083,6 +1210,12 @@ func (s *SessionService) Delete(ctx context.Context, req DeleteSessionRequest) (
 		if err := s.reviews.MarkHandled(ctx, sess.ReviewPR); err != nil {
 			s.logger.WarnContext(ctx, "could not mark the PR as handled; auto-review may open it again",
 				slog.String("repo", sess.ReviewPR.Repo), slog.Int("pr", sess.ReviewPR.Number), slog.String("error", err.Error()))
+		}
+	}
+	if sess.IsTriage() {
+		if err := s.triage.MarkHandled(ctx, sess.TriageIssue); err != nil {
+			s.logger.WarnContext(ctx, "could not mark the issue as handled; auto-triage may open it again",
+				slog.String("issue", sess.TriageIssue), slog.String("error", err.Error()))
 		}
 	}
 

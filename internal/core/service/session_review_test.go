@@ -209,7 +209,7 @@ func TestSessionService_Delete_ReviewSession_MarksThePRHandled(t *testing.T) {
 	reviews.EXPECT().MarkHandled(mock.Anything, domain.PullRequestRef{Repo: "o/r", Number: 7}).Return(nil).Once()
 
 	launcher, _ := domain.NewLauncher("OpenCode", "opencode", domain.AgentTypeOpenCode)
-	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, reviews, paths.NewResolver(""), launcher, "nvim", testLogger())
+	svc := NewSessionService(repo, projects, tmux, git, noopBoard{}, reviews, noopTriage{}, paths.NewResolver(""), launcher, "nvim", testLogger())
 	if _, err := svc.Delete(context.Background(), DeleteSessionRequest{ID: sess.ID}); err != nil {
 		t.Fatalf("Delete() error = %v", err)
 	}

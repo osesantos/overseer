@@ -26,6 +26,7 @@ type fileSchema struct {
 	Projects      []domain.Project      `json:"projects"`
 	Sessions      []domain.Session      `json:"sessions"`
 	Review        domain.ReviewSettings `json:"review,omitzero"`
+	Triage        domain.TriageSettings `json:"triage,omitzero"`
 }
 
 type Store struct {
@@ -34,6 +35,7 @@ type Store struct {
 	sessions map[uuid.UUID]domain.Session
 	projects map[uuid.UUID]domain.Project
 	review   domain.ReviewSettings
+	triage   domain.TriageSettings
 	logger   *slog.Logger
 }
 
@@ -56,6 +58,7 @@ func New(path string, logger *slog.Logger) (*Store, error) {
 func (s *Store) Sessions() *SessionStore { return &SessionStore{store: s} }
 func (s *Store) Projects() *ProjectStore { return &ProjectStore{store: s} }
 func (s *Store) Reviews() *ReviewStore   { return &ReviewStore{store: s} }
+func (s *Store) Triage() *TriageStore    { return &TriageStore{store: s} }
 
 func (s *Store) load() error {
 	data, err := os.ReadFile(s.path)
@@ -76,6 +79,7 @@ func (s *Store) load() error {
 		s.projects[project.ID] = project
 	}
 	s.review = schema.Review
+	s.triage = schema.Triage
 	for _, sess := range schema.Sessions {
 		if sess.AgentType == "" {
 			inferred := domain.InferAgentType(sess.AgentCommand)
@@ -117,7 +121,7 @@ func (s *Store) persist() error {
 	for _, sess := range s.sessions {
 		sessions = append(sessions, sess)
 	}
-	schema := fileSchema{SchemaVersion: currentSchemaVersion, Projects: projects, Sessions: sessions, Review: s.review}
+	schema := fileSchema{SchemaVersion: currentSchemaVersion, Projects: projects, Sessions: sessions, Review: s.review, Triage: s.triage}
 	data, err := json.MarshalIndent(schema, "", "  ")
 	if err != nil {
 		return fmt.Errorf("storage: marshal: %w", err)
@@ -205,6 +209,45 @@ func (r *ReviewStore) SetAutoReview(_ context.Context, on bool) error {
 	defer r.store.mu.Unlock()
 	r.store.review.AutoReview = &on
 	return r.store.persist()
+}
+
+var _ domain.TriageSettingsRepository = (*TriageStore)(nil)
+
+type TriageStore struct {
+	store *Store
+}
+
+func (t *TriageStore) Load(_ context.Context) (domain.TriageSettings, error) {
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+	return t.store.triage, nil
+}
+
+func (t *TriageStore) Dismiss(_ context.Context, key string) error {
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+	if slices.Contains(t.store.triage.Dismissed, key) {
+		return nil
+	}
+	t.store.triage.Dismissed = append(t.store.triage.Dismissed, key)
+	return t.store.persist()
+}
+
+func (t *TriageStore) MarkHandled(_ context.Context, key string) error {
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+	if slices.Contains(t.store.triage.Handled, key) {
+		return nil
+	}
+	t.store.triage.Handled = append(t.store.triage.Handled, key)
+	return t.store.persist()
+}
+
+func (t *TriageStore) SetAutoTriage(_ context.Context, on bool) error {
+	t.store.mu.Lock()
+	defer t.store.mu.Unlock()
+	t.store.triage.AutoTriage = &on
+	return t.store.persist()
 }
 
 var _ domain.ProjectRepository = (*ProjectStore)(nil)
