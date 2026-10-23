@@ -24,6 +24,13 @@ const (
 	headerHeight = 2
 	columnGap    = 2
 	summaryMin   = 16
+	// Fixed column widths keep the right-hand columns aligned across rows;
+	// longer values are cut with an ellipsis.
+	statusWidth   = 27
+	priorityWidth = 12
+	assigneeWidth = 16
+	ageWidth      = 4
+	sessionWidth  = 18
 )
 
 type nodeKind int
@@ -272,10 +279,10 @@ func renderNode(s *styles.Styles) components.TreeRenderFunc[issueNode] {
 		}
 		lead := prefix + paint(d.Glyph, fmt.Sprintf("%-12s", issue.Key))
 		tail := strings.Join([]string{
-			paint(statusStyle(d, issue.StatusCategory), issue.Status),
-			paint(d.Hint, issue.Priority),
-			paint(d.Value, assignee),
-			paint(d.Hint, age),
+			paint(statusStyle(d, issue.StatusCategory), fitText(issue.Status, statusWidth)),
+			paint(d.Hint, fitText(issue.Priority, priorityWidth)),
+			paint(d.Value, fitText(assignee, assigneeWidth)),
+			paint(d.Hint, fitText(age, ageWidth)),
 			sessionColumn(s, item, paint),
 		}, strings.Repeat(" ", columnGap))
 
@@ -297,11 +304,14 @@ func fitText(text string, width int) string {
 	return string(runes[:width-1]) + "…"
 }
 
+// sessionColumn is padded to sessionWidth cells so the summary, sized from the
+// right edge, lines up whether or not the row carries an agent-status glyph.
 func sessionColumn(s *styles.Styles, item issueNode, paint func(lipgloss.Style, string) string) string {
+	col := paint(s.SessionDetails.Hint, item.session)
 	if item.hasSess {
-		return s.Glyphs.AgentStatus(item.status) + " " + paint(s.SessionDetails.Special, item.session)
+		col = s.Glyphs.AgentStatus(item.status) + " " + paint(s.SessionDetails.Special, item.session)
 	}
-	return paint(s.SessionDetails.Hint, fmt.Sprintf("%-14s", item.session))
+	return col + strings.Repeat(" ", max(sessionWidth-lipgloss.Width(col), 0))
 }
 
 func statusStyle(d styles.SessionDetailsStyles, category domain.IssueStatusCategory) lipgloss.Style {

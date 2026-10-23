@@ -62,6 +62,23 @@ func TestModel_View_GroupsByProjectAndMarksSessionState(t *testing.T) {
 	}
 }
 
+func TestModel_View_RightColumnsAlignAcrossRows(t *testing.T) {
+	m, _ := fixture(t)
+
+	priorityColumn := map[string]int{}
+	for _, line := range strings.Split(ansi.Strip(m.View().Content), "\n") {
+		switch {
+		case strings.Contains(line, "RDINC-94264"):
+			priorityColumn["RDINC-94264"] = cellWidth(line[:strings.Index(line, "High")])
+		case strings.Contains(line, "RDODCF-7699"):
+			priorityColumn["RDODCF-7699"] = cellWidth(line[:strings.Index(line, "Normal")])
+		}
+	}
+	if len(priorityColumn) != 2 || priorityColumn["RDINC-94264"] != priorityColumn["RDODCF-7699"] {
+		t.Fatalf("priority column = %v, want the same column on both rows", priorityColumn)
+	}
+}
+
 func TestModel_HiddenToggle_ShowsDismissedTickets(t *testing.T) {
 	m, _ := fixture(t)
 
@@ -137,3 +154,5 @@ func TestModel_GroupRow_EnterDoesNothing(t *testing.T) {
 		}
 	}
 }
+
+func cellWidth(s string) int { return ansi.StringWidth(s) }
