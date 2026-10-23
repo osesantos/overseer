@@ -1,6 +1,7 @@
 package prs
 
 import (
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -46,7 +47,7 @@ func TestModel_View_GroupsByRepoAndMarksSessionState(t *testing.T) {
 
 	view := ansi.Strip(m.View().Content)
 
-	for _, want := range []string{"waiting on me", "2 open", "(1 bot PRs hidden, b shows them)", "OutSystems/signer (1)", "OutSystems/elsewhere (1)", "#92", "review session", "#4", "no local repo"} {
+	for _, want := range []string{"waiting on me", "2 open", "(1 bot or dismissed hidden, h shows them)", "OutSystems/signer (1)", "OutSystems/elsewhere (1)", "#92", "review session", "#4", "no local repo"} {
 		if !strings.Contains(view, want) {
 			t.Errorf("view is missing %q:\n%s", want, view)
 		}
@@ -213,21 +214,28 @@ func TestModel_A_EmitsAutoReviewToggle_AndHeaderShowsTheState(t *testing.T) {
 	}
 }
 
-func TestModel_B_TogglesBotPRs(t *testing.T) {
+func TestModel_H_TogglesBotAndDismissedPRs(t *testing.T) {
 	m, _ := fixture(t)
+	data := m.data
+	data.Inbox.PullRequests = append(slices.Clone(data.Inbox.PullRequests),
+		domain.PullRequest{Repo: "OutSystems/signer", Number: 94, Title: "fix: old", Author: "ana", State: domain.PRStateOpen, Dismissed: true})
+	m.SetData(data)
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "#94") {
+		t.Fatalf("dismissed PR #94 is listed before h:\n%s", view)
+	}
 
-	updated, _ := m.Update(letter('b'))
+	updated, _ := m.Update(letter('h'))
 	m = updated.(Model)
 	view := ansi.Strip(m.View().Content)
-	for _, want := range []string{"3 open", "(1 from bots, b hides them)", "#93", "bot"} {
+	for _, want := range []string{"4 open", "(2 bot or dismissed, h hides them)", "#93", "bot", "#94", "dismissed"} {
 		if !strings.Contains(view, want) {
-			t.Errorf("after b the view is missing %q:\n%s", want, view)
+			t.Errorf("after h the view is missing %q:\n%s", want, view)
 		}
 	}
 
-	updated, _ = m.Update(letter('b'))
+	updated, _ = m.Update(letter('h'))
 	m = updated.(Model)
-	if view := ansi.Strip(m.View().Content); strings.Contains(view, "#93") {
-		t.Fatalf("second b did not hide the bot PR again:\n%s", view)
+	if view := ansi.Strip(m.View().Content); strings.Contains(view, "#93") || strings.Contains(view, "#94") {
+		t.Fatalf("second h did not hide the bot and dismissed PRs again:\n%s", view)
 	}
 }

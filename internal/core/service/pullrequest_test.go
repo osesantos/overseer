@@ -120,11 +120,14 @@ func TestPullRequestService_ListRequestedReviews_AppliesDismissedAndHandled(t *t
 		t.Fatalf("ListRequestedReviews() error = %v", err)
 	}
 	prs := resp.Inbox.PullRequests
-	if len(prs) != 2 || prs[0].Number != 2 || prs[1].Number != 3 {
-		t.Fatalf("PullRequests = %+v, want #2 and #3", prs)
+	if len(prs) != 3 {
+		t.Fatalf("PullRequests = %+v, want all three kept", prs)
 	}
-	if !prs[0].ReviewedByViewer || prs[1].ReviewedByViewer {
-		t.Fatalf("ReviewedByViewer: #2=%v #3=%v, want the handled one marked", prs[0].ReviewedByViewer, prs[1].ReviewedByViewer)
+	if !prs[0].Dismissed || prs[1].Dismissed || prs[2].Dismissed {
+		t.Fatalf("Dismissed: #1=%v #2=%v #3=%v, want only #1 marked", prs[0].Dismissed, prs[1].Dismissed, prs[2].Dismissed)
+	}
+	if prs[0].ReviewedByViewer || !prs[1].ReviewedByViewer || prs[2].ReviewedByViewer {
+		t.Fatalf("ReviewedByViewer: #1=%v #2=%v #3=%v, want only the handled #2 marked", prs[0].ReviewedByViewer, prs[1].ReviewedByViewer, prs[2].ReviewedByViewer)
 	}
 }
 

@@ -46,9 +46,9 @@ type ListRequestedReviewsResponse struct {
 	Inbox domain.ReviewInbox
 }
 
-// ListRequestedReviews is the inbox minus the PRs the operator dismissed, with
-// the PRs whose review session was closed by hand marked as reviewed, so neither
-// the page nor auto-review ever acts on them again.
+// ListRequestedReviews is the inbox with the PRs the operator dismissed marked
+// as such, and the PRs whose review session was closed by hand marked as
+// reviewed, so auto-review never acts on them again.
 func (s *PullRequestService) ListRequestedReviews(ctx context.Context, _ ListRequestedReviewsRequest) (ListRequestedReviewsResponse, error) {
 	inbox, err := s.port.ListRequestedReviews(ctx)
 	if err != nil {
@@ -58,11 +58,10 @@ func (s *PullRequestService) ListRequestedReviews(ctx context.Context, _ ListReq
 	if err != nil {
 		return ListRequestedReviewsResponse{}, fmt.Errorf("load review settings: %w", err)
 	}
-	inbox.PullRequests = slices.DeleteFunc(inbox.PullRequests, func(pr domain.PullRequest) bool {
-		return slices.Contains(settings.Dismissed, pr.Ref())
-	})
 	for i := range inbox.PullRequests {
-		if slices.Contains(settings.Handled, inbox.PullRequests[i].Ref()) {
+		ref := inbox.PullRequests[i].Ref()
+		inbox.PullRequests[i].Dismissed = slices.Contains(settings.Dismissed, ref)
+		if slices.Contains(settings.Handled, ref) {
 			inbox.PullRequests[i].ReviewedByViewer = true
 		}
 	}

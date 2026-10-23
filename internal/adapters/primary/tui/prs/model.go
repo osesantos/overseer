@@ -59,11 +59,11 @@ type Model struct {
 	styles *styles.Styles
 	tree   components.TreeModel[prNode]
 	data   Data
-	// showBots lists bot-authored PRs too; off by default because dependency
-	// bumps are noise next to reviews a person is waiting for.
-	showBots bool
-	width    int
-	height   int
+	// showHidden lists bot-authored and dismissed PRs too; off by default because
+	// they are noise next to reviews a person is waiting for.
+	showHidden bool
+	width      int
+	height     int
 }
 
 func New(s *styles.Styles) Model {
@@ -111,8 +111,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(keyMsg, AutoReviewKeyBinding):
 		return m, shared.Emit(shared.AutoReviewToggleMsg{})
-	case key.Matches(keyMsg, BotsKeyBinding):
-		m.showBots = !m.showBots
+	case key.Matches(keyMsg, HiddenKeyBinding):
+		m.showHidden = !m.showHidden
 		m.tree = m.tree.SetNodes(m.nodes()).ExpandAll()
 		return m, nil
 	case key.Matches(keyMsg, TopKeyBinding):
@@ -138,14 +138,14 @@ func (m Model) selectedPR() (domain.PullRequest, bool) {
 
 func (m Model) View() tea.View {
 	s := m.styles.SessionDetails
-	listed, bots := m.listed()
+	listed, hidden := m.listed()
 	title := s.SectionTitle.Render(fmt.Sprintf("Pull requests waiting on %s", m.data.Inbox.Viewer))
 	count := fmt.Sprintf("%d open", len(listed))
 	switch {
-	case bots > 0 && m.showBots:
-		count += fmt.Sprintf("  (%d from bots, b hides them)", bots)
-	case bots > 0:
-		count += fmt.Sprintf("  (%d bot PRs hidden, b shows them)", bots)
+	case hidden > 0 && m.showHidden:
+		count += fmt.Sprintf("  (%d bot or dismissed, h hides them)", hidden)
+	case hidden > 0:
+		count += fmt.Sprintf("  (%d bot or dismissed hidden, h shows them)", hidden)
 	}
 	autoReview := s.Warn.Render("auto-review off")
 	if m.data.AutoReview {
@@ -163,18 +163,19 @@ func (m Model) View() tea.View {
 	return tea.NewView(lipgloss.JoinVertical(lipgloss.Left, header, "", m.tree.View()))
 }
 
-// listed returns the PRs the page shows and how many of the inbox are from bots.
-func (m Model) listed() (shown []domain.PullRequest, bots int) {
+// listed returns the PRs the page shows and how many of the inbox are bot or
+// dismissed PRs, the ones h toggles.
+func (m Model) listed() (shown []domain.PullRequest, hidden int) {
 	for _, pr := range m.data.Inbox.PullRequests {
-		if pr.AuthorIsBot {
-			bots++
-			if !m.showBots {
+		if pr.AuthorIsBot || pr.Dismissed {
+			hidden++
+			if !m.showHidden {
 				continue
 			}
 		}
 		shown = append(shown, pr)
 	}
-	return shown, bots
+	return shown, hidden
 }
 
 func (m Model) nodes() []components.TreeNode[prNode] {
@@ -225,6 +226,8 @@ func (m Model) prNode(pr domain.PullRequest, sessionByPR map[domain.PullRequestR
 		if st, found := m.data.AgentStatuses[sess.ID]; found {
 			node.status = st.Kind
 		}
+	case pr.Dismissed:
+		node.session = "dismissed"
 	case !m.data.ProjectNames[pr.RepoName()]:
 		node.session = "no local repo"
 	case pr.ReviewedByViewer:

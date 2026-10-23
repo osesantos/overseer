@@ -106,12 +106,14 @@ type PullRequest struct {
 	// ReviewedByViewer: a review by the viewer exists on GitHub, or the viewer
 	// closed a review session for this PR by hand. Either way, no auto-review.
 	ReviewedByViewer bool
-	Stats            PRStats
-	Checks           PRChecks
-	Comments         PRComments
-	CreatedAt        time.Time
-	UpdatedAt        time.Time
-	FetchedAt        time.Time
+	// Dismissed: the operator hid this PR from the inbox; it is never auto-reviewed.
+	Dismissed bool
+	Stats     PRStats
+	Checks    PRChecks
+	Comments  PRComments
+	CreatedAt time.Time
+	UpdatedAt time.Time
+	FetchedAt time.Time
 }
 
 // PullRequestRef identifies a PR across repositories; it is what a review session
@@ -151,12 +153,13 @@ type ReviewInbox struct {
 
 // EligibleForAutoReview reports whether a review session should be started for
 // pr: an open, non-draft PR by another human, in a registered project, with no
-// review session yet and no review by the viewer.
+// review session yet, no review by the viewer and not dismissed.
 func EligibleForAutoReview(pr PullRequest, viewer string, projectNames map[string]bool, taken map[PullRequestRef]bool) bool {
 	return pr.State == PRStateOpen &&
 		!pr.AuthorIsBot &&
 		pr.Author != viewer &&
 		!pr.ReviewedByViewer &&
+		!pr.Dismissed &&
 		projectNames[pr.RepoName()] &&
 		!taken[pr.Ref()]
 }

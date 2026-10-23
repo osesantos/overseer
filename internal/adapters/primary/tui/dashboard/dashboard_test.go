@@ -422,7 +422,7 @@ func TestDashboard_ReviewSessionReaped_ToastsAndReloads(t *testing.T) {
 	}
 }
 
-func TestDashboard_PullRequestDismissed_RemovesItFromTheInbox(t *testing.T) {
+func TestDashboard_PullRequestDismissed_MarksItInTheInbox(t *testing.T) {
 	m := sizedDashboard(t)
 	updated, _ := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
 		{Repo: "o/r", Number: 5, Title: "keep", Author: "ana", State: domain.PRStateOpen},
@@ -433,8 +433,9 @@ func TestDashboard_PullRequestDismissed_RemovesItFromTheInbox(t *testing.T) {
 	updated, cmd := m.Update(shared.PullRequestDismissedMsg{Ref: domain.PullRequestRef{Repo: "o/r", Number: 6}})
 	m = updated.(Model)
 
-	if len(m.reviewInbox.PullRequests) != 1 || m.reviewInbox.PullRequests[0].Number != 5 {
-		t.Fatalf("inbox = %+v, want only #5", m.reviewInbox.PullRequests)
+	prs := m.reviewInbox.PullRequests
+	if len(prs) != 2 || prs[0].Dismissed || !prs[1].Dismissed {
+		t.Fatalf("inbox = %+v, want #6 marked dismissed and #5 untouched", prs)
 	}
 	if cmd == nil || !strings.Contains(m.toast, "#6") {
 		t.Fatalf("toast = %q, want a hidden notice for #6", m.toast)

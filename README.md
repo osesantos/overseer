@@ -318,7 +318,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 
 #### Pull Request Inbox (`:prs`)
 
-Press `:` anywhere, type `prs`, Enter. Bot-authored PRs are hidden by default (the header says how many; `b` shows them).
+Press `:` anywhere, type `prs`, Enter. Bot-authored and dismissed PRs are hidden by default (the header says how many; `h` shows them).
 
 | Key | Action |
 |-----|--------|
@@ -326,11 +326,11 @@ Press `:` anywhere, type `prs`, Enter. Bot-authored PRs are hidden by default (t
 | `g` / `G` | Jump to the top / bottom |
 | `Enter` | Jump to the PR's review session, starting one if it has none |
 | `r` | Start a review session by hand (ignores the auto-review eligibility rules) |
-| `d` | Dismiss the PR: hidden from the inbox for good and never auto-reviewed |
+| `d` | Dismiss the PR: hidden from the inbox (until `h`) and never auto-reviewed |
 | | Deleting a review session from the sessions list marks its PR as handled: still listed, never auto-reviewed again |
 | `o` | Open the PR in the browser |
 | `a` | Toggle auto-review on/off; the choice is saved in `data.json` and survives restarts (config only sets the first value) |
-| `b` | Show / hide bot-authored PRs (dependabot and friends) |
+| `h` | Show / hide bot-authored and dismissed PRs |
 | `Esc` / `q` | Back to the sessions page (also `:sessions`); `Ctrl+C` quits |
 
 #### Session Creation Form

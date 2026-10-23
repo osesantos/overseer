@@ -521,8 +521,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.Err != nil {
 			return m, m.showToast("could not dismiss PR: " + msg.Err.Error())
 		}
-		m.reviewInbox.PullRequests = slices.DeleteFunc(slices.Clone(m.reviewInbox.PullRequests),
-			func(pr domain.PullRequest) bool { return pr.Ref() == msg.Ref })
+		m.reviewInbox.PullRequests = slices.Clone(m.reviewInbox.PullRequests)
+		for i := range m.reviewInbox.PullRequests {
+			if m.reviewInbox.PullRequests[i].Ref() == msg.Ref {
+				m.reviewInbox.PullRequests[i].Dismissed = true
+			}
+		}
 		m.syncPRsPage()
 		return m, m.showToast(fmt.Sprintf("PR #%d hidden from the inbox", msg.Ref.Number))
 	case shared.ReviewSessionStartedMsg:

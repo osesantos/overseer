@@ -210,6 +210,7 @@ func TestEligibleForAutoReview(t *testing.T) {
 		{name: "draft", pr: with(base, func(p *PullRequest) { p.State = PRStateDraft }), projects: projects, taken: none, want: false},
 		{name: "merged", pr: with(base, func(p *PullRequest) { p.State = PRStateMerged }), projects: projects, taken: none, want: false},
 		{name: "already reviewed by the viewer", pr: with(base, func(p *PullRequest) { p.ReviewedByViewer = true }), projects: projects, taken: none, want: false},
+		{name: "dismissed by the operator", pr: with(base, func(p *PullRequest) { p.Dismissed = true }), projects: projects, taken: none, want: false},
 		{name: "repo not registered", pr: base, projects: map[string]bool{}, taken: none, want: false},
 		{name: "session already exists", pr: base, projects: projects, taken: map[PullRequestRef]bool{{Repo: "org/repo", Number: 7}: true}, want: false},
 	}
