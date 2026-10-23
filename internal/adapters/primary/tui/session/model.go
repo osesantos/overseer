@@ -20,7 +20,10 @@ import (
 	"github.com/dnlopes/overseer/internal/core/service"
 )
 
-const unassignedProjectLabel = "(no project)"
+const (
+	unassignedProjectLabel = "(no project)"
+	reviewsDividerLabel    = "PR reviews"
+)
 
 type sessionGroupingMode int
 
@@ -34,6 +37,7 @@ const (
 const (
 	sessionNodeGroup sessionNodeKind = iota
 	sessionNodeSession
+	sessionNodeDivider
 )
 
 type sessionNode struct {
@@ -443,11 +447,32 @@ func (m Model) loadSessions() tea.Cmd {
 	}
 }
 
+// sessionTreeNodes lists the operator's own sessions first and the PR review
+// sessions below a divider, each block grouped the same way.
 func (m Model) sessionTreeNodes() []components.TreeNode[sessionNode] {
-	if m.groupingMode == sessionGroupingNone {
-		return rawSessionNodes(m.sessions, m.styles.Glyphs, m.agentStatuses)
+	var mine, reviews []domain.Session
+	for _, sess := range m.sessions {
+		if sess.IsReview() {
+			reviews = append(reviews, sess)
+		} else {
+			mine = append(mine, sess)
+		}
 	}
-	return projectSessionNodes(m.sessions, m.projectNames, m.styles.Glyphs, m.agentStatuses)
+	nodes := m.blockNodes(mine, "project:")
+	if len(reviews) == 0 {
+		return nodes
+	}
+	divider := components.TreeNode[sessionNode]{ID: "divider:reviews", Item: sessionNode{kind: sessionNodeDivider, label: reviewsDividerLabel}}
+	return append(append(nodes, divider), m.blockNodes(reviews, "review-project:")...)
+}
+
+// blockNodes builds one block of the list; groupIDPrefix keeps a project's group
+// ID unique when the project has sessions in both blocks.
+func (m Model) blockNodes(sessions []domain.Session, groupIDPrefix string) []components.TreeNode[sessionNode] {
+	if m.groupingMode == sessionGroupingNone {
+		return rawSessionNodes(sessions, m.styles.Glyphs, m.agentStatuses)
+	}
+	return projectSessionNodes(sessions, groupIDPrefix, m.projectNames, m.styles.Glyphs, m.agentStatuses)
 }
 
 func rawSessionNodes(sessions []domain.Session, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus) []components.TreeNode[sessionNode] {
@@ -458,7 +483,7 @@ func rawSessionNodes(sessions []domain.Session, glyphs styles.Glyphs, statuses m
 	return nodes
 }
 
-func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]string, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus) []components.TreeNode[sessionNode] {
+func projectSessionNodes(sessions []domain.Session, groupIDPrefix string, projectNames map[uuid.UUID]string, glyphs styles.Glyphs, statuses map[uuid.UUID]domain.AgentStatus) []components.TreeNode[sessionNode] {
 	grouped := make(map[uuid.UUID][]domain.Session)
 	ids := make([]uuid.UUID, 0)
 	for _, sess := range sessions {
@@ -480,7 +505,7 @@ func projectSessionNodes(sessions []domain.Session, projectNames map[uuid.UUID]s
 		}
 		label := projectLabel(id, projectNames)
 		nodes[i] = components.TreeNode[sessionNode]{
-			ID:       "project:" + id.String(),
+			ID:       groupIDPrefix + id.String(),
 			Item:     sessionNode{kind: sessionNodeGroup, projectID: id, label: label},
 			Children: children,
 		}
@@ -527,6 +552,14 @@ const labelBadgeGap = 1
 
 func renderSessionNode(s *styles.Styles, labels []domain.Label) components.TreeRenderFunc[sessionNode] {
 	return func(item sessionNode, _, depth, width int, hasKids, expanded, focused bool) string {
+		if item.kind == sessionNodeDivider {
+			title := "── " + item.label + " "
+			style := s.Divider.Horizontal
+			if focused {
+				style = s.Group.HeaderSelected
+			}
+			return style.Render(title) + components.HorizontalDivider(s, width-lipgloss.Width(title))
+		}
 		prefix := components.TreePrefix(depth, hasKids, expanded)
 		if item.kind == sessionNodeGroup {
 			style := s.Group.Header

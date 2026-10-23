@@ -51,6 +51,38 @@ func TestModel_SessionsLoadedRendersProjectTree(t *testing.T) {
 	}
 }
 
+func TestModel_ReviewSessionsRenderBelowADivider(t *testing.T) {
+	projectID := uuid.New()
+	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
+	model.SetProjectNames(map[uuid.UUID]string{projectID: "signer"})
+	model.SetSize(80, 20)
+	review := testutil.MakeSession("PR #92 feat: thing", projectID)
+	_ = review.AssignReviewTarget(domain.PullRequestRef{Repo: "o/signer", Number: 92})
+	mine := testutil.MakeSession("alpha", projectID)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{review, mine}})
+	view := ansi.Strip(updated.(Model).View().Content)
+
+	alpha, divider, pr := strings.Index(view, "alpha"), strings.Index(view, "── PR reviews"), strings.Index(view, "PR #92")
+	if alpha < 0 || divider < 0 || pr < 0 || !(alpha < divider && divider < pr) {
+		t.Fatalf("want alpha, then the divider, then the review session:\n%s", view)
+	}
+	if strings.Count(view, "signer") != 2 {
+		t.Fatalf("want the signer group once in each block:\n%s", view)
+	}
+}
+
+func TestModel_NoDividerWithoutReviewSessions(t *testing.T) {
+	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
+	model.SetSize(80, 20)
+
+	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{testutil.MakeSession("alpha", uuid.New())}})
+
+	if view := ansi.Strip(updated.(Model).View().Content); strings.Contains(view, "PR reviews") {
+		t.Fatalf("divider rendered with no review sessions:\n%s", view)
+	}
+}
+
 func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
 	overseerID := uuid.New()
 	otherID := uuid.New()
