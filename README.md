@@ -235,6 +235,18 @@ pullRequests:
   maxPerPoll: 2             # at most this many review sessions per poll
   # review sessions are deleted automatically once their PR is merged or closed
 
+triage:
+  pollInterval: 5m          # how often the support-ticket inbox is polled (needs `acli` logged in)
+  autoTriage: true          # start a triage session for fresh, unassigned tickets
+  jql: 'project in (RDODCF, RDINC) AND cf[15370] = "Extended Runtime" AND statusCategory != Done ORDER BY created DESC'
+  projectName: vault        # registered project the triage sessions run in (no worktree)
+  commands:                 # launcher per Jira project; {{key}} becomes the issue key; "" turns a project off
+    RDODCF: 'claude "/ose-rdodcf-triage {{key}}"'
+    RDINC: 'claude "/ose-rdinc-triage {{key}}"'
+  maxPerPoll: 1             # at most this many triage sessions per poll
+  maxAge: 168h              # older tickets are listed but never auto-triaged
+  # triage sessions are deleted automatically once their ticket is done
+
 labels:
   - code: "urgent"
     color: "#ff6b6b"
@@ -332,6 +344,23 @@ Press `:` anywhere, type `prs`, Enter. Bot-authored and dismissed PRs are hidden
 | `o` | Open the PR in the browser |
 | `a` | Toggle auto-review on/off; the choice is saved in `data.json` and survives restarts (config only sets the first value) |
 | `h` | Show / hide bot-authored and dismissed PRs |
+| `Esc` / `q` | Back to the sessions page (also `:sessions`); `Ctrl+C` quits |
+
+#### Support Ticket Inbox (`:triage`)
+
+Press `:`, type `triage`, Enter. Lists the open tickets from `triage.jql`, grouped by Jira project. Dismissed tickets are hidden by default (`h` shows them). A triage session investigates, then waits at its own confirm prompts: nothing is posted to Jira until you attach and say yes.
+
+| Key | Action |
+|-----|--------|
+| `j` / `k` | Move down / up |
+| `g` / `G` | Jump to the top / bottom |
+| `Enter` | Jump to the ticket's triage session, starting one if it has none |
+| `r` | Start a triage session by hand (ignores the auto-triage eligibility rules) |
+| `d` | Dismiss the ticket: hidden from the inbox (until `h`) and never auto-triaged |
+| | Deleting a triage session from the sessions list marks its ticket as handled: still listed, never auto-triaged again |
+| `o` | Open the ticket in the browser |
+| `a` | Toggle auto-triage on/off; saved in `data.json` and survives restarts |
+| `h` | Show / hide dismissed tickets |
 | `Esc` / `q` | Back to the sessions page (also `:sessions`); `Ctrl+C` quits |
 
 #### Session Creation Form

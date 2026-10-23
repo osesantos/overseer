@@ -21,6 +21,7 @@ Key capabilities:
 - Agent-status detection (idle / running / waiting / dead) per session
 - Overseer chat panel — an LLM meta-agent (Claude Code) that can control sessions
 - Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`, `/prs`, `/sessions` — also runnable from the k9s-style `:` prompt
+- **Triage inbox** — `:triage` lists the team's open RDODCF / RDINC tickets (via `acli`); the `triage-poll` job starts a triage session (project session in the `vault` project + the per-project `triage.commands` launcher) for fresh unassigned tickets
 - **Review inbox** — `:prs` lists every open PR with a review requested from the operator; the `pr-review-poll` job starts a review session (detached worktree at the PR head + the configured `pullRequests.reviewCommand`) for eligible PRs
 - Background evaluation loops (`/loop <session> <criteria>`) — runs `claude -p` in the session's working directory; 5s interval between iterations; up to 40 iterations
 - **Swarm sessions** — 2–8 agents on one goal, coordinating through a shared message board served over loopback HTTP; Overseer wakes idle agents via tmux because agent CLIs do not poll
@@ -101,11 +102,12 @@ overseer/
 │   │   │       ├── components/     # Pure rendering functions (TUI-01)
 │   │   │       ├── dashboard/      # Root model — wires all panes; root.go, commands.go, bindings.go
 │   │   │       ├── inspector/      # Right pane: preview tabs with polling + the swarm Agents Board
-│   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, PR inbox, branch cache)
+│   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, PR inbox, triage inbox, branch cache)
 │   │   │       ├── leftpane/       # Left pane: session list + session details
 │   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go, bindings.go)
 │   │   │       ├── prs/            # Review inbox page (`:prs`): PRs grouped by repo + review-session column
 │   │   │       ├── session/        # Session list model + create/delete/rename forms
+│   │   │       ├── triage/         # Support ticket inbox page (`:triage`): tickets grouped by Jira project + triage-session column
 │   │   │       ├── sessiondetails/ # Session details card (repo, PR, loop section)
 │   │   │       ├── shared/         # Messages, helpers, emit utilities
 │   │   │       └── styles/         # Styles, themes, glyphs
@@ -114,6 +116,7 @@ overseer/
 │   │       ├── claude/             # OverseerAgentPort impl — invokes `claude -p`
 │   │       ├── git/                # GitAdapter impl — worktree management
 │   │       ├── github/             # GitHub CLI adapter — PR status
+│   │       ├── jira/               # Atlassian CLI (acli) adapter — triage inbox
 │   │       ├── storage/            # JSON persistence (atomic writes, schema versioning)
 │   │       ├── swarmboard/         # JSONL swarm board + bootstrap descriptor writer
 │   │       └── tmux/               # TmuxAdapter impl — session create/kill/capture/send-keys
@@ -134,7 +137,7 @@ overseer/
 
 ### `internal/core/domain`
 Pure Go structs and interfaces. No I/O. Defines:
-- `Session`, `Project`, `Label`, `SwarmMessage` aggregates
+- `Session`, `Project`, `Label`, `SwarmMessage`, `Issue` aggregates
 - Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `OverseerAgentPort`, `SwarmBoardRepository`, `SwarmDescriptorWriter`
 - Overseer types: `LoopState`, `LoopStatus`, `OverseerMessage`, `OverseerAction`, `OverseerSessionContext`
 - Swarm types: `SwarmMessage`, `SwarmRole`, `SwarmDescriptor`; bounds `SwarmMinAgents` / `SwarmMaxAgents`
@@ -151,6 +154,7 @@ Use-case layer. Each file owns one aggregate:
 - `project.go` — `ProjectService`: Register, Rename, List
 - `overseer.go` — `OverseerService`: Chat, EvaluateLoop
 - `swarm.go` — `SwarmService`: Post, ListMessages, FlushNudges, Bootstrap
+- `issue.go` — `IssueService`: ListTriageInbox, ResolveAutoTriage, SetAutoTriage, Dismiss, OpenInBrowser. `SessionService.CreateForIssue` / `AutoTriageIssues` start the triage sessions
 
 #### Why `SwarmService` splits posting from nudging
 
@@ -212,7 +216,7 @@ Routing order in `Update`, which matters:
 3. `ctrl+o` — toggles the chat panel.
 4. **Chat branch** — when the chat is visible, only `hardQuitKeyBinding` quits; arrows pass through to the session list, `tab` to the inspector, everything else to the chat input.
 5. `quitKeyBinding` — plain `q` or `ctrl+c`.
-5b. On a full-width page `q` returns to the sessions page (`ctrl+c` still quits). `:` opens the command line; then, when a full-width page is open (`m.page == pagePRs`), every remaining key goes to that page instead of the sessions dashboard.
+5b. On a full-width page `q` returns to the sessions page (`ctrl+c` still quits). `:` opens the command line; then, when a full-width page is open (`pagePRs` or `pageTriage`), every remaining key goes to that page instead of the sessions dashboard.
 6. `handleKey`, then fallthrough to the left pane.
 
 `quitKeyBinding` is `q`/`ctrl+c`; `hardQuitKeyBinding` is `ctrl+c` only. The split exists because `q` is a character the user means to type when an input owns the keyboard — matching the combined binding too early is what used to quit the app mid-sentence in the chat panel.
@@ -258,6 +262,17 @@ The review inbox page, opened with `:prs` and closed with Esc or `:sessions`. It
 Review sessions are ordinary sessions with `ReviewPR` set. The session list shows them below a `── PR reviews` divider row (`sessionNodeDivider`), grouped by project like the operator's own sessions above it; their group IDs carry a `review-project:` prefix so a project with sessions in both blocks stays unique in the tree. They are deleted automatically, worktree included, when the per-minute `pr-status-refresh` job reports their PR as merged or closed (`domain.ReviewFinished`, applied in the dashboard's `PRStatusUpdatedMsg` handler). The inbox poll is deliberately not the signal: a PR also leaves the inbox when the review request is withdrawn. Their worktree is a **detached** checkout of `pull/<n>/head` (`GitAdapter.CreateDetachedWorktree`), so there is no branch to collide with; `fanOutPRFetches` asks `gh pr view` by number for them because `ReviewBranch` sees `HEAD`.
 
 `github.Adapter.ListRequestedReviews` resolves the viewer login first because GraphQL search does not expand `@me`, and `review-requested:<login>` already includes team requests. GitHub search intermittently answers an empty page for a query that has results (seen during a degraded-performance incident), so an empty page is retried `searchRetries` times before it is believed.
+
+### `internal/adapters/primary/tui/triage`
+The support-ticket inbox page, opened with `:triage`. It is the `prs` page's twin: same keys (Enter, `r`, `d`, `o`, `a`, `h`, `g`/`G`, Esc/`q`), same rule that it renders only from `triage.Data` rebuilt by `syncTriagePage()`, same persisted settings shape (`TriageSettings` under `triage` in `data.json`: `AutoTriage`, `Dismissed`, `Handled`). The two are deliberately separate types rather than one generic inbox: their columns and eligibility rules differ. Revisit if a third inbox appears.
+
+Things to know before editing it:
+
+- **Eligibility is `domain.EligibleForAutoTriage`:** not done, unassigned, created within `triage.maxAge`, not dismissed or handled, a launcher exists for the project, no session yet carrying that `TriageIssue`. `maxAge` exists because every unassigned open ticket on the first run was months old; without it the first poll triages a stale backlog.
+- **Triage sessions are project sessions** (no worktree) in `triage.projectName` (default `vault`), listed below a `── Triage` divider with `triage-project:` group IDs.
+- **They stop at the skill's confirm prompts.** The launchers do not override the Confirm tier, so nothing posts to Jira unattended. Keep it that way for RDINC: the customer reads those comments.
+- **Done signal:** the inbox JQL excludes done tickets, so `ListTriageInbox` also fetches every tracked key the query left out (`IssueTrackerPort.GetIssues`) and the dashboard reaps sessions whose issue's status category is `done` (`domain.TriageFinished`). Leaving the query alone (team changed, reassigned) is not "done".
+- **`acli` quirks**, all pinned by fixtures in `secondary/jira/testdata`: `workitem search` rejects `created`, and `--fields key` alone answers a list of nulls, so search asks for `summary` and only yields keys; every issue then comes from one `workitem view` (4 at a time). A failed view keeps the key alone, which is never eligible and never done. Some RDINC statuses have the category `undefined`; anything not `done` counts as open.
 
 ### `internal/adapters/primary/boardhttp`
 Inbound HTTP adapter exposing a swarm session's board to the **agent processes**, which live outside Overseer. Requests flow inward through `SwarmService` like the TUI's do (ARCH-05).
@@ -428,6 +443,7 @@ Swarm sessions break several assumptions that held when every session had exactl
 | Pane name is `<uuid>-agent` | Use `Session.AgentTmuxID(index)` / `AgentTmuxIDs()` |
 | A session has one agent | Loop `Session.AgentCount()` |
 | The active tab implies a pane | Ask `inspector.ActivePreviewKind()`; it returns `false` for the Agents Board |
+| A session is ordinary, a review or a swarm | Also a triage: `Session.IsTriage()` (`TriageIssue` set). The session list puts reviews and triages in their own blocks |
 | One status per session is enough | `AgentStatusService.pollOne` reports `AgentStatusSwarm` — a distinct kind, *not* `Unknown`. Unknown means detection failed; this means it does not apply. Aggregating N panes needs a rule nobody has specified yet |
 | Teardown kills three tmux sessions | `SessionService.Delete` kills shell + every agent pane + editor |
 | Deleting a session removes all its data | The board **outlives** the session by default. `Delete` only purges it when `DeleteSessionRequest.PurgeBoard` is set, which the delete form arms with `p`. Board dirs under `<dataDir>/swarm/` therefore accumulate; nothing prunes them |
