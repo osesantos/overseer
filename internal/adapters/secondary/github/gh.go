@@ -34,6 +34,8 @@ const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!
 }`
 
 // ponytail: first 100 PRs and 50 reviews each; the inbox was 69 when this was written.
+// The query stays lean because GitHub cuts GraphQL off at about 10s and answers 504:
+// no diff stats (the page never shows them) and checks as the rollup's single state.
 const requestedReviewsQuery = `query($q: String!) {
   search(type: ISSUE, first: 100, query: $q) {
     issueCount
@@ -41,13 +43,8 @@ const requestedReviewsQuery = `query($q: String!) {
       number title url isDraft state createdAt updatedAt headRefName
       author { login __typename }
       repository { nameWithOwner }
-      additions deletions changedFiles
       reviews(first: 50) { nodes { author { login } } }
-      commits(last: 1) { nodes { commit { statusCheckRollup { contexts(first: 100) { nodes {
-        __typename
-        ... on CheckRun { name status conclusion }
-        ... on StatusContext { context state }
-      } } } } } }
+      commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     } }
   }
 }`
@@ -58,7 +55,8 @@ type Commander interface {
 
 // searchRetries and searchRetryDelay cover GitHub search intermittently
 // answering an empty page for a query that has results (observed during a
-// "degraded performance" incident: 59, 0, 59 for the same query).
+// "degraded performance" incident: 59, 0, 59 for the same query), and
+// GitHub-side 5xx failures such as a gateway timeout.
 const (
 	searchRetries    = 3
 	searchRetryDelay = 2 * time.Second
@@ -115,12 +113,23 @@ func (a *Adapter) ListRequestedReviews(ctx context.Context) (domain.ReviewInbox,
 
 	var prs []domain.PullRequest
 	for attempt := 1; attempt <= searchRetries; attempt++ {
+		if attempt > 1 {
+			select {
+			case <-ctx.Done():
+				return domain.ReviewInbox{}, ctx.Err()
+			case <-time.After(a.retryDelay):
+			}
+		}
 		stdout, stderr, err = a.cmd.Run(ctx, "",
 			"api", "graphql",
 			"-f", "query="+requestedReviewsQuery,
 			"-f", "q=is:pr is:open review-requested:"+viewer,
 		)
 		if err != nil {
+			if attempt < searchRetries && isServerError(stderr) {
+				a.logger.WarnContext(ctx, "review inbox search failed on GitHub's side, retrying", "attempt", attempt, "stderr", strings.TrimSpace(string(stderr)))
+				continue
+			}
 			return domain.ReviewInbox{}, fmt.Errorf("gh api graphql requested reviews: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
 		}
 		var total int
@@ -135,13 +144,13 @@ func (a *Adapter) ListRequestedReviews(ctx context.Context) (domain.ReviewInbox,
 			break
 		}
 		a.logger.WarnContext(ctx, "review inbox came back empty, retrying", "attempt", attempt)
-		select {
-		case <-ctx.Done():
-			return domain.ReviewInbox{}, ctx.Err()
-		case <-time.After(a.retryDelay):
-		}
 	}
 	return domain.ReviewInbox{Viewer: viewer, PullRequests: prs}, nil
+}
+
+// isServerError reports whether gh failed on a GitHub 5xx, which is worth retrying.
+func isServerError(stderr []byte) bool {
+	return bytes.Contains(stderr, []byte("HTTP 5"))
 }
 
 type ghSearchJSON struct {
@@ -165,9 +174,7 @@ type ghSearchJSON struct {
 					Nodes []struct {
 						Commit struct {
 							StatusCheckRollup *struct {
-								Contexts struct {
-									Nodes []ghCheckJSON `json:"nodes"`
-								} `json:"contexts"`
+								State string `json:"state"`
 							} `json:"statusCheckRollup"`
 						} `json:"commit"`
 					} `json:"nodes"`
@@ -192,7 +199,8 @@ func parseRequestedReviews(data []byte, viewer string) ([]domain.PullRequest, in
 	for _, node := range raw.Data.Search.Nodes {
 		node.ghPRJSON.Author.Login = node.AuthorTyped.Login
 		if len(node.Commits.Nodes) > 0 && node.Commits.Nodes[0].Commit.StatusCheckRollup != nil {
-			node.ghPRJSON.StatusCheckRollup = node.Commits.Nodes[0].Commit.StatusCheckRollup.Contexts.Nodes
+			// ponytail: the rollup state stands in as one check, so inbox counts are 0 or 1; only the glyph reads them.
+			node.ghPRJSON.StatusCheckRollup = []ghCheckJSON{{State: node.Commits.Nodes[0].Commit.StatusCheckRollup.State}}
 		}
 		pr, err := fromGHJSON(node.ghPRJSON)
 		if err != nil {

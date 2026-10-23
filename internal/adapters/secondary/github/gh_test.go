@@ -285,6 +285,7 @@ func TestAdapter_GetForBranch_OpenPR_PopulatesComments(t *testing.T) {
 
 type fakeOutput struct {
 	stdout []byte
+	stderr []byte
 	err    error
 }
 
@@ -296,7 +297,7 @@ type scriptedCommander struct {
 func (s *scriptedCommander) Run(context.Context, string, ...string) ([]byte, []byte, error) {
 	out := s.outputs[s.n]
 	s.n++
-	return out.stdout, nil, out.err
+	return out.stdout, out.stderr, out.err
 }
 
 func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
@@ -324,7 +325,7 @@ func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
 	if !bot.AuthorIsBot || bot.Author != "dependabot" || bot.Repo != "OutSystems/OutSystems.ExternalLibraries.SDK.FileStorage" {
 		t.Fatalf("bot PR = %+v", bot)
 	}
-	if bot.Checks != (domain.PRChecks{Total: 2, Passing: 1, Pending: 1}) {
+	if bot.Checks != (domain.PRChecks{Total: 1, Pending: 1}) {
 		t.Fatalf("bot Checks = %+v", bot.Checks)
 	}
 	if bot.CreatedAt.IsZero() || bot.UpdatedAt.IsZero() {
@@ -334,9 +335,6 @@ func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
 	human := inbox.PullRequests[1]
 	if human.AuthorIsBot || human.ReviewedByViewer || human.State != domain.PRStateOpen || human.Number != 92 {
 		t.Fatalf("human PR = %+v", human)
-	}
-	if human.Stats != (domain.PRStats{Additions: 458, Deletions: 4, ChangedFiles: 5}) {
-		t.Fatalf("human Stats = %+v", human.Stats)
 	}
 	if human.Checks.Total != 0 {
 		t.Fatalf("human Checks = %+v, want none for a null rollup", human.Checks)
@@ -368,6 +366,48 @@ func TestAdapter_ListRequestedReviews_RetriesAnEmptyPage(t *testing.T) {
 	}
 	if len(inbox.PullRequests) != 3 || len(cmd.calls) != 3 {
 		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup and two searches", len(inbox.PullRequests), len(cmd.calls))
+	}
+}
+
+func TestAdapter_ListRequestedReviews_RetriesAServerError(t *testing.T) {
+	cmd := &scriptedCommander{outputs: []fakeOutput{
+		{stdout: []byte("osesantos")},
+		{err: errors.New("exit status 1"), stderr: []byte("gh: HTTP 504")},
+		{stdout: readFixture(t, "search_requested_reviews.json")},
+	}}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	inbox, err := adapter.ListRequestedReviews(context.Background())
+	if err != nil {
+		t.Fatalf("ListRequestedReviews() error = %v", err)
+	}
+	if len(inbox.PullRequests) != 3 || cmd.n != 3 {
+		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup and two searches", len(inbox.PullRequests), cmd.n)
+	}
+}
+
+func TestAdapter_ListRequestedReviews_ClientErrorIsNotRetried(t *testing.T) {
+	cmd := &scriptedCommander{outputs: []fakeOutput{
+		{stdout: []byte("osesantos")},
+		{err: errors.New("exit status 1"), stderr: []byte("gh: HTTP 401")},
+	}}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	if _, err := adapter.ListRequestedReviews(context.Background()); err == nil || cmd.n != 2 {
+		t.Fatalf("err = %v after %d calls, want an error after one search", err, cmd.n)
+	}
+}
+
+func TestAdapter_ListRequestedReviews_GivesUpAfterLastServerError(t *testing.T) {
+	outputs := []fakeOutput{{stdout: []byte("osesantos")}}
+	for range searchRetries {
+		outputs = append(outputs, fakeOutput{err: errors.New("exit status 1"), stderr: []byte("gh: HTTP 504")})
+	}
+	cmd := &scriptedCommander{outputs: outputs}
+	adapter := NewWithCommander(cmd, testLogger())
+
+	if _, err := adapter.ListRequestedReviews(context.Background()); err == nil || cmd.n != 1+searchRetries {
+		t.Fatalf("err = %v after %d calls, want an error after %d searches", err, cmd.n, searchRetries)
 	}
 }
 

@@ -14,14 +14,8 @@
           "headRefName": "dependabot/nuget/dependencies-b2e4307c02",
           "author": { "login": "dependabot", "__typename": "Bot" },
           "repository": { "nameWithOwner": "OutSystems/OutSystems.ExternalLibraries.SDK.FileStorage" },
-          "additions": 8,
-          "deletions": 8,
-          "changedFiles": 1,
           "reviews": { "nodes": [] },
-          "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "contexts": { "nodes": [
-            { "__typename": "CheckRun", "name": "build", "status": "COMPLETED", "conclusion": "SUCCESS" },
-            { "__typename": "StatusContext", "context": "sonar", "state": "PENDING" }
-          ] } } } } ] }
+          "commits": { "nodes": [ { "commit": { "statusCheckRollup": { "state": "PENDING" } } } ] }
         },
         {
           "number": 92,
@@ -34,9 +28,6 @@
           "headRefName": "fix/RRCT-7713-error-info",
           "author": { "login": "OS-joaoluisalmeida", "__typename": "User" },
           "repository": { "nameWithOwner": "OutSystems/OutSystems.Signer.Service" },
-          "additions": 458,
-          "deletions": 4,
-          "changedFiles": 5,
           "reviews": { "nodes": [ { "author": { "login": "someone-else" } } ] },
           "commits": { "nodes": [ { "commit": { "statusCheckRollup": null } } ] }
         },
@@ -51,9 +42,6 @@
           "headRefName": "feat/x",
           "author": { "login": "OS-vitorventuzelos", "__typename": "User" },
           "repository": { "nameWithOwner": "OutSystems/OutSystems.Scheduler.Timer" },
-          "additions": 1,
-          "deletions": 1,
-          "changedFiles": 1,
           "reviews": { "nodes": [ { "author": { "login": "osesantos" } } ] },
           "commits": { "nodes": [] }
         }
