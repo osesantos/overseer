@@ -341,6 +341,29 @@ func TestDashboard_PRsPage_EscReturnsToSessions(t *testing.T) {
 	}
 }
 
+func TestDashboard_O_OpensTheSelectedSessionPRInTheBrowser(t *testing.T) {
+	m := sizedDashboard(t)
+	sess := testutil.MakeSession("feature", uuid.New())
+	m = selectInDashboard(t, m, sess)
+
+	updated, cmd := m.Update(letterKey("o"))
+	m = updated.(Model)
+	if cmd == nil || !strings.Contains(m.toast, "no pull request") {
+		t.Fatalf("toast = %q, want a no-PR notice before the PR status arrives", m.toast)
+	}
+
+	pr := domain.PullRequest{Repo: "o/r", Number: 5, URL: "https://github.com/o/r/pull/5"}
+	updated, _ = m.Update(shared.PRStatusUpdatedMsg{SessionID: sess.ID, PR: pr})
+	m = updated.(Model)
+	_, cmd = m.Update(letterKey("o"))
+	if cmd == nil {
+		t.Fatal("o returned no command")
+	}
+	if got, ok := cmd().(shared.PullRequestOpenInBrowserMsg); !ok || got.PR.URL != pr.URL {
+		t.Fatalf("o emitted %+v, want PullRequestOpenInBrowserMsg for %s", got, pr.URL)
+	}
+}
+
 func TestDashboard_OpenPRWithASession_FocusesIt(t *testing.T) {
 	m := sizedDashboard(t)
 	sess := testutil.MakeSession("PR #5 feat: thing", uuid.New())

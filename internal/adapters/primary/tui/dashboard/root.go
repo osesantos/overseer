@@ -830,6 +830,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 			return cmd, true
 		}
 	}
+	if key.Matches(msg, openPRKeyBinding) {
+		if id, err := uuid.Parse(m.leftPane.SelectedSessionID()); err == nil {
+			if st, ok := m.prStatuses[id]; ok && st.Err == nil && st.PR.URL != "" {
+				return shared.Emit(shared.PullRequestOpenInBrowserMsg{PR: st.PR}), true
+			}
+			return m.showToast("no pull request for this session"), true
+		}
+	}
 	return nil, false
 }
 

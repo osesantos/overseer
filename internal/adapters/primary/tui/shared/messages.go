@@ -121,8 +121,8 @@ type PullRequestOpenMsg struct{ PR domain.PullRequest }
 // hand, bypassing the auto-review eligibility rules (bots, own PRs, reviewed).
 type PullRequestReviewMsg struct{ PR domain.PullRequest }
 
-// PullRequestOpenInBrowserMsg is emitted by the PRs page to open the PR's GitHub
-// page in the browser.
+// PullRequestOpenInBrowserMsg is emitted by the PRs page, or by o on the sessions
+// page, to open the PR's GitHub page in the browser.
 type PullRequestOpenInBrowserMsg struct{ PR domain.PullRequest }
 
 // PullRequestBrowserOpenedMsg reports the outcome of opening a PR in the browser.

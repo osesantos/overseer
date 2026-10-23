@@ -313,6 +313,7 @@ When `projectDiscovery.paths` is set, Overseer scans each listed directory at st
 | `Enter` | Attach to session (agent or shell, based on active inspector tab) |
 | `e` | Reveal Editor tab and open nvim at the session directory |
 | `Ctrl+E` | Submit the agent's queued prompt (see below) |
+| `o` | Open the session's pull request in the browser |
 | `x` | Kill the preview tmux session |
 | `g` / `G` | Go to next / previous project group |
 
