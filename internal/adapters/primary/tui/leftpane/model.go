@@ -16,7 +16,7 @@ import (
 // reserved for the session-details card. The remainder goes to the
 // session list above. No minimum floor: on short terminals the card
 // clips gracefully (least-important rows drop first via the renderer).
-const sessionDetailsHeightPercent = 50
+const sessionDetailsHeightPercent = 25
 
 type Model struct {
 	sessions       sessionui.Model

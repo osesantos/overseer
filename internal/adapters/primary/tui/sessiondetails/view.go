@@ -2,6 +2,7 @@ package sessiondetails
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -35,25 +36,7 @@ func (m Model) renderContent(width, height int) string {
 	if pr := m.renderPRSection(width); pr != nil {
 		sections = append(sections, pr)
 	}
-	return "\n" + joinSections(sections)
-}
-
-// joinSections concatenates the section blocks with ONE blank line between
-// them. Each block already ends with its own trailing blank (from the last
-// field group), so the gap between two sections ends up as two blank lines
-// — slightly more breathing room between sections than within them.
-func joinSections(sections [][]string) string {
-	parts := make([]string, 0, len(sections)*2)
-	for i, sec := range sections {
-		if len(sec) == 0 {
-			continue
-		}
-		if i > 0 {
-			parts = append(parts, "")
-		}
-		parts = append(parts, sec...)
-	}
-	return strings.Join(parts, "\n")
+	return strings.Join(slices.Concat(sections...), "\n")
 }
 
 func sectionHeader(s *styles.SessionDetailsStyles, title string, width int) []string {
@@ -62,7 +45,7 @@ func sectionHeader(s *styles.SessionDetailsStyles, title string, width int) []st
 	}
 	header := s.SectionTitle.Render(truncate(title, width))
 	divider := s.SectionDivider.Render(strings.Repeat("─", width))
-	return []string{header, divider, ""}
+	return []string{header, divider}
 }
 
 // twoColumnRow renders `label  value` with the label padded to a fixed
