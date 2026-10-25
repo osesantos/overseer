@@ -196,10 +196,11 @@ func (s *SessionService) spinUpTmuxAndPersist(ctx context.Context, sess domain.S
 	if agentCmd == "" {
 		agentCmd = s.defaultLauncher.Command
 	}
+	sess.ResumableAgents = domain.InferAgentType(agentCmd) == domain.AgentTypeClaudeCode
 
 	created := make([]string, 0, sess.AgentCount())
-	for _, agentTmuxID := range sess.AgentTmuxIDs() {
-		if _, err := s.tmux.CreateSession(ctx, agentTmuxID, workDir, agentCmd); err != nil {
+	for i, agentTmuxID := range sess.AgentTmuxIDs() {
+		if _, err := s.tmux.CreateSession(ctx, agentTmuxID, workDir, sess.AgentLaunchCommand(i+1, agentCmd)); err != nil {
 			for _, orphan := range created {
 				_ = s.tmux.KillSession(ctx, orphan)
 			}
@@ -844,7 +845,7 @@ func (s *SessionService) AttachAgent(ctx context.Context, req AttachAgentRequest
 	if agentCmd == "" {
 		return AttachAgentResponse{}, domain.ErrSessionNoAgentCommandAvailable
 	}
-	if err := s.ensureTmuxSession(ctx, agentTmuxID, sess, agentCmd); err != nil {
+	if err := s.ensureTmuxSession(ctx, agentTmuxID, sess, sess.AgentRecreateCommand(req.AgentIndex, agentCmd)); err != nil {
 		return AttachAgentResponse{}, err
 	}
 
@@ -1287,6 +1288,7 @@ func (s *SessionService) ensureTmuxSession(ctx context.Context, tmuxID string, s
 	}
 	s.logger.InfoContext(ctx, "tmux session recreated",
 		slog.String("id", tmuxID),
+		slog.String("command", shellCommand),
 	)
 	return nil
 }

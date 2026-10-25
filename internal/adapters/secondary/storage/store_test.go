@@ -341,6 +341,9 @@ func TestStore_MigratesSessionsWithoutAgentType(t *testing.T) {
 		if sess.AgentType != expected {
 			t.Errorf("session %q AgentType = %q, want %q", sess.Name, sess.AgentType, expected)
 		}
+		if sess.ResumableAgents {
+			t.Errorf("session %q ResumableAgents = true, want false for a legacy row", sess.Name)
+		}
 	}
 
 	if !strings.Contains(logBuf.String(), "agent type inferred") {
@@ -367,6 +370,29 @@ func TestSessionStore_LegacySessionsHaveEmptyAgentCommandAfterReload(t *testing.
 	}
 	if got.AgentCommand != "" {
 		t.Errorf("Get() AgentCommand = %q, want empty (legacy session)", got.AgentCommand)
+	}
+}
+
+func TestSessionStore_ResumableAgents_PersistsAcrossReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	logger := discardLogger()
+	ctx := context.Background()
+
+	sess := makeSession(t, "resumable", uuid.New())
+	sess.ResumableAgents = true
+
+	store1, _ := storage.New(path, logger)
+	if err := store1.Sessions().Save(ctx, sess); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	store2, _ := storage.New(path, logger)
+	got, err := store2.Sessions().Get(ctx, sess.ID)
+	if err != nil {
+		t.Fatalf("Get() error = %v", err)
+	}
+	if !got.ResumableAgents {
+		t.Error("Get() ResumableAgents = false after reload, want true")
 	}
 }
 

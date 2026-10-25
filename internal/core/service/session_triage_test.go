@@ -33,7 +33,7 @@ func TestSessionService_CreateForIssue_StartsAProjectSessionRunningTheTriage(t *
 	vaultPath := expectProjectLookup(t, projects, projectID, "vault")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), vaultPath, "").Return("shell", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), vaultPath, `claude "/ose-rdodcf-triage RDODCF-7699"`).Return("agent", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), vaultPath, claudeLaunch(`"/ose-rdodcf-triage RDODCF-7699"`)).Return("agent", nil).Once()
 	var saved domain.Session
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Run(func(_ context.Context, s domain.Session) { saved = s }).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
@@ -81,13 +81,7 @@ func TestSessionService_AutoTriageIssues_StartsOnlyEligibleIssuesOldestFirstUpTo
 
 	projects.EXPECT().Get(mock.Anything, vault.ID).Return(vault, nil).Twice()
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{taken}, nil).Twice()
-	var commands []string
-	tmux.EXPECT().CreateSession(mock.Anything, mock.Anything, "/repo/vault", mock.Anything).
-		Run(func(_ context.Context, _ string, _ string, cmd string) {
-			if cmd != "" {
-				commands = append(commands, cmd)
-			}
-		}).Return("x", nil).Times(4)
+	tmux.EXPECT().CreateSession(mock.Anything, mock.Anything, "/repo/vault", mock.Anything).Return("x", nil).Times(4)
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Twice()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Twice()
 
@@ -107,8 +101,8 @@ func TestSessionService_AutoTriageIssues_StartsOnlyEligibleIssuesOldestFirstUpTo
 	if len(resp.Created) != 2 {
 		t.Fatalf("Created = %d sessions, want 2 (the cap)", len(resp.Created))
 	}
-	if len(commands) != 2 || commands[0] != `claude "/ose-rdodcf-triage RDODCF-6"` || commands[1] != `claude "/ose-rdodcf-triage RDODCF-7"` {
-		t.Fatalf("agent commands = %v, want the two oldest eligible issues", commands)
+	if resp.Created[0].AgentCommand != `claude "/ose-rdodcf-triage RDODCF-6"` || resp.Created[1].AgentCommand != `claude "/ose-rdodcf-triage RDODCF-7"` {
+		t.Fatalf("agent commands = %q, %q, want the two oldest eligible issues", resp.Created[0].AgentCommand, resp.Created[1].AgentCommand)
 	}
 }
 

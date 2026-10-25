@@ -156,6 +156,16 @@ Use-case layer. Each file owns one aggregate:
 - `swarm.go` — `SwarmService`: Post, ListMessages, FlushNudges, Bootstrap
 - `issue.go` — `IssueService`: ListTriageInbox, ResolveAutoTriage, SetAutoTriage, Dismiss, OpenInBrowser. `SessionService.CreateForIssue` / `AutoTriageIssues` start the triage sessions
 
+#### Agent panes resume their conversation
+
+tmux panes do not survive a reboot; session rows, worktrees and Claude's transcripts (`~/.claude/projects/<cwd>/<id>.jsonl`) do. A missing agent pane is recreated only on attach (`AttachAgent` → `ensureTmuxSession`), and the rules for *what* it runs live in `domain/agent_resume.go`:
+
+- **New `claude` sessions** start each agent with `--session-id <AgentConversationID(i)>` and persist `ResumableAgents`. The ID is derived from the session ID and the agent's tmux name, so nothing else is stored.
+- **Recreate** runs `<launcher> --resume <id> || <launcher>`. `<launcher>` is `AgentCommand` minus one trailing quoted argument, so `--permission-mode auto` is kept and a review or triage prompt is never re-sent. An unquoted trailing prompt is not detected; Overseer never writes one.
+- **Older claude sessions** (no `ResumableAgents`) use `--continue` only when they have a worktree. A project session shares its directory with others (`vault` hosts every triage), so it starts as before.
+- **The `||` fallback** catches an unknown ID, an empty `--continue` and a cleaned-up transcript (all exit 1). Claude deletes transcripts after `cleanupPeriodDays`, 30 by default.
+- OpenCode and unknown agents are untouched.
+
 #### Why `SwarmService` splits posting from nudging
 
 Agent CLIs do not loop — they finish a turn and idle at their prompt — so nothing would ever make agent 3 read what agent 2 wrote. Overseer has to poke them by typing into their tmux panes.

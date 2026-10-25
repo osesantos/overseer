@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os/exec"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -22,6 +23,15 @@ import (
 
 func testLogger() *slog.Logger {
 	return slog.New(slog.NewTextHandler(io.Discard, nil))
+}
+
+// claudeLaunch matches a claude agent command started with a --session-id and followed by args.
+func claudeLaunch(args string) interface{} {
+	return mock.MatchedBy(func(cmd string) bool {
+		id, rest, _ := strings.Cut(strings.TrimPrefix(cmd, "claude --session-id "), " ")
+		_, err := uuid.Parse(id)
+		return err == nil && rest == args
+	})
 }
 
 func assertSessionOrder(t *testing.T, sessions []domain.Session, name string, wantOrder int) {
@@ -183,6 +193,9 @@ func TestSessionService_Create_Swarm_CreatesOneTmuxSessionPerAgent(t *testing.T)
 	}
 	if saved.SwarmSize != 3 {
 		t.Fatalf("persisted SwarmSize = %d, want 3", saved.SwarmSize)
+	}
+	if saved.ResumableAgents {
+		t.Fatal("persisted ResumableAgents = true for an opencode swarm, want false")
 	}
 }
 
@@ -979,7 +992,7 @@ func TestSessionService_Create_WithAgentCommand(t *testing.T) {
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "claude").
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, claudeLaunch("")).
 		Return("tmux-alpha-agent", nil).Once()
 
 	var savedSession domain.Session
@@ -1034,7 +1047,7 @@ func TestCreateSession_CapturesAgentTypeFromLauncher(t *testing.T) {
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "claude").
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, claudeLaunch("")).
 		Return("tmux-alpha-agent", nil).Once()
 
 	var savedSession domain.Session
@@ -1929,5 +1942,99 @@ func TestSessionService_CycleLabel_NotFound(t *testing.T) {
 
 	if !errors.Is(err, domain.ErrSessionNotFound) {
 		t.Fatalf("CycleLabel() error = %v, want %v", err, domain.ErrSessionNotFound)
+	}
+}
+
+func TestSessionService_Create_ClaudeSwarm_LaunchesEachAgentWithItsOwnConversationID(t *testing.T) {
+	overseerID := uuid.New()
+	repo, projects, tmux, git := newSessionMocks(t)
+	board := mocks.NewMockSwarmBoardRepository(t)
+
+	expectProjectLookup(t, projects, overseerID, "overseer")
+	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
+		Return("tmux-shell", nil).Once()
+	launched := map[string]string{}
+	for index := 1; index <= 2; index++ {
+		tmux.EXPECT().CreateSession(mock.Anything, testutil.SwarmAgentTmuxIDString(index), mock.Anything, mock.Anything).
+			Run(func(_ context.Context, name, _, cmd string) { launched[name] = cmd }).
+			Return("tmux-agent", nil).Once()
+	}
+	var saved domain.Session
+	repo.EXPECT().Save(mock.Anything, mock.Anything).
+		Run(func(_ context.Context, s domain.Session) { saved = s }).
+		Return(nil).Once()
+	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
+
+	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
+	_, err := svc.Create(context.Background(), CreateSessionRequest{
+		Name:         "hive",
+		ProjectID:    overseerID,
+		SwarmSize:    2,
+		AgentCommand: "claude --permission-mode auto",
+	})
+
+	if err != nil {
+		t.Fatalf("Create() error = %v", err)
+	}
+	if !saved.ResumableAgents {
+		t.Fatal("persisted ResumableAgents = false, want true for a claude swarm")
+	}
+	for index := 1; index <= 2; index++ {
+		want := "claude --session-id " + saved.AgentConversationID(index).String() + " --permission-mode auto"
+		if got := launched[saved.AgentTmuxID(index)]; got != want {
+			t.Fatalf("agent %d launched with %q, want %q", index, got, want)
+		}
+	}
+}
+
+func TestSessionService_AttachAgent_ClaudePaneMissing_RecreatesWithoutThePrompt(t *testing.T) {
+	const review = `claude --permission-mode auto "/ose-pr-review 92"`
+	const launcher = "claude --permission-mode auto"
+	tests := []struct {
+		name      string
+		resumable bool
+		worktree  string
+		want      func(domain.Session) string
+	}{
+		{"resumable session resumes its conversation", true, "/abs/worktree/alpha",
+			func(s domain.Session) string {
+				return launcher + " --resume " + s.AgentConversationID(1).String() + " || " + launcher
+			}},
+		{"old worktree session continues", false, "/abs/worktree/alpha",
+			func(domain.Session) string { return launcher + " --continue || " + launcher }},
+		{"old project session starts as before", false, "",
+			func(domain.Session) string { return review }},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			projectID := uuid.New()
+			sess := testutil.MakeSession("alpha", projectID)
+			if tt.worktree != "" {
+				sess = testutil.MakeSessionWithWorktree("alpha", projectID, tt.worktree, "overseer/alpha")
+			}
+			if err := sess.AssignAgentCommand(review); err != nil {
+				t.Fatalf("seed AssignAgentCommand: %v", err)
+			}
+			sess.ResumableAgents = tt.resumable
+			agentTmuxID := sess.AgentTmuxID(1)
+			repo, projects, tmux, git := newSessionMocks(t)
+			repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
+			workDir := tt.worktree
+			if workDir == "" {
+				workDir = expectProjectLookup(t, projects, projectID, "vault")
+			}
+			tmux.EXPECT().GetSession(mock.Anything, agentTmuxID).
+				Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
+			tmux.EXPECT().CreateSession(mock.Anything, agentTmuxID, workDir, tt.want(sess)).
+				Return(agentTmuxID, nil).Once()
+			tmux.EXPECT().AttachCommand(mock.Anything, agentTmuxID).
+				Return(exec.Command("tmux", "attach-session", "-t", agentTmuxID), nil).Once()
+
+			svc := newTestSessionService(repo, projects, tmux, git, testLogger())
+			if _, err := svc.AttachAgent(context.Background(), AttachAgentRequest{ID: sess.ID}); err != nil {
+				t.Fatalf("AttachAgent() error = %v", err)
+			}
+		})
 	}
 }

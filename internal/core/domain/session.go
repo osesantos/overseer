@@ -54,8 +54,11 @@ type Session struct {
 	ReviewPR PullRequestRef `json:",omitzero"`
 	// TriageIssue is the issue key on sessions started to triage a ticket; empty otherwise.
 	TriageIssue string `json:",omitempty"`
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	// ResumableAgents marks sessions whose agents were launched with a derived
+	// conversation ID (AgentConversationID); older sessions decode it as false.
+	ResumableAgents bool `json:",omitempty"`
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // NewSession constructs a Session with no worktree assigned. For a Mode 1

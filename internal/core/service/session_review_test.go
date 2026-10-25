@@ -25,7 +25,7 @@ func TestSessionService_CreateForPullRequest_ChecksOutThePRHeadAndLaunchesTheRev
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().CreateDetachedWorktree(mock.Anything, repoPath, "pull/92/head", mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("shell", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, `claude "/ose-pr-review 92"`).Return("agent", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, claudeLaunch(`"/ose-pr-review 92"`)).Return("agent", nil).Once()
 	var saved domain.Session
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Run(func(_ context.Context, s domain.Session) { saved = s }).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
@@ -48,6 +48,9 @@ func TestSessionService_CreateForPullRequest_ChecksOutThePRHeadAndLaunchesTheRev
 	}
 	if resp.Session.AgentType != domain.AgentTypeClaudeCode {
 		t.Fatalf("AgentType = %q, want claude-code inferred from the command", resp.Session.AgentType)
+	}
+	if !saved.ResumableAgents {
+		t.Fatal("saved ResumableAgents = false, want true for a claude review session")
 	}
 	if want := paths.NewResolver("").SessionWorktreePath(resp.Session.ID); saved.WorktreePath != want || saved.Branch != "pull/92/head" {
 		t.Fatalf("saved worktree = %q / %q", saved.WorktreePath, saved.Branch)
@@ -137,13 +140,7 @@ func TestSessionService_AutoReviewPullRequests_StartsOnlyEligiblePRsUpToTheCap(t
 	var refs []string
 	git.EXPECT().CreateDetachedWorktree(mock.Anything, "/repo/signer", mock.Anything, mock.Anything).
 		Run(func(_ context.Context, _ string, ref string, _ string) { refs = append(refs, ref) }).Return(nil).Twice()
-	var commands []string
-	tmux.EXPECT().CreateSession(mock.Anything, mock.Anything, mock.Anything, mock.Anything).
-		Run(func(_ context.Context, _ string, _ string, cmd string) {
-			if cmd != "" {
-				commands = append(commands, cmd)
-			}
-		}).Return("x", nil).Times(4)
+	tmux.EXPECT().CreateSession(mock.Anything, mock.Anything, mock.Anything, mock.Anything).Return("x", nil).Times(4)
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Twice()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Twice()
 
@@ -163,8 +160,8 @@ func TestSessionService_AutoReviewPullRequests_StartsOnlyEligiblePRsUpToTheCap(t
 	if len(refs) != 2 || refs[0] != "pull/5/head" || refs[1] != "pull/6/head" {
 		t.Fatalf("worktree refs = %v, want the first two eligible PRs in inbox order", refs)
 	}
-	if len(commands) != 2 || commands[0] != `claude "/ose-pr-review 5"` || commands[1] != `claude "/ose-pr-review 6"` {
-		t.Fatalf("agent commands = %v", commands)
+	if resp.Created[0].AgentCommand != `claude "/ose-pr-review 5"` || resp.Created[1].AgentCommand != `claude "/ose-pr-review 6"` {
+		t.Fatalf("agent commands = %q, %q", resp.Created[0].AgentCommand, resp.Created[1].AgentCommand)
 	}
 }
 
