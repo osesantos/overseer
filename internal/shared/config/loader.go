@@ -170,7 +170,7 @@ func Default() Config {
 		PullRequests: PullRequestsConfig{
 			PollInterval:  5 * time.Minute,
 			AutoReview:    true,
-			ReviewCommand: `claude "/ose-pr-review {{number}}"`,
+			ReviewCommand: `claude --model opus "/ose-pr-review {{number}}"`,
 			MaxPerPoll:    2,
 		},
 		Triage: TriageConfig{

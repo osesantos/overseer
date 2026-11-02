@@ -958,7 +958,7 @@ func TestDefault_ShipsPullRequestDefaults(t *testing.T) {
 	if !cfg.PullRequests.AutoReview {
 		t.Error("PullRequests.AutoReview: want true, got false")
 	}
-	if cfg.PullRequests.ReviewCommand != `claude "/ose-pr-review {{number}}"` {
+	if cfg.PullRequests.ReviewCommand != `claude --model opus "/ose-pr-review {{number}}"` {
 		t.Errorf("PullRequests.ReviewCommand: got %q", cfg.PullRequests.ReviewCommand)
 	}
 	if cfg.PullRequests.MaxPerPoll != 2 {
