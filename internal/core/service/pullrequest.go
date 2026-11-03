@@ -40,6 +40,30 @@ func (s *PullRequestService) GetForBranch(ctx context.Context, req GetPullReques
 	return GetPullRequestForBranchResponse{PullRequest: pr}, nil
 }
 
+type GetPullRequestDetailsRequest struct {
+	RepoPath string
+	Number   int
+}
+
+type GetPullRequestDetailsResponse struct {
+	Details domain.PullRequestDetails
+}
+
+// GetDetails fetches what the full-screen PR page shows; the PR number is the
+// selector because review sessions sit on a detached head with no branch.
+func (s *PullRequestService) GetDetails(ctx context.Context, req GetPullRequestDetailsRequest) (GetPullRequestDetailsResponse, error) {
+	if req.Number <= 0 {
+		return GetPullRequestDetailsResponse{}, domain.ErrPullRequestInvalidNumber
+	}
+	details, err := s.port.GetDetails(ctx, req.RepoPath, req.Number)
+	if err != nil {
+		return GetPullRequestDetailsResponse{}, fmt.Errorf("fetch pull request #%d details: %w", req.Number, err)
+	}
+	s.logger.InfoContext(ctx, "pull request details fetched", "pr", req.Number,
+		"files", len(details.Files), "threads", len(details.Threads), "comments", len(details.Conversation))
+	return GetPullRequestDetailsResponse{Details: details}, nil
+}
+
 type ListRequestedReviewsRequest struct{}
 
 type ListRequestedReviewsResponse struct {

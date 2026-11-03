@@ -12,8 +12,32 @@
   "changedFiles": 12,
   "updatedAt": "2026-05-20T10:15:30Z",
   "statusCheckRollup": [
-    {"name": "build",       "status": "COMPLETED", "conclusion": "SUCCESS"},
-    {"name": "test",        "status": "COMPLETED", "conclusion": "SUCCESS"},
-    {"name": "lint",        "status": "COMPLETED", "conclusion": "SUCCESS"}
+    {
+      "name": "build",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "test",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    },
+    {
+      "name": "lint",
+      "status": "COMPLETED",
+      "conclusion": "SUCCESS"
+    }
+  ],
+  "body": "Adds the jobs framework.\n",
+  "baseRefName": "main",
+  "labels": [
+    {
+      "name": "feature",
+      "color": "1FDA1D"
+    },
+    {
+      "name": "semver-minor",
+      "color": "73b0d1"
+    }
   ]
 }

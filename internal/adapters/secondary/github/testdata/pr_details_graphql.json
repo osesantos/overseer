@@ -1,0 +1,113 @@
+{
+ "data": {
+  "viewer": {
+   "login": "me"
+  },
+  "repository": {
+   "pullRequest": {
+    "comments": {
+     "nodes": [
+      {
+       "author": {
+        "__typename": "Bot",
+        "login": "dependabot"
+       },
+       "body": "## Unit Tests\n|Total|Passed|\n|--|--|\n|411|410|",
+       "createdAt": "2026-10-28T16:17:52Z"
+      },
+      {
+       "author": {
+        "__typename": "User",
+        "login": "ana"
+       },
+       "body": "Rebased on main, ready for another look.",
+       "createdAt": "2026-10-30T09:00:00Z"
+      }
+     ]
+    },
+    "reviews": {
+     "nodes": [
+      {
+       "author": {
+        "__typename": "User",
+        "login": "bob"
+       },
+       "body": "Two small things inline, otherwise fine.",
+       "state": "COMMENTED",
+       "submittedAt": "2026-10-29T18:35:42Z"
+      },
+      {
+       "author": {
+        "__typename": "User",
+        "login": "me"
+       },
+       "body": "",
+       "state": "APPROVED",
+       "submittedAt": "2026-10-31T10:00:00Z"
+      }
+     ]
+    },
+    "reviewThreads": {
+     "nodes": [
+      {
+       "isResolved": true,
+       "isOutdated": true,
+       "path": "src/Scheduler.cs",
+       "line": null,
+       "comments": {
+        "nodes": [
+         {
+          "author": {
+           "__typename": "User",
+           "login": "ana"
+          },
+          "body": "this needs a guard before merge",
+          "createdAt": "2026-10-28T16:44:06Z",
+          "diffHunk": "@@ -10,4 +10,5 @@ public class Scheduler\n     var next = cron.Next();\n-    Patch(next);\n+    if (next is null) return;\n+    Patch(next);"
+         },
+         {
+          "author": {
+           "__typename": "User",
+           "login": "me"
+          },
+          "body": "agreed, pushed a fix",
+          "createdAt": "2026-10-28T17:00:00Z",
+          "diffHunk": "@@ -10,4 +10,5 @@ public class Scheduler\n     var next = cron.Next();\n-    Patch(next);\n+    if (next is null) return;\n+    Patch(next);"
+         }
+        ]
+       }
+      },
+      {
+       "isResolved": false,
+       "isOutdated": false,
+       "path": "src/Worker.cs",
+       "line": 40,
+       "comments": {
+        "nodes": [
+         {
+          "author": {
+           "__typename": "User",
+           "login": "bob"
+          },
+          "body": "why not reuse the existing retry helper?",
+          "createdAt": "2026-10-29T18:30:00Z",
+          "diffHunk": "@@ -10,4 +10,5 @@ public class Scheduler\n     var next = cron.Next();\n-    Patch(next);\n+    if (next is null) return;\n+    Patch(next);"
+         },
+         {
+          "author": {
+           "__typename": "Bot",
+           "login": "dependabot"
+          },
+          "body": "noise",
+          "createdAt": "2026-10-29T18:31:00Z",
+          "diffHunk": "@@ -10,4 +10,5 @@ public class Scheduler\n     var next = cron.Next();\n-    Patch(next);\n+    if (next is null) return;\n+    Patch(next);"
+         }
+        ]
+       }
+      }
+     ]
+    }
+   }
+  }
+ }
+}

@@ -38,6 +38,78 @@ func (_m *MockPullRequestPort) EXPECT() *MockPullRequestPort_Expecter {
 	return &MockPullRequestPort_Expecter{mock: &_m.Mock}
 }
 
+// GetDetails provides a mock function for the type MockPullRequestPort
+func (_mock *MockPullRequestPort) GetDetails(ctx context.Context, repoPath string, number int) (domain.PullRequestDetails, error) {
+	ret := _mock.Called(ctx, repoPath, number)
+
+	if len(ret) == 0 {
+		panic("no return value specified for GetDetails")
+	}
+
+	var r0 domain.PullRequestDetails
+	var r1 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int) (domain.PullRequestDetails, error)); ok {
+		return returnFunc(ctx, repoPath, number)
+	}
+	if returnFunc, ok := ret.Get(0).(func(context.Context, string, int) domain.PullRequestDetails); ok {
+		r0 = returnFunc(ctx, repoPath, number)
+	} else {
+		r0 = ret.Get(0).(domain.PullRequestDetails)
+	}
+	if returnFunc, ok := ret.Get(1).(func(context.Context, string, int) error); ok {
+		r1 = returnFunc(ctx, repoPath, number)
+	} else {
+		r1 = ret.Error(1)
+	}
+	return r0, r1
+}
+
+// MockPullRequestPort_GetDetails_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'GetDetails'
+type MockPullRequestPort_GetDetails_Call struct {
+	*mock.Call
+}
+
+// GetDetails is a helper method to define mock.On call
+//   - ctx context.Context
+//   - repoPath string
+//   - number int
+func (_e *MockPullRequestPort_Expecter) GetDetails(ctx interface{}, repoPath interface{}, number interface{}) *MockPullRequestPort_GetDetails_Call {
+	return &MockPullRequestPort_GetDetails_Call{Call: _e.mock.On("GetDetails", ctx, repoPath, number)}
+}
+
+func (_c *MockPullRequestPort_GetDetails_Call) Run(run func(ctx context.Context, repoPath string, number int)) *MockPullRequestPort_GetDetails_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 string
+		if args[1] != nil {
+			arg1 = args[1].(string)
+		}
+		var arg2 int
+		if args[2] != nil {
+			arg2 = args[2].(int)
+		}
+		run(
+			arg0,
+			arg1,
+			arg2,
+		)
+	})
+	return _c
+}
+
+func (_c *MockPullRequestPort_GetDetails_Call) Return(pullRequestDetails domain.PullRequestDetails, err error) *MockPullRequestPort_GetDetails_Call {
+	_c.Call.Return(pullRequestDetails, err)
+	return _c
+}
+
+func (_c *MockPullRequestPort_GetDetails_Call) RunAndReturn(run func(ctx context.Context, repoPath string, number int) (domain.PullRequestDetails, error)) *MockPullRequestPort_GetDetails_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // GetForBranch provides a mock function for the type MockPullRequestPort
 func (_mock *MockPullRequestPort) GetForBranch(ctx context.Context, repoPath string, branch string) (domain.PullRequest, error) {
 	ret := _mock.Called(ctx, repoPath, branch)

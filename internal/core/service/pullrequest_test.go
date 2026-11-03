@@ -217,3 +217,66 @@ func TestPullRequestService_OpenInBrowser_PassesTheURLThrough(t *testing.T) {
 		t.Fatalf("OpenInBrowser() error = %v", err)
 	}
 }
+
+func TestPullRequestService_GetDetails_HappyPath(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	pr, _ := domain.NewPullRequest(535, "feat: schedules", "feature/schedules", domain.PRStateOpen)
+	want := domain.PullRequestDetails{
+		PullRequest: pr,
+		Files:       []domain.PRFile{{Path: "main.go", Additions: 3, Deletions: 1}},
+		Diff:        "diff --git a/main.go b/main.go\n",
+		Threads:     []domain.PRReviewThread{{Path: "main.go", Line: 4, Authors: []string{"ana"}}},
+	}
+	port.EXPECT().GetDetails(mock.Anything, "/repo", 535).Return(want, nil).Once()
+
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
+	resp, err := svc.GetDetails(context.Background(), GetPullRequestDetailsRequest{RepoPath: "/repo", Number: 535})
+
+	if err != nil {
+		t.Fatalf("GetDetails() error = %v", err)
+	}
+	if resp.Details.PullRequest.Number != 535 || len(resp.Details.Files) != 1 || len(resp.Details.Threads) != 1 {
+		t.Fatalf("GetDetails() = %+v, want the port's details", resp.Details)
+	}
+}
+
+func TestPullRequestService_GetDetails_InvalidNumber_ReturnsSentinelWithoutCallingPort(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
+
+	_, err := svc.GetDetails(context.Background(), GetPullRequestDetailsRequest{RepoPath: "/repo", Number: 0})
+
+	if !errors.Is(err, domain.ErrPullRequestInvalidNumber) {
+		t.Fatalf("GetDetails() error = %v, want ErrPullRequestInvalidNumber", err)
+	}
+}
+
+func TestPullRequestService_GetDetails_PortError_IsWrapped(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	boom := errors.New("gh exit 1")
+	port.EXPECT().GetDetails(mock.Anything, "/repo", 7).Return(domain.PullRequestDetails{}, boom).Once()
+
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
+	_, err := svc.GetDetails(context.Background(), GetPullRequestDetailsRequest{RepoPath: "/repo", Number: 7})
+
+	if !errors.Is(err, boom) {
+		t.Fatalf("GetDetails() error = %v, want it to wrap %v", err, boom)
+	}
+	if !strings.Contains(err.Error(), "7") {
+		t.Fatalf("GetDetails() error = %q, want the PR number in the context", err)
+	}
+}
+
+func TestPullRequestService_GetDetails_ContextCancelled_PropagatesCancellation(t *testing.T) {
+	port := mocks.NewMockPullRequestPort(t)
+	port.EXPECT().GetDetails(mock.Anything, "/repo", 7).Return(domain.PullRequestDetails{}, context.Canceled).Once()
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	svc := NewPullRequestService(port, noSettings(t), testLogger())
+	_, err := svc.GetDetails(ctx, GetPullRequestDetailsRequest{RepoPath: "/repo", Number: 7})
+
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("GetDetails() error = %v, want context.Canceled", err)
+	}
+}

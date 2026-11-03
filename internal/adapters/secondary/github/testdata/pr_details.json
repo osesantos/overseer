@@ -1,0 +1,54 @@
+{
+ "additions": 4894,
+ "author": {
+  "login": "ana"
+ },
+ "baseRefName": "main",
+ "body": "## Summary\n\nAdds **cron schedules** to the event scheduler.\n\n- parses the cron expression\n- patches the CR back to `Scheduled`\n",
+ "changedFiles": 65,
+ "deletions": 460,
+ "files": [
+  {
+   "path": "ARCHITECTURE.md",
+   "additions": 15,
+   "deletions": 9,
+   "changeType": "MODIFIED"
+  },
+  {
+   "path": "CLAUDE.md",
+   "additions": 11,
+   "deletions": 6,
+   "changeType": "MODIFIED"
+  },
+  {
+   "path": "README.md",
+   "additions": 5,
+   "deletions": 2,
+   "changeType": "MODIFIED"
+  }
+ ],
+ "headRefName": "feature/cron-schedules",
+ "isDraft": false,
+ "labels": [
+  {
+   "name": "feature",
+   "color": "1FDA1D"
+  },
+  {
+   "name": "semver-minor",
+   "color": "73b0d1"
+  }
+ ],
+ "number": 535,
+ "state": "OPEN",
+ "statusCheckRollup": [
+  {
+   "name": "CI PR / Unit Tests",
+   "status": "COMPLETED",
+   "conclusion": "SUCCESS"
+  }
+ ],
+ "title": "feat(RTAFB-10002): cron schedules",
+ "updatedAt": "2026-11-03T10:56:15Z",
+ "url": "https://github.com/acme/scheduler/pull/535"
+}

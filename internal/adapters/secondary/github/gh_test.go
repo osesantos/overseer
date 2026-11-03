@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -84,6 +85,12 @@ func TestAdapter_GetForBranch_OpenPRWithGreenCI_ParsesAllFields(t *testing.T) {
 	}
 	if pr.Checks.OverallConclusion() != domain.CheckConclusionSuccess {
 		t.Fatalf("OverallConclusion = %q, want SUCCESS", pr.Checks.OverallConclusion())
+	}
+	if pr.Body != "Adds the jobs framework.\n" || pr.BaseBranch != "main" {
+		t.Fatalf("Body = %q, BaseBranch = %q", pr.Body, pr.BaseBranch)
+	}
+	if want := []string{"feature", "semver-minor"}; !slices.Equal(pr.Labels, want) {
+		t.Fatalf("Labels = %v, want %v", pr.Labels, want)
 	}
 }
 
@@ -433,5 +440,108 @@ func TestAdapter_OpenInBrowser_UsesGhWebFlag(t *testing.T) {
 	}
 	if len(cmd.calls) != 1 || strings.Join(cmd.calls[0].args, " ") != "pr view https://github.com/o/r/pull/7 --web" {
 		t.Fatalf("calls = %+v", cmd.calls)
+	}
+}
+
+func detailsCommander(t *testing.T) *fakeCommander {
+	t.Helper()
+	return &fakeCommander{outputs: [][]byte{
+		readFixture(t, "pr_details.json"),
+		readFixture(t, "pr_details.diff"),
+		readFixture(t, "pr_details_graphql.json"),
+	}}
+}
+
+func TestAdapter_GetDetails_ParsesFilesDiffConversationAndThreads(t *testing.T) {
+	d, err := NewWithCommander(detailsCommander(t), testLogger()).GetDetails(context.Background(), "/repo", 535)
+	if err != nil {
+		t.Fatalf("GetDetails() error = %v", err)
+	}
+	if d.PullRequest.Number != 535 || d.PullRequest.BaseBranch != "main" || !strings.Contains(d.PullRequest.Body, "cron schedules") {
+		t.Fatalf("PullRequest = %+v", d.PullRequest)
+	}
+	if len(d.Files) != 3 || d.Files[0].Path != "ARCHITECTURE.md" || d.Files[0].Additions != 15 || d.Files[0].Deletions != 9 {
+		t.Fatalf("Files = %+v", d.Files)
+	}
+	if !strings.HasPrefix(d.Diff, "diff --git") || strings.Count(d.Diff, "\ndiff --git") != 1 {
+		t.Fatalf("Diff = %q", d.Diff[:min(len(d.Diff), 80)])
+	}
+	// Conversation: 2 issue comments + the 1 review with a body, oldest first; bots kept and flagged.
+	if len(d.Conversation) != 3 {
+		t.Fatalf("Conversation = %+v, want 3 entries", d.Conversation)
+	}
+	if c := d.Conversation[0]; c.Author != "dependabot" || !c.AuthorIsBot {
+		t.Fatalf("Conversation[0] = %+v, want the bot comment first", c)
+	}
+	if c := d.Conversation[1]; c.Author != "bob" || c.ReviewState != "COMMENTED" {
+		t.Fatalf("Conversation[1] = %+v, want bob's review", c)
+	}
+	if c := d.Conversation[2]; c.Author != "ana" || c.ReviewState != "" {
+		t.Fatalf("Conversation[2] = %+v, want ana's comment", c)
+	}
+	if len(d.Threads) != 2 {
+		t.Fatalf("Threads = %+v, want 2", d.Threads)
+	}
+	if th := d.Threads[0]; !th.Resolved || !th.Outdated || th.Path != "src/Scheduler.cs" || th.Line != 0 || len(th.Comments) != 2 {
+		t.Fatalf("Threads[0] = %+v", th)
+	}
+	if th := d.Threads[1]; th.Resolved || th.Path != "src/Worker.cs" || th.Line != 40 || th.Comments[0].Body == "" || !strings.HasPrefix(th.DiffHunk, "@@") {
+		t.Fatalf("Threads[1] = %+v", th)
+	}
+	// Authors keeps the summary rule: bots excluded.
+	if want := []string{"bob"}; !slices.Equal(d.Threads[1].Authors, want) {
+		t.Fatalf("Threads[1].Authors = %v, want %v", d.Threads[1].Authors, want)
+	}
+	if !d.Threads[1].Comments[1].AuthorIsBot {
+		t.Fatalf("Threads[1].Comments[1] = %+v, want AuthorIsBot", d.Threads[1].Comments[1])
+	}
+}
+
+func TestAdapter_GetDetails_PassesNumberAndRepoPathToGH(t *testing.T) {
+	cmd := detailsCommander(t)
+	if _, err := NewWithCommander(cmd, testLogger()).GetDetails(context.Background(), "/repo/path", 535); err != nil {
+		t.Fatalf("GetDetails() error = %v", err)
+	}
+	if len(cmd.calls) != 3 {
+		t.Fatalf("commander called %d times, want 3 (pr view, pr diff, graphql)", len(cmd.calls))
+	}
+	for i, call := range cmd.calls {
+		if call.dir != "/repo/path" {
+			t.Fatalf("call %d dir = %q, want /repo/path", i, call.dir)
+		}
+	}
+	if got := strings.Join(cmd.calls[0].args, " "); got != "pr view 535 --json "+prJSONFields+",files" {
+		t.Fatalf("pr view args = %q", got)
+	}
+	if got := strings.Join(cmd.calls[1].args, " "); got != "pr diff 535" {
+		t.Fatalf("pr diff args = %q", got)
+	}
+	if got := strings.Join(cmd.calls[2].args, " "); !strings.Contains(got, "owner=acme") || !strings.Contains(got, "repo=scheduler") || !strings.Contains(got, "number=535") {
+		t.Fatalf("graphql args = %q", got)
+	}
+}
+
+func TestAdapter_GetDetails_GraphQLFails_StillReturnsDetails(t *testing.T) {
+	cmd := &scriptedCommander{outputs: []fakeOutput{
+		{stdout: readFixture(t, "pr_details.json")},
+		{stdout: readFixture(t, "pr_details.diff")},
+		{err: errors.New("graphql down")},
+	}}
+	d, err := NewWithCommander(cmd, testLogger()).GetDetails(context.Background(), "/repo", 535)
+	if err != nil {
+		t.Fatalf("GetDetails() error = %v, want nil", err)
+	}
+	if len(d.Files) != 3 || d.Diff == "" || len(d.Threads) != 0 || len(d.Conversation) != 0 {
+		t.Fatalf("GetDetails() = files %d diff %d threads %d conversation %d", len(d.Files), len(d.Diff), len(d.Threads), len(d.Conversation))
+	}
+}
+
+func TestAdapter_GetDetails_DiffFails_IsAnError(t *testing.T) {
+	cmd := &scriptedCommander{outputs: []fakeOutput{
+		{stdout: readFixture(t, "pr_details.json")},
+		{stderr: []byte("HTTP 502"), err: errors.New("exit 1")},
+	}}
+	if _, err := NewWithCommander(cmd, testLogger()).GetDetails(context.Background(), "/repo", 535); err == nil || !strings.Contains(err.Error(), "502") {
+		t.Fatalf("GetDetails() error = %v, want the gh stderr wrapped", err)
 	}
 }

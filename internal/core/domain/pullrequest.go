@@ -69,9 +69,44 @@ type PRComments struct {
 func (c PRComments) Total() int { return c.Resolved + c.Unresolved }
 
 // PRReviewThread is one review thread; Authors lists human comment authors in order, bots excluded.
+// Path, Line, Outdated, DiffHunk and Comments are only filled by GetDetails.
 type PRReviewThread struct {
 	Resolved bool
+	Outdated bool
+	Path     string
+	Line     int
+	DiffHunk string
 	Authors  []string
+	Comments []PRComment
+}
+
+// PRComment is one message on a pull request: an issue comment, a review
+// summary (ReviewState set) or a comment inside a review thread.
+type PRComment struct {
+	Author      string
+	AuthorIsBot bool
+	Body        string
+	CreatedAt   time.Time
+	ReviewState string
+}
+
+// PRFile is one changed file with its line counts.
+type PRFile struct {
+	Path       string
+	Additions  int
+	Deletions  int
+	ChangeType string
+}
+
+// PullRequestDetails is everything the full-screen page shows: the PR, its
+// files, the raw unified diff, the conversation (issue comments and review
+// summaries, oldest first) and the review threads.
+type PullRequestDetails struct {
+	PullRequest  PullRequest
+	Files        []PRFile
+	Diff         string
+	Conversation []PRComment
+	Threads      []PRReviewThread
 }
 
 // SummariseReviewThreads ignores threads only the viewer took part in.
@@ -96,10 +131,15 @@ func SummariseReviewThreads(threads []PRReviewThread, viewer string) PRComments 
 type PullRequest struct {
 	Number int
 	// Repo is the GitHub "owner/name"; empty when fetched for a local branch.
-	Repo        string
-	Title       string
-	URL         string
-	Branch      string
+	Repo   string
+	Title  string
+	URL    string
+	Branch string
+	// Body is the description in markdown; BaseBranch and Labels come from the
+	// same gh call and are shown by the inspector's PR tab.
+	Body        string
+	BaseBranch  string
+	Labels      []string
 	State       PRState
 	Author      string
 	AuthorIsBot bool
@@ -197,6 +237,9 @@ type PullRequestPort interface {
 	ListRequestedReviews(ctx context.Context) (ReviewInbox, error)
 	// OpenInBrowser opens the PR page in the operator's default browser.
 	OpenInBrowser(ctx context.Context, prURL string) error
+	// GetDetails fetches what the PR page shows (files, diff, conversation,
+	// review threads) for the PR number, run from repoPath.
+	GetDetails(ctx context.Context, repoPath string, number int) (PullRequestDetails, error)
 }
 
 // ReviewSettings is what the operator decided about the inbox, kept across

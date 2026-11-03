@@ -11,6 +11,7 @@ import (
 	"net/url"
 	"os/exec"
 	"slices"
+	"strconv"
 	"strings"
 	"time"
 
@@ -19,7 +20,7 @@ import (
 
 var _ domain.PullRequestPort = (*Adapter)(nil)
 
-const prJSONFields = "number,title,state,isDraft,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt"
+const prJSONFields = "number,title,state,isDraft,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt,body,baseRefName,labels"
 
 // ponytail: first 100 threads / 50 comments each; paginate if a PR ever outgrows that.
 const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!) {
@@ -28,6 +29,22 @@ const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!
     pullRequest(number: $number) {
       reviewThreads(first: 100) {
         nodes { isResolved comments(first: 50) { nodes { author { __typename login } } } }
+      }
+    }
+  }
+}`
+
+// pullRequestDetailsQuery feeds the PR page: the conversation and every thread
+// with its bodies. It is separate from reviewThreadsQuery so the per-minute
+// status poll never pays for bodies. Same first-100 caps as the lean query.
+const pullRequestDetailsQuery = `query($owner: String!, $repo: String!, $number: Int!) {
+  viewer { login }
+  repository(owner: $owner, name: $repo) {
+    pullRequest(number: $number) {
+      comments(first: 100) { nodes { author { __typename login } body createdAt } }
+      reviews(first: 100) { nodes { author { __typename login } body state submittedAt } }
+      reviewThreads(first: 100) {
+        nodes { isResolved isOutdated path line comments(first: 50) { nodes { author { __typename login } body createdAt diffHunk } } }
       }
     }
   }
@@ -231,21 +248,74 @@ func (a *Adapter) OpenInBrowser(ctx context.Context, prURL string) error {
 
 // reviewComments is best-effort: a failure here must not hide the rest of the PR.
 func (a *Adapter) reviewComments(ctx context.Context, repoPath string, pr domain.PullRequest) (domain.PRComments, error) {
-	owner, repo, err := ownerRepoFromURL(pr.URL)
+	stdout, err := a.queryPullRequest(ctx, repoPath, pr, reviewThreadsQuery)
 	if err != nil {
 		return domain.PRComments{}, err
 	}
+	return summariseThreads(stdout)
+}
+
+// queryPullRequest runs one of the pull-request GraphQL queries, with owner and
+// repo taken from the PR's URL.
+func (a *Adapter) queryPullRequest(ctx context.Context, repoPath string, pr domain.PullRequest, query string) ([]byte, error) {
+	owner, repo, err := ownerRepoFromURL(pr.URL)
+	if err != nil {
+		return nil, err
+	}
 	stdout, stderr, err := a.cmd.Run(ctx, repoPath,
 		"api", "graphql",
-		"-f", "query="+reviewThreadsQuery,
+		"-f", "query="+query,
 		"-f", "owner="+owner,
 		"-f", "repo="+repo,
 		"-F", fmt.Sprintf("number=%d", pr.Number),
 	)
 	if err != nil {
-		return domain.PRComments{}, fmt.Errorf("gh api graphql review threads: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
+		return nil, fmt.Errorf("gh api graphql pull request: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
 	}
-	return summariseThreads(stdout)
+	return stdout, nil
+}
+
+// GetDetails runs three gh commands in repoPath: the PR with its files, the
+// unified diff, and the conversation query. The conversation is best-effort,
+// like reviewComments: the page is still useful without it.
+func (a *Adapter) GetDetails(ctx context.Context, repoPath string, number int) (domain.PullRequestDetails, error) {
+	sel := strconv.Itoa(number)
+	stdout, stderr, err := a.cmd.Run(ctx, repoPath, "pr", "view", sel, "--json", prJSONFields+",files")
+	if err != nil {
+		return domain.PullRequestDetails{}, fmt.Errorf("gh pr view %s: %w (stderr: %s)", sel, err, strings.TrimSpace(string(stderr)))
+	}
+	var raw ghPRJSON
+	if err := json.Unmarshal(stdout, &raw); err != nil {
+		return domain.PullRequestDetails{}, fmt.Errorf("decode gh json: %w", err)
+	}
+	pr, err := fromGHJSON(raw)
+	if err != nil {
+		return domain.PullRequestDetails{}, err
+	}
+	files := make([]domain.PRFile, 0, len(raw.Files))
+	for _, f := range raw.Files {
+		files = append(files, domain.PRFile{Path: f.Path, Additions: f.Additions, Deletions: f.Deletions, ChangeType: f.ChangeType})
+	}
+
+	diff, stderr, err := a.cmd.Run(ctx, repoPath, "pr", "diff", sel)
+	if err != nil {
+		return domain.PullRequestDetails{}, fmt.Errorf("gh pr diff %s: %w (stderr: %s)", sel, err, strings.TrimSpace(string(stderr)))
+	}
+	details := domain.PullRequestDetails{PullRequest: pr, Files: files, Diff: string(diff)}
+
+	data, err := a.queryPullRequest(ctx, repoPath, pr, pullRequestDetailsQuery)
+	if err != nil {
+		a.logger.WarnContext(ctx, "fetch pr conversation", "pr", number, "err", err)
+		return details, nil
+	}
+	var conv ghThreadsJSON
+	if err := json.Unmarshal(data, &conv); err != nil {
+		a.logger.WarnContext(ctx, "decode pr conversation", "pr", number, "err", err)
+		return details, nil
+	}
+	details.Conversation = parseConversation(conv.Data.Repository.PullRequest)
+	details.Threads = parseThreads(conv.Data.Repository.PullRequest.ReviewThreads.Nodes)
+	return details, nil
 }
 
 func ownerRepoFromURL(prURL string) (string, string, error) {
@@ -260,29 +330,102 @@ func ownerRepoFromURL(prURL string) (string, string, error) {
 	return parts[0], parts[1], nil
 }
 
+// ghCommentJSON decodes an issue comment, a review (State, SubmittedAt) or a
+// thread comment (DiffHunk); the fields a query did not ask for stay empty.
+type ghCommentJSON struct {
+	Author struct {
+		Typename string `json:"__typename"`
+		Login    string `json:"login"`
+	} `json:"author"`
+	Body        string `json:"body"`
+	State       string `json:"state"`
+	CreatedAt   string `json:"createdAt"`
+	SubmittedAt string `json:"submittedAt"`
+	DiffHunk    string `json:"diffHunk"`
+}
+
+type ghThreadJSON struct {
+	IsResolved bool   `json:"isResolved"`
+	IsOutdated bool   `json:"isOutdated"`
+	Path       string `json:"path"`
+	Line       int    `json:"line"`
+	Comments   struct {
+		Nodes []ghCommentJSON `json:"nodes"`
+	} `json:"comments"`
+}
+
+type ghPullRequestJSON struct {
+	Comments struct {
+		Nodes []ghCommentJSON `json:"nodes"`
+	} `json:"comments"`
+	Reviews struct {
+		Nodes []ghCommentJSON `json:"nodes"`
+	} `json:"reviews"`
+	ReviewThreads struct {
+		Nodes []ghThreadJSON `json:"nodes"`
+	} `json:"reviewThreads"`
+}
+
+// ghThreadsJSON decodes both reviewThreadsQuery and pullRequestDetailsQuery.
 type ghThreadsJSON struct {
 	Data struct {
 		Viewer struct {
 			Login string `json:"login"`
 		} `json:"viewer"`
 		Repository struct {
-			PullRequest struct {
-				ReviewThreads struct {
-					Nodes []struct {
-						IsResolved bool `json:"isResolved"`
-						Comments   struct {
-							Nodes []struct {
-								Author struct {
-									Typename string `json:"__typename"`
-									Login    string `json:"login"`
-								} `json:"author"`
-							} `json:"nodes"`
-						} `json:"comments"`
-					} `json:"nodes"`
-				} `json:"reviewThreads"`
-			} `json:"pullRequest"`
+			PullRequest ghPullRequestJSON `json:"pullRequest"`
 		} `json:"repository"`
 	} `json:"data"`
+}
+
+func (c ghCommentJSON) toDomain() domain.PRComment {
+	at := c.CreatedAt
+	if at == "" {
+		at = c.SubmittedAt
+	}
+	t, _ := time.Parse(time.RFC3339, at)
+	return domain.PRComment{
+		Author:      c.Author.Login,
+		AuthorIsBot: c.Author.Typename == "Bot",
+		Body:        c.Body,
+		CreatedAt:   t,
+		ReviewState: c.State,
+	}
+}
+
+func parseThreads(nodes []ghThreadJSON) []domain.PRReviewThread {
+	threads := make([]domain.PRReviewThread, 0, len(nodes))
+	for _, th := range nodes {
+		thread := domain.PRReviewThread{Resolved: th.IsResolved, Outdated: th.IsOutdated, Path: th.Path, Line: th.Line}
+		for _, cm := range th.Comments.Nodes {
+			c := cm.toDomain()
+			thread.Comments = append(thread.Comments, c)
+			if !c.AuthorIsBot {
+				thread.Authors = append(thread.Authors, c.Author)
+			}
+			if thread.DiffHunk == "" {
+				thread.DiffHunk = cm.DiffHunk
+			}
+		}
+		threads = append(threads, thread)
+	}
+	return threads
+}
+
+// parseConversation merges issue comments and the reviews that carry a body,
+// oldest first.
+func parseConversation(pr ghPullRequestJSON) []domain.PRComment {
+	out := make([]domain.PRComment, 0, len(pr.Comments.Nodes)+len(pr.Reviews.Nodes))
+	for _, c := range pr.Comments.Nodes {
+		out = append(out, c.toDomain())
+	}
+	for _, r := range pr.Reviews.Nodes {
+		if strings.TrimSpace(r.Body) != "" {
+			out = append(out, r.toDomain())
+		}
+	}
+	slices.SortStableFunc(out, func(a, b domain.PRComment) int { return a.CreatedAt.Compare(b.CreatedAt) })
+	return out
 }
 
 func summariseThreads(data []byte) (domain.PRComments, error) {
@@ -290,17 +433,7 @@ func summariseThreads(data []byte) (domain.PRComments, error) {
 	if err := json.Unmarshal(data, &raw); err != nil {
 		return domain.PRComments{}, fmt.Errorf("decode gh graphql json: %w", err)
 	}
-	nodes := raw.Data.Repository.PullRequest.ReviewThreads.Nodes
-	threads := make([]domain.PRReviewThread, 0, len(nodes))
-	for _, th := range nodes {
-		var authors []string
-		for _, cm := range th.Comments.Nodes {
-			if cm.Author.Typename != "Bot" {
-				authors = append(authors, cm.Author.Login)
-			}
-		}
-		threads = append(threads, domain.PRReviewThread{Resolved: th.IsResolved, Authors: authors})
-	}
+	threads := parseThreads(raw.Data.Repository.PullRequest.ReviewThreads.Nodes)
 	return domain.SummariseReviewThreads(threads, raw.Data.Viewer.Login), nil
 }
 
@@ -319,6 +452,19 @@ type ghPRJSON struct {
 	ChangedFiles      int           `json:"changedFiles"`
 	UpdatedAt         string        `json:"updatedAt"`
 	StatusCheckRollup []ghCheckJSON `json:"statusCheckRollup"`
+	Body              string        `json:"body"`
+	BaseRefName       string        `json:"baseRefName"`
+	Labels            []struct {
+		Name string `json:"name"`
+	} `json:"labels"`
+	Files []ghFileJSON `json:"files"`
+}
+
+type ghFileJSON struct {
+	Path       string `json:"path"`
+	Additions  int    `json:"additions"`
+	Deletions  int    `json:"deletions"`
+	ChangeType string `json:"changeType"`
 }
 
 // ghCheckJSON covers both `gh pr view` rollup entries and GraphQL contexts:
@@ -355,6 +501,11 @@ func fromGHJSON(raw ghPRJSON) (domain.PullRequest, error) {
 	}
 	pr.URL = raw.URL
 	pr.Author = raw.Author.Login
+	pr.Body = raw.Body
+	pr.BaseBranch = raw.BaseRefName
+	for _, l := range raw.Labels {
+		pr.Labels = append(pr.Labels, l.Name)
+	}
 	pr.Stats = domain.PRStats{
 		Additions:    raw.Additions,
 		Deletions:    raw.Deletions,
