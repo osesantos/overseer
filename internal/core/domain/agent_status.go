@@ -51,10 +51,11 @@ const (
 )
 
 // outranksPendingReview reports whether k beats a pending review: the agent is
-// working or needs the operator in its own pane.
+// still working or blocked on a dialog. A prose question (Asking) does not: once
+// the review is staged, submitting it is the operator's next move.
 func outranksPendingReview(k AgentStatusKind) bool {
 	switch k {
-	case AgentStatusRunning, AgentStatusWaiting, AgentStatusAsking, AgentStatusSwarm:
+	case AgentStatusRunning, AgentStatusWaiting, AgentStatusSwarm:
 		return true
 	}
 	return false

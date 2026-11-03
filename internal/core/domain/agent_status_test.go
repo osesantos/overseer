@@ -27,7 +27,7 @@ func TestWithPendingReviews(t *testing.T) {
 		{name: "no status yet", sess: review, inbox: pendingInbox, want: AgentStatusReviewPending, present: true},
 		{name: "running agent wins", sess: review, status: kindPtr(AgentStatusRunning), inbox: pendingInbox, want: AgentStatusRunning, present: true},
 		{name: "waiting agent wins", sess: review, status: kindPtr(AgentStatusWaiting), inbox: pendingInbox, want: AgentStatusWaiting, present: true},
-		{name: "asking agent wins", sess: review, status: kindPtr(AgentStatusAsking), inbox: pendingInbox, want: AgentStatusAsking, present: true},
+		{name: "pending review beats a prose question", sess: review, status: kindPtr(AgentStatusAsking), inbox: pendingInbox, want: AgentStatusReviewPending, present: true},
 		{name: "review already submitted", sess: review, status: kindPtr(AgentStatusIdle), inbox: submittedInbox, want: AgentStatusIdle, present: true},
 		{name: "PR left the inbox", sess: review, status: kindPtr(AgentStatusIdle), want: AgentStatusIdle, present: true},
 		{name: "ordinary session is untouched", sess: ordinary, status: kindPtr(AgentStatusIdle), inbox: pendingInbox, want: AgentStatusIdle, present: true},

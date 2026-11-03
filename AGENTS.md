@@ -278,7 +278,7 @@ Review sessions are ordinary sessions with `ReviewPR` set. The session list show
 
 `ose-pr-review` stages a PENDING review and the operator must submit it on GitHub, which is easy to forget once the agent goes 💤. The inbox query reads each review's `state`, and `PullRequest.ViewerReviewPending` is set when one by the viewer is `PENDING`. A pending review does not fulfil the review request, so the PR stays in the inbox until it is submitted: the inbox is the signal, no extra poll.
 
-`domain.WithPendingReviews` lays `AgentStatusReviewPending` over the detected statuses for review sessions, unless the agent is running, waiting or asking. The dashboard keeps `m.agentStatuses` raw (the `:prs` page reads it) and hands only the overlaid copy to the session list, through `refreshLeftPaneStatuses` on every status tick and inbox load. It is never produced by a detector.
+`domain.WithPendingReviews` lays `AgentStatusReviewPending` over the detected statuses for review sessions, unless the agent is running or waiting on a dialog; a prose question (`asking`) does not win, because once the review is staged the operator's next move is to submit it. The dashboard keeps `m.agentStatuses` raw (the `:prs` page reads it) and hands only the overlaid copy to the session list, through `refreshLeftPaneStatuses` on every status tick and inbox load. It is never produced by a detector.
 
 `github.Adapter.ListRequestedReviews` resolves the viewer login first because GraphQL search does not expand `@me`, and `review-requested:<login>` already includes team requests. GitHub search intermittently answers an empty page for a query that has results (seen during a degraded-performance incident), so an empty page is retried `searchRetries` times before it is believed.
 
