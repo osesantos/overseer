@@ -100,7 +100,7 @@ func TestDashboard_SessionSelectionClearedMsg_ForwardsToInspector(t *testing.T) 
 	}
 }
 
-func TestDashboard_AgentStatusesUpdatedMsg_RendersAggregateInSessionsTitle(t *testing.T) {
+func TestDashboard_AgentStatusesUpdatedMsg_TitleStaysPlainSessions(t *testing.T) {
 	m := newTestDashboardNoEmoji(t)
 
 	updated, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 30})
@@ -108,59 +108,14 @@ func TestDashboard_AgentStatusesUpdatedMsg_RendersAggregateInSessionsTitle(t *te
 
 	statuses := map[uuid.UUID]domain.AgentStatus{
 		uuid.New(): {Kind: domain.AgentStatusRunning},
-		uuid.New(): {Kind: domain.AgentStatusRunning},
-		uuid.New(): {Kind: domain.AgentStatusRunning},
-		uuid.New(): {Kind: domain.AgentStatusWaiting},
-		uuid.New(): {Kind: domain.AgentStatusDead},
+		uuid.New(): {Kind: domain.AgentStatusIdle},
 	}
-
 	updated, _ = m.Update(shared.AgentStatusesUpdatedMsg{Statuses: statuses})
 	m = updated.(Model)
 
 	view := ansi.Strip(m.View().Content)
-	want := "Sessions (● 3 running ◐ 1 waiting ■ 1 dead)"
-	if !strings.Contains(view, want) {
-		t.Errorf("Sessions box title missing aggregate %q in view:\n%s", want, view)
-	}
-
-	lines := strings.Split(view, "\n")
-	titleLine := ""
-	for _, line := range lines {
-		if strings.Contains(line, "Sessions (") {
-			titleLine = line
-			break
-		}
-	}
-	if titleLine == "" {
-		t.Fatalf("Sessions box border line with aggregate not found in view:\n%s", view)
-	}
-	if !strings.Contains(titleLine, want) {
-		t.Errorf("aggregate %q should sit immediately after the Sessions title on the border line:\n%s", want, titleLine)
-	}
-}
-
-func TestDashboard_AgentStatusesUpdatedMsg_OmitsZeroCounts(t *testing.T) {
-	m := newTestDashboardNoEmoji(t)
-
-	updated, _ := m.Update(tea.WindowSizeMsg{Width: 200, Height: 30})
-	m = updated.(Model)
-
-	statuses := map[uuid.UUID]domain.AgentStatus{
-		uuid.New(): {Kind: domain.AgentStatusRunning},
-	}
-
-	updated, _ = m.Update(shared.AgentStatusesUpdatedMsg{Statuses: statuses})
-	m = updated.(Model)
-
-	view := ansi.Strip(m.View().Content)
-	want := "Sessions (● 1 running)"
-	if !strings.Contains(view, want) {
-		t.Errorf("Sessions box title missing %q in view:\n%s", want, view)
-	}
-	for _, segment := range []string{"◐ 0", "■ 0", "○ 0", "? 0", "waiting", "dead", "idle", "unknown"} {
-		if strings.Contains(view, segment) {
-			t.Errorf("Sessions box title should omit zero-count segments, found %q in view:\n%s", segment, view)
-		}
+	if strings.Contains(view, "Sessions (") || !strings.Contains(view, "─ Sessions ") {
+		t.Errorf("Sessions title should carry no status counts, got:\n%s", view)
 	}
 }
 

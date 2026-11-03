@@ -672,9 +672,6 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 		{"asking-sess", "◇ asking-sess"},
 		{"publish-sess", "⇡ publish-sess"},
 	}
-	if title := agentStatusTitle(statuses, styles.NewGlyphs(true)); !strings.Contains(title, "⇡ 1 to publish") {
-		t.Errorf("title missing the pending-review count: %q", title)
-	}
 	for _, tc := range cases {
 		row := findRow(t, view, tc.marker)
 		if !strings.Contains(row, tc.glyph) {
