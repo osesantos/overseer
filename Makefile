@@ -9,11 +9,11 @@ BIN ?= $(HOME)/.local/bin
 build: ## Build the overseer binary
 	mkdir -p $(BIN_DIR)
 	go build -o $(BINARY) ./cmd/overseer/
-	cp ./bin/overseer ~/go/bin/overseer
+	install -m 755 $(BINARY) ~/go/bin/overseer
 
 install: build ## Build, then install the overseer binary into ~/go/bin and $(BIN) (default ~/.local/bin)
 	mkdir -p $(BIN)
-	cp $(BINARY) $(BIN)/overseer
+	install -m 755 $(BINARY) $(BIN)/overseer
 
 test: ## Run the unit test suite
 	go test -race -cover ./...
