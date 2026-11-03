@@ -346,6 +346,8 @@ Press `:` anywhere, type `prs`, Enter. Bot-authored and dismissed PRs are hidden
 | `h` | Show / hide bot-authored and dismissed PRs |
 | `Esc` / `q` | Back to the sessions page (also `:sessions`); `Ctrl+C` quits |
 
+A review session shows 📤 (`⇡` without emoji) instead of 💤 while its PR holds a review you staged on GitHub but have not submitted. A running, waiting or asking agent keeps its own icon. The icon follows the inbox poll (`pullRequests.pollInterval`), so it can take one poll to appear or clear.
+
 #### Support Ticket Inbox (`:triage`)
 
 Press `:`, type `triage`, Enter. Lists the open tickets from `triage.jql`, grouped by Jira project. Dismissed tickets are hidden by default (`h` shows them). A triage session investigates, then waits at its own confirm prompts: nothing is posted to Jira until you attach and say yes.

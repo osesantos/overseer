@@ -3,7 +3,10 @@ package domain
 import (
 	"context"
 	"errors"
+	"maps"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 // AgentType identifies which agent runs in a session. It is set on Session
@@ -41,7 +44,43 @@ const (
 	// either: Unknown means detection failed, whereas this means detection does
 	// not apply.
 	AgentStatusSwarm AgentStatusKind = "swarm"
+	// AgentStatusReviewPending marks a review session whose PR holds a review the
+	// operator staged on GitHub but has not submitted. It is never detected from a
+	// pane; WithPendingReviews lays it over the detected status.
+	AgentStatusReviewPending AgentStatusKind = "review-pending"
 )
+
+// outranksPendingReview reports whether k beats a pending review: the agent is
+// working or needs the operator in its own pane.
+func outranksPendingReview(k AgentStatusKind) bool {
+	switch k {
+	case AgentStatusRunning, AgentStatusWaiting, AgentStatusAsking, AgentStatusSwarm:
+		return true
+	}
+	return false
+}
+
+// WithPendingReviews returns a copy of statuses in which every review session
+// whose PR carries an unsubmitted review by the viewer reads
+// AgentStatusReviewPending, unless its agent is busy.
+func WithPendingReviews(statuses map[uuid.UUID]AgentStatus, sessions []Session, inbox ReviewInbox) map[uuid.UUID]AgentStatus {
+	pending := make(map[PullRequestRef]bool)
+	for _, pr := range inbox.PullRequests {
+		if pr.ViewerReviewPending {
+			pending[pr.Ref()] = true
+		}
+	}
+	out := make(map[uuid.UUID]AgentStatus, len(statuses))
+	maps.Copy(out, statuses)
+	for _, sess := range sessions {
+		current := statuses[sess.ID]
+		if !sess.IsReview() || !pending[sess.ReviewPR] || outranksPendingReview(current.Kind) {
+			continue
+		}
+		out[sess.ID] = AgentStatus{Kind: AgentStatusReviewPending, DetectedAt: current.DetectedAt, Source: "github/pending-review"}
+	}
+	return out
+}
 
 // AgentStatus is a value object describing what an agent is doing right
 // now. DetectedAt records when the snapshot was taken; Source identifies

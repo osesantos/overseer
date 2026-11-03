@@ -28,7 +28,7 @@
           "headRefName": "fix/RRCT-7713-error-info",
           "author": { "login": "OS-joaoluisalmeida", "__typename": "User" },
           "repository": { "nameWithOwner": "OutSystems/OutSystems.Signer.Service" },
-          "reviews": { "nodes": [ { "author": { "login": "someone-else" } } ] },
+          "reviews": { "nodes": [ { "author": { "login": "someone-else" }, "state": "PENDING" } ] },
           "commits": { "nodes": [ { "commit": { "statusCheckRollup": null } } ] }
         },
         {
@@ -42,7 +42,7 @@
           "headRefName": "feat/x",
           "author": { "login": "OS-vitorventuzelos", "__typename": "User" },
           "repository": { "nameWithOwner": "OutSystems/OutSystems.Scheduler.Timer" },
-          "reviews": { "nodes": [ { "author": { "login": "osesantos" } } ] },
+          "reviews": { "nodes": [ { "author": { "login": "osesantos" }, "state": "PENDING" } ] },
           "commits": { "nodes": [] }
         }
       ]

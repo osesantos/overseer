@@ -106,6 +106,8 @@ type PullRequest struct {
 	// ReviewedByViewer: a review by the viewer exists on GitHub, or the viewer
 	// closed a review session for this PR by hand. Either way, no auto-review.
 	ReviewedByViewer bool
+	// ViewerReviewPending: the viewer has a review staged on GitHub but not submitted.
+	ViewerReviewPending bool
 	// Dismissed: the operator hid this PR from the inbox; it is never auto-reviewed.
 	Dismissed bool
 	Stats     PRStats

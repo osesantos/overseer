@@ -34,6 +34,8 @@ type Glyphs struct {
 	// swarm (it has N panes), so this says "this is a swarm" instead of pretending
 	// to report a state it cannot know.
 	StatusSwarm string
+	// StatusPublish marks a review session whose staged GitHub review is not submitted yet.
+	StatusPublish string
 }
 
 func NewGlyphs(disableEmoji bool) Glyphs {
@@ -66,6 +68,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 			StatusDead:    "■",
 			StatusUnknown: "?",
 			StatusSwarm:   "⁂",
+			StatusPublish: "⇡",
 		}
 	}
 	return Glyphs{
@@ -96,6 +99,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 		StatusDead:    "🟥",
 		StatusUnknown: "❓",
 		StatusSwarm:   "🐝",
+		StatusPublish: "📤",
 	}
 }
 
@@ -129,6 +133,8 @@ func (g Glyphs) AgentStatus(kind domain.AgentStatusKind) string {
 		return g.StatusDead
 	case domain.AgentStatusSwarm:
 		return g.StatusSwarm
+	case domain.AgentStatusReviewPending:
+		return g.StatusPublish
 	default:
 		return g.StatusUnknown
 	}

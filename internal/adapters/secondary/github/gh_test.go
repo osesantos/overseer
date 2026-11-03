@@ -333,7 +333,7 @@ func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
 	}
 
 	human := inbox.PullRequests[1]
-	if human.AuthorIsBot || human.ReviewedByViewer || human.State != domain.PRStateOpen || human.Number != 92 {
+	if human.AuthorIsBot || human.ReviewedByViewer || human.ViewerReviewPending || human.State != domain.PRStateOpen || human.Number != 92 {
 		t.Fatalf("human PR = %+v", human)
 	}
 	if human.Checks.Total != 0 {
@@ -341,7 +341,7 @@ func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
 	}
 
 	reviewed := inbox.PullRequests[2]
-	if !reviewed.ReviewedByViewer || reviewed.State != domain.PRStateDraft {
+	if !reviewed.ReviewedByViewer || !reviewed.ViewerReviewPending || reviewed.State != domain.PRStateDraft {
 		t.Fatalf("reviewed PR = %+v", reviewed)
 	}
 }

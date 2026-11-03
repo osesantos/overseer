@@ -481,7 +481,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inboxLoaded = true
 		m.inboxLoadError = ""
 		m.syncPRsPage()
-		return m, m.autoReviewCmd(msg.Inbox)
+		return m, tea.Batch(m.refreshLeftPaneStatuses(), m.autoReviewCmd(msg.Inbox))
 	case shared.AutoReviewCompletedMsg:
 		if msg.Err != nil {
 			return m, m.showToast("auto-review: " + msg.Err.Error())
@@ -683,9 +683,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.agentStatuses = msg.Statuses
 		m.syncPRsPage()
 		m.syncTriagePage()
-		var cmd tea.Cmd
-		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
-		return m, cmd
+		if msg.Err != nil {
+			var cmd tea.Cmd
+			m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+			return m, cmd
+		}
+		return m, m.refreshLeftPaneStatuses()
 	case shared.SessionsLoadedMsg:
 		if msg.Err == nil {
 			m.cachedSessions = msg.Sessions
@@ -1231,6 +1234,16 @@ func (m *Model) showToast(text string) tea.Cmd {
 
 // syncPRsPage hands the page the slices it renders from; cheap enough to run on
 // every change of inbox, sessions, projects or agent statuses.
+// refreshLeftPaneStatuses hands the session list the agent statuses with
+// pending GitHub reviews laid over them; m.agentStatuses stays the raw detection.
+func (m *Model) refreshLeftPaneStatuses() tea.Cmd {
+	var cmd tea.Cmd
+	m.leftPane, cmd = shared.UpdateModel(m.leftPane, shared.AgentStatusesUpdatedMsg{
+		Statuses: domain.WithPendingReviews(m.agentStatuses, m.cachedSessions, m.reviewInbox),
+	})
+	return cmd
+}
+
 func (m *Model) syncPRsPage() {
 	names := make(map[string]bool, len(m.cachedProjects))
 	for _, p := range m.cachedProjects {

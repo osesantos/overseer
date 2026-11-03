@@ -646,7 +646,8 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 	dead := testutil.MakeSessionWithWorktree("dead-sess", overseerID, "/tmp/wt-c", "branch-c")
 	idle := testutil.MakeSessionWithWorktree("idle-sess", overseerID, "/tmp/wt-d", "branch-d")
 	asking := testutil.MakeSessionWithWorktree("asking-sess", overseerID, "/tmp/wt-e", "branch-e")
-	sessions := []domain.Session{running, waiting, dead, idle, asking}
+	publish := testutil.MakeSessionWithWorktree("publish-sess", overseerID, "/tmp/wt-f", "branch-f")
+	sessions := []domain.Session{running, waiting, dead, idle, asking, publish}
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: sessions})
 	statuses := map[uuid.UUID]domain.AgentStatus{
 		running.ID: {Kind: domain.AgentStatusRunning},
@@ -654,6 +655,7 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 		dead.ID:    {Kind: domain.AgentStatusDead},
 		idle.ID:    {Kind: domain.AgentStatusIdle},
 		asking.ID:  {Kind: domain.AgentStatusAsking},
+		publish.ID: {Kind: domain.AgentStatusReviewPending},
 	}
 
 	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{Statuses: statuses})
@@ -668,6 +670,10 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 		{"dead-sess", "■ dead-sess"},
 		{"idle-sess", "○ idle-sess"},
 		{"asking-sess", "◇ asking-sess"},
+		{"publish-sess", "⇡ publish-sess"},
+	}
+	if title := agentStatusTitle(statuses, styles.NewGlyphs(true)); !strings.Contains(title, "⇡ 1 to publish") {
+		t.Errorf("title missing the pending-review count: %q", title)
 	}
 	for _, tc := range cases {
 		row := findRow(t, view, tc.marker)

@@ -43,7 +43,7 @@ const requestedReviewsQuery = `query($q: String!) {
       number title url isDraft state createdAt updatedAt headRefName
       author { login __typename }
       repository { nameWithOwner }
-      reviews(first: 50) { nodes { author { login } } }
+      reviews(first: 50) { nodes { author { login } state } }
       commits(last: 1) { nodes { commit { statusCheckRollup { state } } } }
     } }
   }
@@ -188,6 +188,7 @@ type ghReviewJSON struct {
 	Author struct {
 		Login string `json:"login"`
 	} `json:"author"`
+	State string `json:"state"`
 }
 
 func parseRequestedReviews(data []byte, viewer string) ([]domain.PullRequest, int, error) {
@@ -209,6 +210,9 @@ func parseRequestedReviews(data []byte, viewer string) ([]domain.PullRequest, in
 		pr.Repo = node.Repository.NameWithOwner
 		pr.AuthorIsBot = node.AuthorTyped.Typename == "Bot"
 		pr.ReviewedByViewer = slices.ContainsFunc(node.Reviews.Nodes, func(r ghReviewJSON) bool { return r.Author.Login == viewer })
+		pr.ViewerReviewPending = slices.ContainsFunc(node.Reviews.Nodes, func(r ghReviewJSON) bool {
+			return r.Author.Login == viewer && r.State == "PENDING"
+		})
 		if t, err := time.Parse(time.RFC3339, node.CreatedAt); err == nil {
 			pr.CreatedAt = t
 		}

@@ -498,3 +498,43 @@ func TestDashboard_PRsPage_SaysLoadingUntilTheFirstPollAnswers(t *testing.T) {
 		t.Fatalf("page after an empty poll:\n%s", view)
 	}
 }
+
+func TestDashboard_PendingReview_ShowsThePublishGlyphUntilSubmitted(t *testing.T) {
+	m := sizedDashboard(t)
+	ref := domain.PullRequestRef{Repo: "o/r", Number: 5}
+	sess := testutil.MakeSession("review-five", uuid.New())
+	if err := sess.AssignReviewTarget(ref); err != nil {
+		t.Fatalf("AssignReviewTarget() error = %v", err)
+	}
+	updated, _ := m.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{sess}})
+	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{
+		Statuses: map[uuid.UUID]domain.AgentStatus{sess.ID: {Kind: domain.AgentStatusIdle}},
+	})
+	m = updated.(Model)
+	row := func(m Model) string {
+		for line := range strings.SplitSeq(ansi.Strip(m.View().Content), "\n") {
+			if strings.Contains(line, "review-five") {
+				return line
+			}
+		}
+		t.Fatal("no row for review-five")
+		return ""
+	}
+
+	inbox := func(pending bool) shared.PullRequestsLoadedMsg {
+		return shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
+			{Repo: ref.Repo, Number: ref.Number, ViewerReviewPending: pending},
+		}}}
+	}
+	updated, _ = m.Update(inbox(true))
+	m = updated.(Model)
+	if got := row(m); !strings.Contains(got, m.styles.Glyphs.StatusPublish) {
+		t.Fatalf("row %q missing the publish glyph after a pending review arrived", got)
+	}
+
+	updated, _ = m.Update(inbox(false))
+	m = updated.(Model)
+	if got := row(m); !strings.Contains(got, m.styles.Glyphs.StatusIdle) || strings.Contains(got, m.styles.Glyphs.StatusPublish) {
+		t.Fatalf("row %q should be back to idle after the review was submitted", got)
+	}
+}
