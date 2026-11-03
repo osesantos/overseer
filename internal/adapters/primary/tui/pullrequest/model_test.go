@@ -331,23 +331,56 @@ func TestModel_Search_SlashEnterJumpsToTheFirstHitAndNCycles(t *testing.T) {
 	if m.CapturesInput() || m.query != "Patch" || len(m.hits) != 2 {
 		t.Fatalf("after enter: capturing=%v query=%q hits=%v", m.CapturesInput(), m.query, m.hits)
 	}
-	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[0] {
-		t.Fatalf("YOffset = %d, want the first hit %d", got, m.hits[0])
-	}
-	if v := view(m); !strings.Contains(v, "/Patch · 1/2") {
-		t.Fatalf("header has no search status:\n%s", v)
+	if m.hit != 0 || !strings.Contains(view(m), "/Patch · 1/2") {
+		t.Fatalf("hit = %d, header:\n%s", m.hit, view(m))
 	}
 	m, _ = press(t, m, letter('n'))
-	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[1] {
-		t.Fatalf("after n: YOffset = %d, want %d", got, m.hits[1])
+	if m.hit != 1 {
+		t.Fatalf("after n: hit = %d, want 1", m.hit)
 	}
 	m, _ = press(t, m, letter('n'))
-	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[0] {
-		t.Fatalf("n did not wrap: YOffset = %d, want %d", got, m.hits[0])
+	if m.hit != 0 {
+		t.Fatalf("n did not wrap: hit = %d", m.hit)
 	}
 	m, _ = press(t, m, letter('N'))
-	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[1] || !strings.Contains(view(m), "2/2") {
-		t.Fatalf("N did not wrap backwards: YOffset = %d, want %d", got, m.hits[1])
+	if m.hit != 1 || !strings.Contains(view(m), "2/2") {
+		t.Fatalf("N did not wrap backwards: hit = %d", m.hit)
+	}
+}
+
+func TestModel_Search_CurrentHitIsPaintedDifferentlyAndFollowsN(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+	m = typeSearch(t, m, "Patch")
+	ds := m.styles.PullRequest.Diff
+	current, other := ds.MatchCurrent.Render("Patch"), ds.Match.Render("Patch")
+
+	rows := strings.Split(m.View().Content, "\n")[headerHeight:]
+	if !strings.Contains(rows[m.hits[0]], current) || !strings.Contains(rows[m.hits[1]], other) {
+		t.Fatalf("after enter the first hit is not the current one:\n%q\n%q", rows[m.hits[0]], rows[m.hits[1]])
+	}
+	m, _ = press(t, m, letter('n'))
+	rows = strings.Split(m.View().Content, "\n")[headerHeight:]
+	if !strings.Contains(rows[m.hits[0]], other) || !strings.Contains(rows[m.hits[1]], current) {
+		t.Fatalf("after n the current style did not move:\n%q\n%q", rows[m.hits[0]], rows[m.hits[1]])
+	}
+}
+
+func TestModel_Search_JumpCentresTheHit(t *testing.T) {
+	m := New(styles.New())
+	m.SetSize(100, 30)
+	m.SetPullRequest(samplePR())
+	d := sampleDetails()
+	context := strings.Repeat(" filler\n", 100)
+	d.Diff = "diff --git a/x b/x\n@@ -1,201 +1,202 @@\n" + context + "+needle\n" + context
+	m.SetDetails(d)
+	m, _ = press(t, m, letter(']'))
+
+	m = typeSearch(t, m, "needle")
+
+	// Rows: 0 rule, 1 hunk header, 2-101 filler, 102 needle. Height is 28 rows, so the needle sits on row 14.
+	if got, want := m.viewports[sectionDiff].YOffset(), 102-28/2; got != want || m.hits[0] != 102 {
+		t.Fatalf("YOffset = %d, want %d (hits %v)", got, want, m.hits)
 	}
 }
 

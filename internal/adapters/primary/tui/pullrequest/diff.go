@@ -165,17 +165,38 @@ func splitRows(lines []diffLine) []splitRow {
 	return rows
 }
 
-// diffRow is one rendered line of the diff and whether the search query hits it.
+// diffRow is one rendered line of the diff and, unpainted, the cells where
+// the search query hits it. Painting is a separate step so the current hit
+// can change colour without rendering the diff again.
 type diffRow struct {
-	text string
-	hit  bool
+	text   string
+	ranges []lipgloss.Range
 }
 
-// renderDiff draws the diff at width, split (old left, new right) or unified.
+// shifted moves the row's hit cells right by the width of a prefix.
+func (r diffRow) shifted(by int) []lipgloss.Range {
+	out := make([]lipgloss.Range, len(r.ranges))
+	for i, rg := range r.ranges {
+		out[i] = lipgloss.Range{Start: rg.Start + by, End: rg.End + by}
+	}
+	return out
+}
+
+func (r diffRow) paint(style lipgloss.Style) string {
+	if len(r.ranges) == 0 {
+		return r.text
+	}
+	ranges := make([]lipgloss.Range, len(r.ranges))
+	for i, rg := range r.ranges {
+		ranges[i] = lipgloss.NewRange(rg.Start, rg.End, style)
+	}
+	return lipgloss.StyleRanges(r.text, ranges...)
+}
+
+// diffRows draws the diff at width, split (old left, new right) or unified.
 // Every row is cut to the width so tinted rows stay aligned; the viewport does
-// not need to scroll sideways. A query paints its hits and the rows that have
-// one come back as indexes, so n/N can jump between them.
-func renderDiff(s *styles.Styles, diff string, width int, split bool, query string) (string, []int) {
+// not need to scroll sideways. A query marks its hits on each row.
+func diffRows(s *styles.Styles, diff string, width int, split bool, query string) []diffRow {
 	files := parseUnifiedDiff(diff)
 	width = max(width, 20)
 	gutter := gutterWidth(files)
@@ -194,15 +215,26 @@ func renderDiff(s *styles.Styles, diff string, width int, split bool, query stri
 			}
 		}
 	}
+	return rows
+}
+
+// paintDiff turns rows into viewport lines with every hit in the match style
+// and the current hit (an index into the returned hits, -1 for none) in its
+// own; the hits are the row indexes that have one.
+func paintDiff(ds styles.DiffStyles, rows []diffRow, current int) ([]string, []int) {
 	lines := make([]string, len(rows))
 	var hits []int
 	for i, r := range rows {
-		lines[i] = r.text
-		if r.hit {
+		style := ds.Match
+		if len(r.ranges) > 0 {
+			if len(hits) == current {
+				style = ds.MatchCurrent
+			}
 			hits = append(hits, i)
 		}
+		lines[i] = r.paint(style)
 	}
-	return strings.Join(lines, "\n"), hits
+	return lines, hits
 }
 
 func renderUnifiedHunk(s *styles.Styles, h hunkDiff, width, gutter int, query string) []diffRow {
@@ -210,9 +242,9 @@ func renderUnifiedHunk(s *styles.Styles, h hunkDiff, width, gutter int, query st
 	textW := max(width-2*gutter-2, 1)
 	rows := make([]diffRow, 0, len(h.Lines))
 	for _, l := range h.Lines {
-		nums := ds.LineNo.Render(lineNo(l.OldNo, gutter) + " " + lineNo(l.NewNo, gutter))
+		nums := ds.LineNo.Render(lineNo(l.OldNo, gutter)+" "+lineNo(l.NewNo, gutter)) + " "
 		c := cell(ds, diffLineStyle(ds, l.Kind), marker(l.Kind)+l.Text, textW, query)
-		rows = append(rows, diffRow{text: nums + " " + c.text, hit: c.hit})
+		rows = append(rows, diffRow{text: nums + c.text, ranges: c.shifted(lipgloss.Width(nums))})
 	}
 	return rows
 }
@@ -226,30 +258,30 @@ func renderSplitHunk(s *styles.Styles, h hunkDiff, width, gutter int, query stri
 		if l == nil {
 			return diffRow{text: ds.LineNo.Width(colW).Render("")}
 		}
+		num := ds.LineNo.Render(lineNo(no(*l), gutter)) + " "
 		c := cell(ds, diffLineStyle(ds, l.Kind), l.Text, textW, query)
-		return diffRow{text: ds.LineNo.Render(lineNo(no(*l), gutter)) + " " + c.text, hit: c.hit}
+		return diffRow{text: num + c.text, ranges: c.shifted(lipgloss.Width(num))}
 	}
 	rows := splitRows(h.Lines)
 	out := make([]diffRow, 0, len(rows))
 	for _, r := range rows {
 		left := side(r.left, func(l diffLine) int { return l.OldNo })
 		right := side(r.right, func(l diffLine) int { return l.NewNo })
-		out = append(out, diffRow{text: left.text + sep + right.text, hit: left.hit || right.hit})
+		text := left.text + sep + right.text
+		out = append(out, diffRow{text: text, ranges: append(left.ranges, right.shifted(lipgloss.Width(left.text+sep))...)})
 	}
 	return out
 }
 
-// cell renders text cut and padded to width in style, with every hit of query
-// painted over it in the match style.
+// cell renders text cut and padded to width in style and marks every hit of query.
 func cell(ds styles.DiffStyles, style lipgloss.Style, text string, width int, query string) diffRow {
 	plain := ansi.Truncate(text, width, "…")
-	ranges := matchRanges(plain, query, ds.Match)
-	return diffRow{text: lipgloss.StyleRanges(style.Width(width).Render(plain), ranges...), hit: len(ranges) > 0}
+	return diffRow{text: style.Width(width).Render(plain), ranges: matchRanges(plain, query)}
 }
 
 // matchRanges locates query in plain as cell ranges for lipgloss.StyleRanges.
 // Like vim's smartcase, an all-lower-case query ignores case.
-func matchRanges(plain, query string, style lipgloss.Style) []lipgloss.Range {
+func matchRanges(plain, query string) []lipgloss.Range {
 	if query == "" {
 		return nil
 	}
@@ -266,17 +298,17 @@ func matchRanges(plain, query string, style lipgloss.Style) []lipgloss.Range {
 			return out
 		}
 		start, end := from+i, from+i+len(query)
-		out = append(out, lipgloss.NewRange(ansi.StringWidth(hay[:start]), ansi.StringWidth(hay[:end]), style))
+		out = append(out, lipgloss.Range{Start: ansi.StringWidth(hay[:start]), End: ansi.StringWidth(hay[:end])})
 		from = end
 	}
 }
 
 func fileRule(s *styles.Styles, path string, width int, query string) diffRow {
 	ds := s.PullRequest.Diff
-	ranges := matchRanges(path, query, ds.Match)
-	name := lipgloss.StyleRanges(ds.FileName.Render(path), ranges...)
-	rule := ds.FileRule.Render("── ") + name + " " + ds.FileRule.Render(strings.Repeat("─", max(width-lipgloss.Width(name)-4, 0)))
-	return diffRow{text: rule, hit: len(ranges) > 0}
+	lead := ds.FileRule.Render("── ")
+	name := ds.FileName.Render(path)
+	rule := lead + name + " " + ds.FileRule.Render(strings.Repeat("─", max(width-lipgloss.Width(name)-4, 0)))
+	return diffRow{text: rule, ranges: diffRow{ranges: matchRanges(path, query)}.shifted(lipgloss.Width(lead))}
 }
 
 // gutterWidth is the width of the widest line number, at least 3.

@@ -192,7 +192,8 @@ type PullRequestStyles struct {
 
 // DiffStyles colours a diff GitHub-style: a rule with the file name between
 // files, hunk headers and changed rows on tinted backgrounds, dimmed context
-// and line numbers. Match paints a search hit over any of them.
+// and line numbers. Match paints a search hit over any of them, MatchCurrent
+// the one n/N last jumped to.
 type DiffStyles struct {
 	FileRule lipgloss.Style
 	FileName lipgloss.Style
@@ -200,8 +201,9 @@ type DiffStyles struct {
 	Add      lipgloss.Style
 	Remove   lipgloss.Style
 	Context  lipgloss.Style
-	LineNo   lipgloss.Style
-	Match    lipgloss.Style
+	LineNo       lipgloss.Style
+	Match        lipgloss.Style
+	MatchCurrent lipgloss.Style
 }
 
 type SessionDetailsStyles struct {
@@ -537,7 +539,8 @@ func newStyles(themeName string, disableEmoji bool, palette map[string]string) *
 				Remove:   lipgloss.NewStyle().Foreground(theme.Text).Background(theme.StatusDeadBg),
 				Context:  lipgloss.NewStyle().Foreground(theme.Subtext),
 				LineNo:   lipgloss.NewStyle().Foreground(theme.Muted),
-				Match:    lipgloss.NewStyle().Foreground(theme.TitleText).Background(theme.Warning).Bold(true),
+				Match:        lipgloss.NewStyle().Foreground(theme.TitleText).Background(theme.Warning).Bold(true),
+				MatchCurrent: lipgloss.NewStyle().Foreground(theme.TitleText).Background(theme.Primary).Bold(true),
 			},
 			Thread: struct {
 				Header   lipgloss.Style

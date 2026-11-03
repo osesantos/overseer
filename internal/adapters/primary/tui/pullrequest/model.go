@@ -49,11 +49,13 @@ type Model struct {
 	viewports [sectionCount]viewport.Model
 	// unifiedDiff is the operator's s toggle; the zero value is the split view.
 	unifiedDiff bool
-	// search is the / prompt. query is the committed search, hits the diff rows
-	// it paints and hit the one n/N last jumped to.
+	// search is the / prompt. query is the committed search, diffRows the
+	// rendered diff with its hits marked, hits the rows that have one and hit
+	// the one n/N last jumped to.
 	search    textinput.Model
 	searching bool
 	query     string
+	diffRows  []diffRow
 	hits      []int
 	hit       int
 	markdown  styles.Markdown
@@ -223,15 +225,25 @@ func (m *Model) setQuery(query string) {
 	m.jumpHit(0)
 }
 
-// jumpHit moves delta hits forward or back, wrapping, and scrolls the diff so
-// that hit is the top row.
+// jumpHit moves delta hits forward or back, wrapping, repaints so the new hit
+// stands out and scrolls the diff to centre it.
 func (m *Model) jumpHit(delta int) {
 	n := len(m.hits)
 	if n == 0 {
 		return
 	}
 	m.hit = ((m.hit+delta)%n + n) % n
-	m.viewports[sectionDiff].SetYOffset(m.hits[m.hit])
+	m.paintDiff()
+	vp := &m.viewports[sectionDiff]
+	vp.SetYOffset(m.hits[m.hit] - vp.Height()/2)
+}
+
+// paintDiff hands the viewport the diff rows with the hits painted; cheap
+// enough per key because the rows themselves are not rendered again.
+func (m *Model) paintDiff() {
+	lines, hits := paintDiff(m.styles.PullRequest.Diff, m.diffRows, m.hit)
+	m.viewports[sectionDiff].SetContentLines(lines)
+	m.hits = hits
 }
 
 // searchStatus is the header's "/query · 2/7" once a query is committed.
@@ -350,18 +362,24 @@ func (m Model) reviewerLook(state domain.PRReviewState) (glyph string, style lip
 // renderDiffSection fills the diff viewport and records the search hits; it
 // runs on load, resize, the s toggle and every new query, never per key.
 func (m *Model) renderDiffSection() {
-	content, hits := "", []int(nil)
+	m.diffRows = nil
 	switch {
 	case m.err != nil || !m.loaded:
-		content, _ = m.pendingLine()
+		content, _ := m.pendingLine()
+		m.diffRows = []diffRow{{text: content}}
 	case strings.TrimSpace(m.details.Diff) == "":
-		content = m.styles.PullRequest.Hint.Render("No diff")
+		m.diffRows = []diffRow{{text: m.styles.PullRequest.Hint.Render("No diff")}}
 	default:
-		content, hits = renderDiff(m.styles, m.details.Diff, m.width, m.diffIsSplit(), m.query)
+		m.diffRows = diffRows(m.styles, m.details.Diff, m.width, m.diffIsSplit(), m.query)
 	}
-	m.viewports[sectionDiff].SetContent(content)
-	m.hits = hits
-	m.hit = min(m.hit, max(len(hits)-1, 0))
+	hits := 0
+	for _, r := range m.diffRows {
+		if len(r.ranges) > 0 {
+			hits++
+		}
+	}
+	m.hit = min(m.hit, max(hits-1, 0))
+	m.paintDiff()
 }
 
 func (m Model) description() string {
