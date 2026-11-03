@@ -239,3 +239,13 @@ func TestModel_H_TogglesBotAndDismissedPRs(t *testing.T) {
 		t.Fatalf("second h did not hide the bot and dismissed PRs again:\n%s", view)
 	}
 }
+
+func TestModel_R_EmitsReload(t *testing.T) {
+	m, _ := fixture(t)
+
+	_, cmd := m.Update(letter('R'))
+
+	if _, ok := cmd().(shared.PullRequestsReloadMsg); !ok {
+		t.Fatalf("got %+v, want PullRequestsReloadMsg", cmd())
+	}
+}

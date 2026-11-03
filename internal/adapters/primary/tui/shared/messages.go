@@ -113,6 +113,10 @@ type PullRequestsLoadedMsg struct {
 	Err   error
 }
 
+// PullRequestsReloadMsg is emitted by the PRs page to poll the review inbox now
+// instead of waiting for the next tick.
+type PullRequestsReloadMsg struct{}
+
 // PullRequestOpenMsg is emitted by the PRs page when Enter lands on a PR: jump
 // to its review session, starting one first when none exists.
 type PullRequestOpenMsg struct{ PR domain.PullRequest }
@@ -181,6 +185,10 @@ type IssuesLoadedMsg struct {
 	Inbox domain.TriageInbox
 	Err   error
 }
+
+// IssuesReloadMsg is emitted by the triage page to poll the triage inbox now
+// instead of waiting for the next tick.
+type IssuesReloadMsg struct{}
 
 // IssueOpenMsg is emitted by the triage page when Enter lands on an issue: jump
 // to its triage session, starting one first when none exists.

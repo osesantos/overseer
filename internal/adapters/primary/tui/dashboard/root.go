@@ -42,6 +42,13 @@ const (
 	ChatPanelHeightPercent = 30
 )
 
+// Job IDs the dashboard can fire on demand (R on the inbox pages); main.go
+// registers the jobs under the same names.
+const (
+	PullRequestInboxJobID = "pr-review-poll"
+	TriageInboxJobID      = "triage-poll"
+)
+
 // pageKind selects what the body shows: the sessions dashboard or a full-width
 // page opened from the command line (`:prs`).
 type pageKind int
@@ -510,6 +517,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
+	case shared.PullRequestsReloadMsg:
+		return m, tea.Batch(m.scheduler.Run(PullRequestInboxJobID), m.showToast("reloading PR inbox"))
 	case shared.AutoReviewToggleMsg:
 		m.review.AutoReview = !m.review.AutoReview
 		m.syncPRsPage()
@@ -549,6 +558,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		return m, cmd
+	case shared.IssuesReloadMsg:
+		return m, tea.Batch(m.scheduler.Run(TriageInboxJobID), m.showToast("reloading triage inbox"))
 	case shared.AutoTriageToggleMsg:
 		m.triage.AutoTriage = !m.triage.AutoTriage
 		m.syncTriagePage()

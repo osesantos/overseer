@@ -126,6 +126,7 @@ func TestModel_Keys_EmitTheirMessages(t *testing.T) {
 		{name: "d dismisses", key: letter('d'), want: shared.IssueDismissMsg{}},
 		{name: "o opens the browser", key: letter('o'), want: shared.IssueOpenInBrowserMsg{}},
 		{name: "a toggles auto-triage", key: letter('a'), want: shared.AutoTriageToggleMsg{}},
+		{name: "R reloads", key: letter('R'), want: shared.IssuesReloadMsg{}},
 		{name: "esc closes", key: tea.KeyPressMsg{Code: tea.KeyEscape}, want: shared.PageCloseMsg{}},
 	}
 	for _, tt := range tests {

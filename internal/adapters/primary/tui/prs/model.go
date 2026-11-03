@@ -111,6 +111,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(keyMsg, AutoReviewKeyBinding):
 		return m, shared.Emit(shared.AutoReviewToggleMsg{})
+	case key.Matches(keyMsg, ReloadKeyBinding):
+		return m, shared.Emit(shared.PullRequestsReloadMsg{})
 	case key.Matches(keyMsg, HiddenKeyBinding):
 		m.showHidden = !m.showHidden
 		m.tree = m.tree.SetNodes(m.nodes()).ExpandAll()

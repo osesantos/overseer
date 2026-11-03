@@ -240,7 +240,7 @@ func buildPullRequestJob(
 // to auto-review it, because that switch can be flipped from the :prs page.
 func buildPullRequestReviewJob(prSvc *service.PullRequestService, interval time.Duration) jobs.Job {
 	return jobs.Job{
-		ID:       "pr-review-poll",
+		ID:       dashboard.PullRequestInboxJobID,
 		Interval: interval,
 		Run: func() tea.Cmd {
 			return shared.RequestWithTimeout(pullRequestPollTimeout,
@@ -259,7 +259,7 @@ func buildPullRequestReviewJob(prSvc *service.PullRequestService, interval time.
 // still track, so the dashboard can reap finished triages and auto-triage new ones.
 func buildTriagePollJob(issueSvc *service.IssueService, sessionSvc *service.SessionService, jql string, interval time.Duration) jobs.Job {
 	return jobs.Job{
-		ID:       "triage-poll",
+		ID:       dashboard.TriageInboxJobID,
 		Interval: interval,
 		Run: func() tea.Cmd {
 			return shared.RequestWithTimeout(triagePollTimeout,

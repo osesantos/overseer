@@ -118,6 +118,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 	case key.Matches(keyMsg, AutoTriageKeyBinding):
 		return m, shared.Emit(shared.AutoTriageToggleMsg{})
+	case key.Matches(keyMsg, ReloadKeyBinding):
+		return m, shared.Emit(shared.IssuesReloadMsg{})
 	case key.Matches(keyMsg, HiddenKeyBinding):
 		m.showHidden = !m.showHidden
 		m.tree = m.tree.SetNodes(m.nodes()).ExpandAll()

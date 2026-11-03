@@ -61,6 +61,16 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, nil
 }
 
+// Run fires one job now, outside its timer; the next tick keeps its cadence.
+// Unknown IDs return nil so a page without the job is a no-op.
+func (m Model) Run(id string) tea.Cmd {
+	j, ok := m.jobs[id]
+	if !ok {
+		return nil
+	}
+	return j.Run()
+}
+
 func (m Model) armTick(j Job) tea.Cmd {
 	id := j.ID
 	return tea.Tick(j.Interval, func(time.Time) tea.Msg {

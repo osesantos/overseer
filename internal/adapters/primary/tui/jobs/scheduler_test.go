@@ -135,3 +135,21 @@ func TestModel_Update_TickMsg_ReExecutesRunOnEveryTick(t *testing.T) {
 		t.Fatalf("Run invocations = %d, want 3 (one per tick)", runs)
 	}
 }
+
+func TestModel_Run_KnownJob_FiresRunOnceWithoutReArming(t *testing.T) {
+	var runs int
+	ran := func() tea.Msg { return nil }
+	m := New(Job{ID: "poll", Interval: time.Hour, Run: func() tea.Cmd { runs++; return ran }})
+
+	cmd := m.Run("poll")
+
+	if cmd == nil || runs != 1 {
+		t.Fatalf("Run(poll): cmd nil = %v, runs = %d; want the job's cmd once", cmd == nil, runs)
+	}
+}
+
+func TestModel_Run_UnknownJob_ReturnsNil(t *testing.T) {
+	if cmd := New().Run("nope"); cmd != nil {
+		t.Fatal("Run(unknown) returned a cmd, want nil")
+	}
+}

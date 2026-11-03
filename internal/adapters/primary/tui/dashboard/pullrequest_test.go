@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
@@ -267,5 +268,31 @@ func TestDashboard_PRPageSearchPrompt_KeepsQAndColonAsText(t *testing.T) {
 	}
 	if v := ansi.Strip(m.View().Content); !strings.Contains(v, "/q:") {
 		t.Fatalf("prompt does not show the typed text:\n%s", v)
+	}
+}
+
+func TestDashboard_ReloadOnTheInboxPages_FiresTheJobOnce(t *testing.T) {
+	tests := []struct {
+		name  string
+		msg   tea.Msg
+		jobID string
+		toast string
+	}{
+		{"prs", shared.PullRequestsReloadMsg{}, PullRequestInboxJobID, "reloading PR inbox"},
+		{"triage", shared.IssuesReloadMsg{}, TriageInboxJobID, "reloading triage inbox"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			var runs int
+			m := sizedDashboard(t)
+			m.scheduler = jobs.New(jobs.Job{ID: tt.jobID, Interval: time.Hour, Run: func() tea.Cmd { runs++; return nil }})
+
+			updated, cmd := m.Update(tt.msg)
+			m = updated.(Model)
+
+			if runs != 1 || cmd == nil || m.toast != tt.toast {
+				t.Fatalf("runs = %d, cmd nil = %v, toast = %q", runs, cmd == nil, m.toast)
+			}
+		})
 	}
 }
