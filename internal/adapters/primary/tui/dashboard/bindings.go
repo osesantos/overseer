@@ -25,6 +25,7 @@ var (
 	killPreviewSessionKeyBinding = key.NewBinding(key.WithKeys("x"), key.WithHelp("x", "kill preview session"))
 	sendAgentEnterKeyBinding     = key.NewBinding(key.WithKeys("ctrl+e"), key.WithHelp("ctrl+e", "send enter to agent"))
 	openPRKeyBinding             = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open PR in browser"))
+	showPullRequestTabKeyBinding = key.NewBinding(key.WithKeys("p"), key.WithHelp("p", "PR tab"))
 	overseerPanelKeyBinding      = key.NewBinding(key.WithKeys("ctrl+o"), key.WithHelp("ctrl+o", "overseer agent"))
 	cmdlineKeyBinding            = key.NewBinding(key.WithKeys(":"), key.WithHelp(":", "command"))
 	cmdlineSubmitKeyBinding      = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "run"))
@@ -38,7 +39,7 @@ var (
 	// consumed by the chat input.
 	chatPassthroughNav = key.NewBinding(key.WithKeys("up", "down"))
 
-	sessionsKeyBindings   = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, openPRKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
+	sessionsKeyBindings   = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, openPRKeyBinding, showPullRequestTabKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
 	inspectorKeyBindings  = []key.Binding{inspector.ToggleViewKeyBinding, killPreviewSessionKeyBinding, inspector.SwarmAgentPrevKeyBinding, inspector.SwarmAgentNextKeyBinding}
 	generalKeyBindings    = []key.Binding{helpMenuKeyBinding, overseerPanelKeyBinding, cmdlineKeyBinding, quitKeyBinding}
 	prsPageKeyBindings    = slices.Concat(prs.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})

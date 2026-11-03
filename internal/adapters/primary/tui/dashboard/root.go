@@ -440,6 +440,13 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		var inspectorCmd tea.Cmd
 		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
+		// The inspector forgets the PR on a switch; replay the cached status so
+		// the PR tab is right at once instead of after the next poll.
+		if status, ok := m.prStatuses[msg.Session.ID]; ok {
+			var replayCmd tea.Cmd
+			m.inspector, replayCmd = shared.UpdateModel(m.inspector, status)
+			inspectorCmd = tea.Batch(inspectorCmd, replayCmd)
+		}
 		if !msg.Session.HasWorktree() {
 			return m, tea.Batch(cmd, inspectorCmd, m.loadCurrentBranchCmd(msg.Session.ProjectID))
 		}
@@ -667,6 +674,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.prStatuses[msg.SessionID] = msg
 		var cmd tea.Cmd
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
+		var inspectorCmd tea.Cmd
+		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
+		cmd = tea.Batch(cmd, inspectorCmd)
 		if msg.Err == nil {
 			cmd = tea.Batch(cmd, m.reapFinishedReviewCmd(msg.SessionID, msg.PR))
 		}
@@ -965,6 +975,14 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		if cmd := m.showKillPreviewPopupCmd(); cmd != nil {
 			return cmd, true
 		}
+	}
+	if key.Matches(msg, showPullRequestTabKeyBinding) {
+		if !m.inspector.HasPullRequest() {
+			return m.showToast("no pull request for this session"), true
+		}
+		var cmd tea.Cmd
+		m.inspector, cmd = shared.UpdateModel(m.inspector, inspector.ShowPullRequestMsg{})
+		return cmd, true
 	}
 	if key.Matches(msg, openPRKeyBinding) {
 		if id, err := uuid.Parse(m.leftPane.SelectedSessionID()); err == nil {

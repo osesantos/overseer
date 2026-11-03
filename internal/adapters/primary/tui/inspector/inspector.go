@@ -30,7 +30,9 @@ var (
 // Which tabs are visible depends on the selected session. An ordinary session
 // shows [Agent] [Shell]; a swarm shows [Agents Board] [Agent N/M] [Shell],
 // because a swarm has no single agent pane and the board is the primary way to
-// follow it. The Editor tab is appended to either set once the user presses "e"
+// follow it. A PR tab is appended as soon as the session's PR status carries a
+// pull request (PRStatusUpdatedMsg) and dropped when a later status says there
+// is none. The Editor tab is appended to either set once the user presses "e"
 // (RevealEditorMsg), and re-hidden when the selection changes.
 //
 // activeIx indexes views, not the visible subset, so message routing and
@@ -54,6 +56,7 @@ const (
 	ixBoard
 	ixSwarmAgent
 	ixShell
+	ixPullRequest
 	ixEditor
 )
 
@@ -63,11 +66,12 @@ func New(
 	swarmService *service.SwarmService,
 	previewRefreshInterval time.Duration,
 ) Model {
-	views := make([]View, 5)
+	views := make([]View, 6)
 	views[ixAgent] = newAgentView(sessionService, s, previewRefreshInterval)
 	views[ixBoard] = newBoardView(swarmService, s, previewRefreshInterval)
 	views[ixSwarmAgent] = newSwarmAgentView(sessionService, s, previewRefreshInterval)
 	views[ixShell] = newShellView(sessionService, s, previewRefreshInterval)
+	views[ixPullRequest] = newPullRequestView(s)
 	views[ixEditor] = newEditorView(sessionService, s, previewRefreshInterval)
 
 	return Model{
@@ -86,10 +90,29 @@ func (m Model) visibleIxs() []int {
 		out = append(out, ixAgent)
 	}
 	out = append(out, ixShell)
+	if m.HasPullRequest() {
+		out = append(out, ixPullRequest)
+	}
 	if m.editorVisible {
 		out = append(out, ixEditor)
 	}
 	return out
+}
+
+// HasPullRequest reports whether the selected session has a PR, and so a PR tab.
+func (m Model) HasPullRequest() bool {
+	view, ok := m.views[ixPullRequest].(*pullRequestView)
+	return ok && view.hasPR()
+}
+
+// ShownPullRequest returns the PR on screen when the PR tab is the active one,
+// which is what Enter expands into the full-screen page.
+func (m Model) ShownPullRequest() (domain.PullRequest, bool) {
+	view, ok := m.views[ixPullRequest].(*pullRequestView)
+	if !ok || m.activeIx != ixPullRequest || !view.hasPR() {
+		return domain.PullRequest{}, false
+	}
+	return view.pr, true
 }
 
 func (m Model) visibleCount() int { return len(m.visibleIxs()) }
@@ -162,6 +185,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editorVisible = true
 		m.activeIx = ixEditor
 		return m, m.views[m.activeIx].Init()
+
+	case ShowPullRequestMsg:
+		if m.HasPullRequest() {
+			m.activeIx = ixPullRequest
+		}
+		return m, nil
+
+	case shared.PRStatusUpdatedMsg:
+		updated, cmd := m.views[ixPullRequest].Update(msg)
+		m.views[ixPullRequest] = updated
+		// A status without a PR takes the tab away; do not leave the cursor on it.
+		if vis := m.visibleIxs(); !slices.Contains(vis, m.activeIx) {
+			m.activeIx = vis[0]
+		}
+		return m, cmd
 
 	case tea.KeyPressMsg:
 		// Compose mode owns every key while it is open, including tab.

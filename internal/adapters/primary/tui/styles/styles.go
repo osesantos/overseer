@@ -170,6 +170,35 @@ type ChatStyles struct {
 	ThinkingText lipgloss.Style
 }
 
+// PullRequestStyles dresses the PR tab and the full-screen PR page. State,
+// counts and glyph colours come from SessionDetailsStyles so a PR looks the
+// same everywhere; these are only what those views add.
+type PullRequestStyles struct {
+	Title lipgloss.Style
+	Hint  lipgloss.Style
+	// Section styles the page's section strip (Overview · Diff · Comments).
+	Section struct {
+		Active   lipgloss.Style
+		Inactive lipgloss.Style
+	}
+	Diff   DiffStyles
+	Thread struct {
+		Header   lipgloss.Style
+		Resolved lipgloss.Style
+		Hunk     lipgloss.Style
+		Author   lipgloss.Style
+	}
+}
+
+// DiffStyles colours a unified diff line by line.
+type DiffStyles struct {
+	File    lipgloss.Style
+	Hunk    lipgloss.Style
+	Add     lipgloss.Style
+	Remove  lipgloss.Style
+	Context lipgloss.Style
+}
+
 type SessionDetailsStyles struct {
 	// SectionTitle styles the heading rendered above each grouped block
 	// ("Pull Request", "Repository"). Bold in the theme's subtext colour
@@ -272,6 +301,7 @@ type Styles struct {
 	// only the typographic weight so colour is the only per-label variable.
 	SessionLabel   lipgloss.Style
 	SessionDetails SessionDetailsStyles
+	PullRequest    PullRequestStyles
 	// Toast holds the styles used by the transient top-right notification
 	// that appears during and after the startup repo-discovery scan.
 	Toast struct {
@@ -483,6 +513,35 @@ func newStyles(themeName string, disableEmoji bool, palette map[string]string) *
 			Warn:           lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
 			Special:        lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
 			Hint:           lipgloss.NewStyle().Foreground(theme.Subtext).Italic(true),
+		},
+		PullRequest: PullRequestStyles{
+			Title: lipgloss.NewStyle().Foreground(theme.Text).Bold(true),
+			Hint:  lipgloss.NewStyle().Foreground(theme.Subtext).Italic(true),
+			Section: struct {
+				Active   lipgloss.Style
+				Inactive lipgloss.Style
+			}{
+				Active:   lipgloss.NewStyle().Foreground(theme.TitleText).Background(theme.Primary).Bold(true).Padding(0, 1),
+				Inactive: lipgloss.NewStyle().Foreground(theme.Subtext).Padding(0, 1),
+			},
+			Diff: DiffStyles{
+				File:    lipgloss.NewStyle().Foreground(theme.Text).Bold(true),
+				Hunk:    lipgloss.NewStyle().Foreground(theme.Primary),
+				Add:     lipgloss.NewStyle().Foreground(theme.Accent),
+				Remove:  lipgloss.NewStyle().Foreground(theme.Danger),
+				Context: lipgloss.NewStyle().Foreground(theme.Text),
+			},
+			Thread: struct {
+				Header   lipgloss.Style
+				Resolved lipgloss.Style
+				Hunk     lipgloss.Style
+				Author   lipgloss.Style
+			}{
+				Header:   lipgloss.NewStyle().Foreground(theme.Warning).Bold(true),
+				Resolved: lipgloss.NewStyle().Foreground(theme.Subtext),
+				Hunk:     lipgloss.NewStyle().Foreground(theme.Subtext),
+				Author:   lipgloss.NewStyle().Foreground(theme.Primary).Bold(true),
+			},
 		},
 		Toast: struct {
 			Indexing lipgloss.Style

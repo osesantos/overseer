@@ -67,6 +67,11 @@ type swarmBoardPostedMsg struct {
 	err       error
 }
 
+// ShowPullRequestMsg asks the inspector to make the PR tab active. It is a
+// no-op when the selected session has no PR; the dashboard checks
+// HasPullRequest first so it can tell the user why nothing happened.
+type ShowPullRequestMsg struct{}
+
 // RevealEditorMsg asks the inspector to reveal its gated Editor tab and make
 // it the active view. The dashboard emits this when the user presses "e", in
 // tandem with the AttachEditor call that opens nvim. The tab stays revealed

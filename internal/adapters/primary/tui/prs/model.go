@@ -262,7 +262,7 @@ func renderNode(s *styles.Styles) components.TreeRenderFunc[prNode] {
 			}
 			return style.Render(text)
 		}
-		lead := prefix + paint(prStateStyle(d, pr.State), prStateGlyph(g, pr.State)) + " " + paint(d.Glyph, fmt.Sprintf("#%-5d", pr.Number))
+		lead := prefix + paint(components.PRStateStyle(d, pr.State), components.PRStateGlyph(g, pr.State)) + " " + paint(d.Glyph, fmt.Sprintf("#%-5d", pr.Number))
 		checks, checksStyle := checksGlyph(d, g, pr.Checks)
 		tail := strings.Join([]string{
 			paint(d.Value, pr.Author),
@@ -304,31 +304,5 @@ func checksGlyph(d styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChec
 		return g.CheckFail, d.Bad
 	default:
 		return g.CheckPending, d.Warn
-	}
-}
-
-func prStateStyle(d styles.SessionDetailsStyles, state domain.PRState) lipgloss.Style {
-	switch state {
-	case domain.PRStateOpen:
-		return d.Good
-	case domain.PRStateMerged:
-		return d.Special
-	case domain.PRStateClosed:
-		return d.Bad
-	default:
-		return d.Hint
-	}
-}
-
-func prStateGlyph(g styles.Glyphs, state domain.PRState) string {
-	switch state {
-	case domain.PRStateOpen:
-		return g.PRStateOpen
-	case domain.PRStateMerged:
-		return g.PRStateMerged
-	case domain.PRStateClosed:
-		return g.PRStateClosed
-	default:
-		return g.PRStateDraft
 	}
 }

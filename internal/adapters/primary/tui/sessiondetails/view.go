@@ -9,7 +9,6 @@ import (
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
 const (
@@ -107,8 +106,8 @@ func (m Model) renderPRSection(width int) []string {
 	valueW := twoColumnValueWidth(width)
 	rows := sectionHeader(s, titlePullRequest, width)
 
-	stateDot := prStateGlyph(g, pr.PR.State)
-	statusValue := prStateStyle(s, pr.PR.State).Render(stateDot+" "+formatPRState(pr.PR.State)) +
+	stateDot := components.PRStateGlyph(g, pr.PR.State)
+	statusValue := components.PRStateStyle(*s, pr.PR.State).Render(stateDot+" "+components.FormatPRState(pr.PR.State)) +
 		"  " + s.Glyph.Render(fmt.Sprintf("#%d", pr.PR.Number))
 	rows = append(rows, twoColumnRow(s, labelStatus, statusValue))
 
@@ -121,84 +120,20 @@ func (m Model) renderPRSection(width int) []string {
 		"   " + s.Glyph.Render(fmt.Sprintf("%s %d files", g.Files, pr.PR.Stats.ChangedFiles))
 	rows = append(rows, twoColumnRow(s, labelChanges, changesValue))
 
-	if checksValue := renderChecksLine(s, g, pr.PR.Checks); checksValue != "" {
+	if checksValue := components.PRChecksLine(*s, g, pr.PR.Checks); checksValue != "" {
 		rows = append(rows, twoColumnRow(s, labelChecks, checksValue))
 	}
 
-	if commentsValue := renderCommentsLine(s, g, pr.PR.Comments); commentsValue != "" {
+	if commentsValue := components.PRCommentsLine(*s, g, pr.PR.Comments); commentsValue != "" {
 		rows = append(rows, twoColumnRow(s, labelComments, commentsValue))
 	}
 	return append(rows, "")
-}
-
-func renderCommentsLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRComments) string {
-	if c.Total() == 0 {
-		return ""
-	}
-	open := fmt.Sprintf("%s %d open", g.CheckPending, c.Unresolved)
-	if c.AwaitingViewer > 0 {
-		open += fmt.Sprintf(" (%d awaiting you)", c.AwaitingViewer)
-	}
-	return s.Warn.Render(open) + "   " + s.Good.Render(fmt.Sprintf("%s %d resolved", g.CheckPass, c.Resolved))
-}
-
-func renderChecksLine(s *styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRChecks) string {
-	if c.Total == 0 {
-		return ""
-	}
-	var parts []string
-	if c.Passing > 0 {
-		parts = append(parts, s.Good.Render(fmt.Sprintf("%s %d", g.CheckPass, c.Passing)))
-	}
-	if c.Failing > 0 {
-		parts = append(parts, s.Bad.Render(fmt.Sprintf("%s %d", g.CheckFail, c.Failing)))
-	}
-	if c.Pending > 0 {
-		parts = append(parts, s.Warn.Render(fmt.Sprintf("%s %d", g.CheckPending, c.Pending)))
-	}
-	return strings.Join(parts, "   ")
-}
-
-func prStateStyle(s *styles.SessionDetailsStyles, state domain.PRState) lipgloss.Style {
-	switch state {
-	case domain.PRStateOpen:
-		return s.Good
-	case domain.PRStateMerged:
-		return s.Special
-	case domain.PRStateClosed:
-		return s.Bad
-	case domain.PRStateDraft:
-		return s.Warn
-	}
-	return s.Glyph
-}
-
-func prStateGlyph(g styles.Glyphs, state domain.PRState) string {
-	switch state {
-	case domain.PRStateOpen:
-		return g.PRStateOpen
-	case domain.PRStateMerged:
-		return g.PRStateMerged
-	case domain.PRStateClosed:
-		return g.PRStateClosed
-	case domain.PRStateDraft:
-		return g.PRStateDraft
-	}
-	return g.PRStateOpen
 }
 
 // formatPRState turns the uppercase domain enum value ("OPEN", "DRAFT", …)
 // into a title-cased display label ("Open", "Draft", …). Keeps the
 // underlying enum stable for storage / comparison while making the UI
 // read naturally.
-func formatPRState(state domain.PRState) string {
-	str := string(state)
-	if str == "" {
-		return ""
-	}
-	return strings.ToUpper(str[:1]) + strings.ToLower(str[1:])
-}
-
 func glyphLine(s *styles.SessionDetailsStyles, glyph, value string, width int) string {
 	prefix := s.Glyph.Render(glyph + "  ")
 	avail := width - lipgloss.Width(prefix)
