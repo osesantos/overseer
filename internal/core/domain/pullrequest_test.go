@@ -254,3 +254,40 @@ func TestReviewFinished(t *testing.T) {
 		})
 	}
 }
+
+func TestPullRequest_MergeReadiness(t *testing.T) {
+	tests := []struct {
+		name     string
+		pr       PullRequest
+		wantKnow bool
+		wantOK   bool
+		wantWhy  []string
+	}{
+		{name: "not fetched", pr: PullRequest{}, wantKnow: false},
+		{name: "github still computing", pr: PullRequest{MergeState: PRMergeStateUnknown}, wantKnow: false},
+		{name: "clean", pr: PullRequest{MergeState: PRMergeStateClean}, wantKnow: true, wantOK: true},
+		{name: "has hooks", pr: PullRequest{MergeState: PRMergeStateHasHooks}, wantKnow: true, wantOK: true},
+		{name: "unstable warns about checks", pr: PullRequest{MergeState: PRMergeStateUnstable, Checks: PRChecks{Total: 3, Failing: 2}},
+			wantKnow: true, wantOK: true, wantWhy: []string{"2 checks failing"}},
+		{name: "draft", pr: PullRequest{MergeState: PRMergeStateDraft}, wantKnow: true, wantWhy: []string{"draft"}},
+		{name: "conflicts", pr: PullRequest{MergeState: PRMergeStateDirty}, wantKnow: true, wantWhy: []string{"merge conflicts"}},
+		{name: "behind base", pr: PullRequest{MergeState: PRMergeStateBehind, BaseBranch: "main"}, wantKnow: true, wantWhy: []string{"behind main"}},
+		{name: "blocked by review and checks", pr: PullRequest{MergeState: PRMergeStateBlocked, ReviewDecision: PRReviewDecisionChangesRequested, Checks: PRChecks{Total: 2, Failing: 1, Pending: 1}},
+			wantKnow: true, wantWhy: []string{"changes requested", "1 check failing", "1 check pending"}},
+		{name: "blocked waiting for review", pr: PullRequest{MergeState: PRMergeStateBlocked, ReviewDecision: PRReviewDecisionReviewRequired},
+			wantKnow: true, wantWhy: []string{"review required"}},
+		{name: "blocked for no visible reason", pr: PullRequest{MergeState: PRMergeStateBlocked, ReviewDecision: PRReviewDecisionApproved},
+			wantKnow: true, wantWhy: []string{"blocked by branch rules"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := tt.pr.MergeReadiness()
+			if got.Known != tt.wantKnow || got.Ready != tt.wantOK {
+				t.Fatalf("MergeReadiness() = %+v, want known=%v ready=%v", got, tt.wantKnow, tt.wantOK)
+			}
+			if strings.Join(got.Reasons, "|") != strings.Join(tt.wantWhy, "|") {
+				t.Fatalf("Reasons = %v, want %v", got.Reasons, tt.wantWhy)
+			}
+		})
+	}
+}

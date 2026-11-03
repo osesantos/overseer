@@ -4,6 +4,7 @@ package github
 
 import (
 	"bytes"
+	"cmp"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -21,6 +22,11 @@ import (
 var _ domain.PullRequestPort = (*Adapter)(nil)
 
 const prJSONFields = "number,title,state,isDraft,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt,body,baseRefName,labels"
+
+// prDetailsJSONFields adds what only the PR page shows. The per-minute status
+// poll does not ask for them: mergeStateStatus makes GitHub compute a test
+// merge on every call.
+const prDetailsJSONFields = prJSONFields + ",files,reviewDecision,mergeStateStatus,latestReviews,reviewRequests"
 
 // ponytail: first 100 threads / 50 comments each; paginate if a PR ever outgrows that.
 const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!) {
@@ -280,7 +286,7 @@ func (a *Adapter) queryPullRequest(ctx context.Context, repoPath string, pr doma
 // like reviewComments: the page is still useful without it.
 func (a *Adapter) GetDetails(ctx context.Context, repoPath string, number int) (domain.PullRequestDetails, error) {
 	sel := strconv.Itoa(number)
-	stdout, stderr, err := a.cmd.Run(ctx, repoPath, "pr", "view", sel, "--json", prJSONFields+",files")
+	stdout, stderr, err := a.cmd.Run(ctx, repoPath, "pr", "view", sel, "--json", prDetailsJSONFields)
 	if err != nil {
 		return domain.PullRequestDetails{}, fmt.Errorf("gh pr view %s: %w (stderr: %s)", sel, err, strings.TrimSpace(string(stderr)))
 	}
@@ -457,7 +463,21 @@ type ghPRJSON struct {
 	Labels            []struct {
 		Name string `json:"name"`
 	} `json:"labels"`
-	Files []ghFileJSON `json:"files"`
+	Files            []ghFileJSON `json:"files"`
+	ReviewDecision   string       `json:"reviewDecision"`
+	MergeStateStatus string       `json:"mergeStateStatus"`
+	LatestReviews    []struct {
+		Author struct {
+			Login string `json:"login"`
+		} `json:"author"`
+		State string `json:"state"`
+	} `json:"latestReviews"`
+	// ReviewRequests mixes users (login) and teams (slug, name).
+	ReviewRequests []struct {
+		Login string `json:"login"`
+		Slug  string `json:"slug"`
+		Name  string `json:"name"`
+	} `json:"reviewRequests"`
 }
 
 type ghFileJSON struct {
@@ -512,6 +532,14 @@ func fromGHJSON(raw ghPRJSON) (domain.PullRequest, error) {
 		ChangedFiles: raw.ChangedFiles,
 	}
 	pr.Checks = summariseChecks(raw.StatusCheckRollup)
+	pr.ReviewDecision = domain.PRReviewDecision(raw.ReviewDecision)
+	pr.MergeState = domain.PRMergeState(raw.MergeStateStatus)
+	for _, r := range raw.LatestReviews {
+		pr.Reviewers = append(pr.Reviewers, domain.PRReviewer{Login: r.Author.Login, State: domain.PRReviewState(r.State)})
+	}
+	for _, r := range raw.ReviewRequests {
+		pr.Reviewers = append(pr.Reviewers, domain.PRReviewer{Login: cmp.Or(r.Login, r.Slug, r.Name), State: domain.PRReviewStateRequested})
+	}
 	if raw.UpdatedAt != "" {
 		if t, err := time.Parse(time.RFC3339, raw.UpdatedAt); err == nil {
 			pr.UpdatedAt = t

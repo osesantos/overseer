@@ -460,6 +460,19 @@ func TestAdapter_GetDetails_ParsesFilesDiffConversationAndThreads(t *testing.T) 
 	if d.PullRequest.Number != 535 || d.PullRequest.BaseBranch != "main" || !strings.Contains(d.PullRequest.Body, "cron schedules") {
 		t.Fatalf("PullRequest = %+v", d.PullRequest)
 	}
+	if d.PullRequest.MergeState != domain.PRMergeStateBlocked || d.PullRequest.ReviewDecision != domain.PRReviewDecisionChangesRequested {
+		t.Fatalf("merge state = %q, review decision = %q", d.PullRequest.MergeState, d.PullRequest.ReviewDecision)
+	}
+	// Reviewers: latest review per person first, then the outstanding requests (teams by slug).
+	wantReviewers := []domain.PRReviewer{
+		{Login: "bob", State: domain.PRReviewStateChangesRequested},
+		{Login: "me", State: domain.PRReviewStateApproved},
+		{Login: "carol", State: domain.PRReviewStateRequested},
+		{Login: "core", State: domain.PRReviewStateRequested},
+	}
+	if !slices.Equal(d.PullRequest.Reviewers, wantReviewers) {
+		t.Fatalf("Reviewers = %+v, want %+v", d.PullRequest.Reviewers, wantReviewers)
+	}
 	if len(d.Files) != 3 || d.Files[0].Path != "ARCHITECTURE.md" || d.Files[0].Additions != 15 || d.Files[0].Deletions != 9 {
 		t.Fatalf("Files = %+v", d.Files)
 	}
@@ -510,7 +523,7 @@ func TestAdapter_GetDetails_PassesNumberAndRepoPathToGH(t *testing.T) {
 			t.Fatalf("call %d dir = %q, want /repo/path", i, call.dir)
 		}
 	}
-	if got := strings.Join(cmd.calls[0].args, " "); got != "pr view 535 --json "+prJSONFields+",files" {
+	if got := strings.Join(cmd.calls[0].args, " "); got != "pr view 535 --json "+prDetailsJSONFields {
 		t.Fatalf("pr view args = %q", got)
 	}
 	if got := strings.Join(cmd.calls[1].args, " "); got != "pr diff 535" {

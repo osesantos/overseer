@@ -252,3 +252,20 @@ func TestDashboard_NewerPRStatus_BeforeDetailsLoaded_DoesNotDoubleFetch(t *testi
 		t.Fatalf("refetched while the first fetch is in flight: toast %q", m.toast)
 	}
 }
+
+func TestDashboard_PRPageSearchPrompt_KeepsQAndColonAsText(t *testing.T) {
+	m, sess, pr := prPageDashboard(t)
+	updated, _ := m.Update(shared.PullRequestDetailsLoadedMsg{SessionID: sess.ID, Details: domain.PullRequestDetails{PullRequest: pr, Diff: "diff --git a/x b/x\n@@ -1 +1 @@\n-old\n+new\n"}})
+	m = updated.(Model)
+	for _, k := range []tea.KeyPressMsg{letterKey("]"), letterKey("/"), letterKey("q"), letterKey(":")} {
+		updated, _ = m.Update(k)
+		m = updated.(Model)
+	}
+
+	if m.page != pagePullRequest || m.cmdlineActive || !m.prPage.CapturesInput() {
+		t.Fatalf("page=%v cmdline=%v capturing=%v: a shortcut escaped the search prompt", m.page, m.cmdlineActive, m.prPage.CapturesInput())
+	}
+	if v := ansi.Strip(m.View().Content); !strings.Contains(v, "/q:") {
+		t.Fatalf("prompt does not show the typed text:\n%s", v)
+	}
+}

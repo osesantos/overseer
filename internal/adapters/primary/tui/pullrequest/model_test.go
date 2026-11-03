@@ -252,3 +252,182 @@ func TestModel_SetPullRequest_ResetsToOverviewAndLoading(t *testing.T) {
 		t.Fatalf("section %v, view:\n%s", m.Section(), view(m))
 	}
 }
+
+func reviewedDetails() domain.PullRequestDetails {
+	d := sampleDetails()
+	d.PullRequest.MergeState = domain.PRMergeStateBlocked
+	d.PullRequest.ReviewDecision = domain.PRReviewDecisionChangesRequested
+	d.PullRequest.Checks = domain.PRChecks{Total: 2, Passing: 1, Failing: 1}
+	d.PullRequest.Reviewers = []domain.PRReviewer{
+		{Login: "ana", State: domain.PRReviewStateCommented},
+		{Login: "bob", State: domain.PRReviewStateChangesRequested},
+		{Login: "me", State: domain.PRReviewStateApproved},
+		{Login: "carol", State: domain.PRReviewStateRequested},
+	}
+	return d
+}
+
+func TestModel_Overview_ShowsTheMergeVerdictAndReviewers(t *testing.T) {
+	m := New(styles.New())
+	m.SetSize(100, 40)
+	m.SetPullRequest(samplePR())
+	m.SetDetails(reviewedDetails())
+
+	v := view(m)
+	for _, want := range []string{"Blocked · changes requested · 1 check failing", "Reviewers", "bob    changes requested", "me     approved", "carol  review requested"} {
+		if !strings.Contains(v, want) {
+			t.Errorf("overview is missing %q:\n%s", want, v)
+		}
+	}
+	// The author's own review comments are not a review of the PR.
+	if strings.Contains(v, "commented") {
+		t.Errorf("overview lists the author as a reviewer:\n%s", v)
+	}
+}
+
+func TestModel_Overview_ReadyToMerge_SaysSo(t *testing.T) {
+	m := New(styles.New())
+	m.SetSize(100, 40)
+	m.SetPullRequest(samplePR())
+	d := reviewedDetails()
+	d.PullRequest.MergeState = domain.PRMergeStateClean
+	m.SetDetails(d)
+
+	if v := view(m); !strings.Contains(v, "Ready to merge") {
+		t.Fatalf("overview:\n%s", v)
+	}
+}
+
+func TestModel_Overview_BeforeDetails_HasNoVerdict(t *testing.T) {
+	m := New(styles.New())
+	m.SetSize(100, 40)
+	m.SetPullRequest(samplePR())
+
+	if v := view(m); strings.Contains(v, "Reviewers") || strings.Contains(v, "Merge state") {
+		t.Fatalf("overview shows review lines before the details loaded:\n%s", v)
+	}
+}
+
+func typeSearch(t *testing.T, m Model, query string) Model {
+	t.Helper()
+	m, _ = press(t, m, letter('/'))
+	if !m.CapturesInput() {
+		t.Fatal("/ did not open the search prompt")
+	}
+	for _, r := range query {
+		m, _ = press(t, m, letter(r))
+	}
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyEnter})
+	return m
+}
+
+func TestModel_Search_SlashEnterJumpsToTheFirstHitAndNCycles(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+
+	m = typeSearch(t, m, "Patch")
+
+	// At 100 columns the diff is split: "-Patch" pairs with "+if" on row 3, "+Patch" is row 4.
+	if m.CapturesInput() || m.query != "Patch" || len(m.hits) != 2 {
+		t.Fatalf("after enter: capturing=%v query=%q hits=%v", m.CapturesInput(), m.query, m.hits)
+	}
+	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[0] {
+		t.Fatalf("YOffset = %d, want the first hit %d", got, m.hits[0])
+	}
+	if v := view(m); !strings.Contains(v, "/Patch · 1/2") {
+		t.Fatalf("header has no search status:\n%s", v)
+	}
+	m, _ = press(t, m, letter('n'))
+	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[1] {
+		t.Fatalf("after n: YOffset = %d, want %d", got, m.hits[1])
+	}
+	m, _ = press(t, m, letter('n'))
+	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[0] {
+		t.Fatalf("n did not wrap: YOffset = %d, want %d", got, m.hits[0])
+	}
+	m, _ = press(t, m, letter('N'))
+	if got := m.viewports[sectionDiff].YOffset(); got != m.hits[1] || !strings.Contains(view(m), "2/2") {
+		t.Fatalf("N did not wrap backwards: YOffset = %d, want %d", got, m.hits[1])
+	}
+}
+
+func TestModel_Search_PromptKeepsEveryKeyToItself(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+	m, _ = press(t, m, letter('/'))
+
+	m, _ = press(t, m, letter('q'))
+	m, _ = press(t, m, letter('s'))
+	m, _ = press(t, m, letter(']'))
+
+	if !m.CapturesInput() || m.unifiedDiff || m.Section() != sectionDiff || m.search.Value() != "qs]" {
+		t.Fatalf("keys leaked out of the prompt: capturing=%v unified=%v section=%v value=%q", m.CapturesInput(), m.unifiedDiff, m.Section(), m.search.Value())
+	}
+	if v := view(m); !strings.Contains(v, "/qs]") {
+		t.Fatalf("header does not show the prompt:\n%s", v)
+	}
+}
+
+func TestModel_Search_EscClearsTheQueryBeforeClosingThePage(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+	m = typeSearch(t, m, "Patch")
+
+	m, cmd := press(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if cmd != nil || m.query != "" || len(m.hits) != 0 || strings.Contains(view(m), "/Patch") {
+		t.Fatalf("first esc did not clear the search: cmd=%v query=%q hits=%v", cmd, m.query, m.hits)
+	}
+	_, cmd = press(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+	if cmd == nil {
+		t.Fatal("second esc did not close the page")
+	}
+	if _, ok := cmd().(shared.PageCloseMsg); !ok {
+		t.Fatalf("second esc emitted %T, want PageCloseMsg", cmd())
+	}
+}
+
+func TestModel_Search_EscInThePromptAbandonsIt(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+	m = typeSearch(t, m, "Patch")
+	m, _ = press(t, m, letter('/'))
+	m, _ = press(t, m, letter('x'))
+
+	m, _ = press(t, m, tea.KeyPressMsg{Code: tea.KeyEscape})
+
+	if m.CapturesInput() || m.query != "Patch" {
+		t.Fatalf("esc in the prompt: capturing=%v query=%q, want the old query kept", m.CapturesInput(), m.query)
+	}
+}
+
+func TestModel_Search_NoMatches_IsSaidInTheHeader(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+	m = typeSearch(t, m, "zzz")
+	m, _ = press(t, m, letter('n'))
+
+	if v := view(m); !strings.Contains(v, "/zzz · no matches") {
+		t.Fatalf("header:\n%s", v)
+	}
+}
+
+func TestModel_Search_OnlyOpensOnTheDiff(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter('/'))
+	if m.CapturesInput() {
+		t.Fatal("/ opened the search prompt on the overview")
+	}
+}
+
+func TestModel_Search_SurvivesTheSplitToggle(t *testing.T) {
+	m := loadedModel(t)
+	m, _ = press(t, m, letter(']'))
+	m = typeSearch(t, m, "Patch")
+
+	m, _ = press(t, m, letter('s'))
+
+	// Unified: "-Patch" is row 3, "+Patch" row 5.
+	if !m.unifiedDiff || len(m.hits) != 2 || !strings.Contains(view(m), "/Patch") {
+		t.Fatalf("after s: unified=%v hits=%v", m.unifiedDiff, m.hits)
+	}
+}

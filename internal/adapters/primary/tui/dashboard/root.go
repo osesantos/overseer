@@ -808,6 +808,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.inspector, cmd = shared.UpdateModel(m.inspector, pasteMsg)
 			return m, cmd
 		}
+		if m.page == pagePullRequest && m.prPage.CapturesInput() {
+			var cmd tea.Cmd
+			m.prPage, cmd = shared.UpdateModel(m.prPage, pasteMsg)
+			return m, cmd
+		}
 		if m.chatPanelVisible {
 			var cmd tea.Cmd
 			m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, pasteMsg)
@@ -829,6 +834,16 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			var cmd tea.Cmd
 			m.inspector, cmd = shared.UpdateModel(m.inspector, keyMsg)
+			return m, cmd
+		}
+		// The PR page's / prompt is the other such input: q and : are
+		// characters there, not the page's shortcuts.
+		if m.page == pagePullRequest && m.prPage.CapturesInput() {
+			if key.Matches(keyMsg, hardQuitKeyBinding) {
+				return m, tea.Quit
+			}
+			var cmd tea.Cmd
+			m.prPage, cmd = shared.UpdateModel(m.prPage, keyMsg)
 			return m, cmd
 		}
 

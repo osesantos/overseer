@@ -29,6 +29,33 @@
  ],
  "headRefName": "feature/cron-schedules",
  "isDraft": false,
+ "latestReviews": [
+  {
+   "author": {
+    "login": "bob"
+   },
+   "state": "CHANGES_REQUESTED"
+  },
+  {
+   "author": {
+    "login": "me"
+   },
+   "state": "APPROVED"
+  }
+ ],
+ "mergeStateStatus": "BLOCKED",
+ "reviewDecision": "CHANGES_REQUESTED",
+ "reviewRequests": [
+  {
+   "__typename": "User",
+   "login": "carol"
+  },
+  {
+   "__typename": "Team",
+   "name": "Core",
+   "slug": "core"
+  }
+ ],
  "labels": [
   {
    "name": "feature",

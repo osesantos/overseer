@@ -3,6 +3,7 @@ package domain
 import (
 	"context"
 	"errors"
+	"fmt"
 	"slices"
 	"strings"
 	"time"
@@ -56,6 +57,58 @@ func (c PRChecks) OverallConclusion() CheckConclusion {
 	default:
 		return CheckConclusionPending
 	}
+}
+
+// PRReviewState is a reviewer's latest verdict, in GitHub's vocabulary, plus
+// PRReviewStateRequested for a reviewer who was asked and has not answered.
+type PRReviewState string
+
+const (
+	PRReviewStateApproved         PRReviewState = "APPROVED"
+	PRReviewStateChangesRequested PRReviewState = "CHANGES_REQUESTED"
+	PRReviewStateCommented        PRReviewState = "COMMENTED"
+	PRReviewStateDismissed        PRReviewState = "DISMISSED"
+	PRReviewStatePending          PRReviewState = "PENDING"
+	PRReviewStateRequested        PRReviewState = "REQUESTED"
+)
+
+// PRReviewer is one person or team on the PR's review list with their latest review.
+type PRReviewer struct {
+	Login string
+	State PRReviewState
+}
+
+// PRReviewDecision is GitHub's overall review verdict; empty when the base
+// branch requires no review.
+type PRReviewDecision string
+
+const (
+	PRReviewDecisionApproved         PRReviewDecision = "APPROVED"
+	PRReviewDecisionChangesRequested PRReviewDecision = "CHANGES_REQUESTED"
+	PRReviewDecisionReviewRequired   PRReviewDecision = "REVIEW_REQUIRED"
+)
+
+// PRMergeState is GitHub's mergeStateStatus: whether the merge button would work.
+type PRMergeState string
+
+const (
+	PRMergeStateClean    PRMergeState = "CLEAN"
+	PRMergeStateHasHooks PRMergeState = "HAS_HOOKS"
+	PRMergeStateUnstable PRMergeState = "UNSTABLE"
+	PRMergeStateBlocked  PRMergeState = "BLOCKED"
+	PRMergeStateBehind   PRMergeState = "BEHIND"
+	PRMergeStateDirty    PRMergeState = "DIRTY"
+	PRMergeStateDraft    PRMergeState = "DRAFT"
+	PRMergeStateUnknown  PRMergeState = "UNKNOWN"
+)
+
+// MergeReadiness is whether GitHub would merge the PR as it stands. Known is
+// false until GitHub has computed the merge state, or when the PR was fetched
+// without it. Reasons explain a block, or warn on a PR that is still mergeable.
+type MergeReadiness struct {
+	Known   bool
+	Ready   bool
+	Reasons []string
 }
 
 // PRComments counts review threads with input from someone other than the viewer.
@@ -153,9 +206,14 @@ type PullRequest struct {
 	Stats     PRStats
 	Checks    PRChecks
 	Comments  PRComments
-	CreatedAt time.Time
-	UpdatedAt time.Time
-	FetchedAt time.Time
+	// ReviewDecision, MergeState and Reviewers are only filled by GetDetails;
+	// the per-minute status poll leaves them empty.
+	ReviewDecision PRReviewDecision
+	MergeState     PRMergeState
+	Reviewers      []PRReviewer
+	CreatedAt      time.Time
+	UpdatedAt      time.Time
+	FetchedAt      time.Time
 }
 
 // PullRequestRef identifies a PR across repositories; it is what a review session
@@ -175,6 +233,58 @@ func (p PullRequest) RepoName() string {
 		return p.Repo
 	}
 	return name
+}
+
+// MergeReadiness reads the merge state GitHub computed and spells out why a
+// blocked PR is blocked: the review decision first, then the checks.
+func (p PullRequest) MergeReadiness() MergeReadiness {
+	r := MergeReadiness{Known: true}
+	switch p.MergeState {
+	case "", PRMergeStateUnknown:
+		return MergeReadiness{}
+	case PRMergeStateClean, PRMergeStateHasHooks:
+		r.Ready = true
+	case PRMergeStateUnstable:
+		r.Ready = true
+		r.Reasons = p.Checks.reasons()
+	case PRMergeStateDraft:
+		r.Reasons = []string{"draft"}
+	case PRMergeStateDirty:
+		r.Reasons = []string{"merge conflicts"}
+	case PRMergeStateBehind:
+		r.Reasons = []string{"behind " + p.BaseBranch}
+	default:
+		switch p.ReviewDecision {
+		case PRReviewDecisionChangesRequested:
+			r.Reasons = []string{"changes requested"}
+		case PRReviewDecisionReviewRequired:
+			r.Reasons = []string{"review required"}
+		}
+		r.Reasons = append(r.Reasons, p.Checks.reasons()...)
+		if len(r.Reasons) == 0 {
+			r.Reasons = []string{"blocked by branch rules"}
+		}
+	}
+	return r
+}
+
+// reasons names failing and pending checks, with counts.
+func (c PRChecks) reasons() []string {
+	var out []string
+	if c.Failing > 0 {
+		out = append(out, fmt.Sprintf("%d check%s failing", c.Failing, plural(c.Failing)))
+	}
+	if c.Pending > 0 {
+		out = append(out, fmt.Sprintf("%d check%s pending", c.Pending, plural(c.Pending)))
+	}
+	return out
+}
+
+func plural(n int) string {
+	if n == 1 {
+		return ""
+	}
+	return "s"
 }
 
 // ReviewFinished reports whether sess exists to review pr and pr no longer needs

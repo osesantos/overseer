@@ -93,7 +93,8 @@ func TestSplitRows_PairsRemovedAndAddedRuns(t *testing.T) {
 
 func TestRenderDiff_Split_ShowsBothSidesWithRulesBetweenFiles(t *testing.T) {
 	s := styles.New()
-	out := ansi.Strip(renderDiff(s, twoFileDiff, 140, true))
+	rendered, _ := renderDiff(s, twoFileDiff, 140, true, "")
+	out := ansi.Strip(rendered)
 	lines := strings.Split(out, "\n")
 
 	for _, want := range []string{"src/Scheduler.cs", "src/Worker.cs", "@@ -10,4 +10,5 @@", "Patch(next);", "if (next is null) return;"} {
@@ -122,7 +123,8 @@ func TestRenderDiff_Split_ShowsBothSidesWithRulesBetweenFiles(t *testing.T) {
 
 func TestRenderDiff_Unified_ShowsLineNumbersAndRules(t *testing.T) {
 	s := styles.New()
-	out := ansi.Strip(renderDiff(s, twoFileDiff, 80, false))
+	rendered, _ := renderDiff(s, twoFileDiff, 80, false, "")
+	out := ansi.Strip(rendered)
 
 	for _, want := range []string{"src/Scheduler.cs", "11", "+    if (next is null) return;", "-    Patch(next);"} {
 		if !strings.Contains(out, want) {

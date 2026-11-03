@@ -165,65 +165,118 @@ func splitRows(lines []diffLine) []splitRow {
 	return rows
 }
 
+// diffRow is one rendered line of the diff and whether the search query hits it.
+type diffRow struct {
+	text string
+	hit  bool
+}
+
 // renderDiff draws the diff at width, split (old left, new right) or unified.
 // Every row is cut to the width so tinted rows stay aligned; the viewport does
-// not need to scroll sideways.
-func renderDiff(s *styles.Styles, diff string, width int, split bool) string {
+// not need to scroll sideways. A query paints its hits and the rows that have
+// one come back as indexes, so n/N can jump between them.
+func renderDiff(s *styles.Styles, diff string, width int, split bool, query string) (string, []int) {
 	files := parseUnifiedDiff(diff)
 	width = max(width, 20)
 	gutter := gutterWidth(files)
-	var out []string
+	var rows []diffRow
 	for i, f := range files {
 		if i > 0 {
-			out = append(out, "")
+			rows = append(rows, diffRow{})
 		}
-		out = append(out, fileRule(s, f.Path, width))
+		rows = append(rows, fileRule(s, f.Path, width, query))
 		for _, h := range f.Hunks {
-			out = append(out, s.PullRequest.Diff.Hunk.Width(width).Render(ansi.Truncate(h.Header, width, "…")))
+			rows = append(rows, cell(s.PullRequest.Diff, s.PullRequest.Diff.Hunk, h.Header, width, query))
 			if split {
-				out = append(out, renderSplitHunk(s, h, width, gutter)...)
+				rows = append(rows, renderSplitHunk(s, h, width, gutter, query)...)
 			} else {
-				out = append(out, renderUnifiedHunk(s, h, width, gutter)...)
+				rows = append(rows, renderUnifiedHunk(s, h, width, gutter, query)...)
 			}
 		}
 	}
-	return strings.Join(out, "\n")
+	lines := make([]string, len(rows))
+	var hits []int
+	for i, r := range rows {
+		lines[i] = r.text
+		if r.hit {
+			hits = append(hits, i)
+		}
+	}
+	return strings.Join(lines, "\n"), hits
 }
 
-func renderUnifiedHunk(s *styles.Styles, h hunkDiff, width, gutter int) []string {
+func renderUnifiedHunk(s *styles.Styles, h hunkDiff, width, gutter int, query string) []diffRow {
 	ds := s.PullRequest.Diff
 	textW := max(width-2*gutter-2, 1)
-	rows := make([]string, 0, len(h.Lines))
+	rows := make([]diffRow, 0, len(h.Lines))
 	for _, l := range h.Lines {
 		nums := ds.LineNo.Render(lineNo(l.OldNo, gutter) + " " + lineNo(l.NewNo, gutter))
-		rows = append(rows, nums+" "+diffLineStyle(ds, l.Kind).Width(textW).Render(ansi.Truncate(marker(l.Kind)+l.Text, textW, "…")))
+		c := cell(ds, diffLineStyle(ds, l.Kind), marker(l.Kind)+l.Text, textW, query)
+		rows = append(rows, diffRow{text: nums + " " + c.text, hit: c.hit})
 	}
 	return rows
 }
 
-func renderSplitHunk(s *styles.Styles, h hunkDiff, width, gutter int) []string {
+func renderSplitHunk(s *styles.Styles, h hunkDiff, width, gutter int, query string) []diffRow {
 	ds := s.PullRequest.Diff
 	colW := (width - 1) / 2
 	textW := max(colW-gutter-1, 1)
 	sep := ds.FileRule.Render("│")
-	side := func(l *diffLine, no func(diffLine) int) string {
+	side := func(l *diffLine, no func(diffLine) int) diffRow {
 		if l == nil {
-			return ds.LineNo.Width(colW).Render("")
+			return diffRow{text: ds.LineNo.Width(colW).Render("")}
 		}
-		return ds.LineNo.Render(lineNo(no(*l), gutter)) + " " + diffLineStyle(ds, l.Kind).Width(textW).Render(ansi.Truncate(l.Text, textW, "…"))
+		c := cell(ds, diffLineStyle(ds, l.Kind), l.Text, textW, query)
+		return diffRow{text: ds.LineNo.Render(lineNo(no(*l), gutter)) + " " + c.text, hit: c.hit}
 	}
 	rows := splitRows(h.Lines)
-	out := make([]string, 0, len(rows))
+	out := make([]diffRow, 0, len(rows))
 	for _, r := range rows {
-		out = append(out, side(r.left, func(l diffLine) int { return l.OldNo })+sep+side(r.right, func(l diffLine) int { return l.NewNo }))
+		left := side(r.left, func(l diffLine) int { return l.OldNo })
+		right := side(r.right, func(l diffLine) int { return l.NewNo })
+		out = append(out, diffRow{text: left.text + sep + right.text, hit: left.hit || right.hit})
 	}
 	return out
 }
 
-func fileRule(s *styles.Styles, path string, width int) string {
+// cell renders text cut and padded to width in style, with every hit of query
+// painted over it in the match style.
+func cell(ds styles.DiffStyles, style lipgloss.Style, text string, width int, query string) diffRow {
+	plain := ansi.Truncate(text, width, "…")
+	ranges := matchRanges(plain, query, ds.Match)
+	return diffRow{text: lipgloss.StyleRanges(style.Width(width).Render(plain), ranges...), hit: len(ranges) > 0}
+}
+
+// matchRanges locates query in plain as cell ranges for lipgloss.StyleRanges.
+// Like vim's smartcase, an all-lower-case query ignores case.
+func matchRanges(plain, query string, style lipgloss.Style) []lipgloss.Range {
+	if query == "" {
+		return nil
+	}
+	hay := plain
+	if strings.ToLower(query) == query {
+		// ponytail: ToLower can change a rune's byte length; widths below are
+		// read off the folded text, which is right for every ASCII query.
+		hay = strings.ToLower(plain)
+	}
+	var out []lipgloss.Range
+	for from := 0; ; {
+		i := strings.Index(hay[from:], query)
+		if i < 0 {
+			return out
+		}
+		start, end := from+i, from+i+len(query)
+		out = append(out, lipgloss.NewRange(ansi.StringWidth(hay[:start]), ansi.StringWidth(hay[:end]), style))
+		from = end
+	}
+}
+
+func fileRule(s *styles.Styles, path string, width int, query string) diffRow {
 	ds := s.PullRequest.Diff
-	name := ds.FileName.Render(path)
-	return ds.FileRule.Render("── ") + name + " " + ds.FileRule.Render(strings.Repeat("─", max(width-lipgloss.Width(name)-4, 0)))
+	ranges := matchRanges(path, query, ds.Match)
+	name := lipgloss.StyleRanges(ds.FileName.Render(path), ranges...)
+	rule := ds.FileRule.Render("── ") + name + " " + ds.FileRule.Render(strings.Repeat("─", max(width-lipgloss.Width(name)-4, 0)))
+	return diffRow{text: rule, hit: len(ranges) > 0}
 }
 
 // gutterWidth is the width of the widest line number, at least 3.
