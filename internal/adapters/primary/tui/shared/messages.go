@@ -151,6 +151,17 @@ type PullRequestDismissedMsg struct {
 	Err error
 }
 
+// PullRequestDetailsLoadedMsg carries what the PR page shows for one session's
+// PR, or why it could not be fetched.
+type PullRequestDetailsLoadedMsg struct {
+	SessionID uuid.UUID
+	Details   domain.PullRequestDetails
+	Err       error
+}
+
+// PullRequestRefetchMsg is emitted by the PR page (r) to fetch the details again.
+type PullRequestRefetchMsg struct{}
+
 // ReviewSessionStartedMsg reports a review session started from the PRs page.
 type ReviewSessionStartedMsg struct {
 	Session domain.Session

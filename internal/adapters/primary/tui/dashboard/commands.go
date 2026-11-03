@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "charm.land/bubbletea/v2"
+	"github.com/google/uuid"
 
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -16,6 +17,9 @@ import (
 
 const (
 	overseerRequestTimeout = 60 * time.Second
+	// pullRequestDetailsTimeout bounds the three gh calls behind the PR page;
+	// a large diff plus the conversation query can take a while on GitHub's side.
+	pullRequestDetailsTimeout = 60 * time.Second
 	// autoReviewTimeout bounds one poll's review-session starts; each fetches a
 	// PR head and spawns two tmux panes.
 	autoReviewTimeout = 2 * time.Minute
@@ -50,6 +54,8 @@ func (m Model) executeCommand(raw string) (tea.Model, tea.Cmd) {
 		m.chatPanelVisible = false
 		m.reapplySize()
 		return m, nil
+	case "pr":
+		return m.cmdPullRequest()
 	case "sessions":
 		m.page = pageSessions
 		m.reapplySize()
@@ -223,6 +229,17 @@ func (m Model) cmdList() (tea.Model, tea.Cmd) {
 
 // --- /help ---
 
+// cmdPullRequest opens the PR page for the selected session, from the PR the
+// per-minute status already fetched.
+func (m Model) cmdPullRequest() (tea.Model, tea.Cmd) {
+	id, err := uuid.Parse(m.leftPane.SelectedSessionID())
+	status, ok := m.prStatuses[id]
+	if err != nil || !ok || status.Err != nil || status.PR.Number == 0 {
+		return m.commandResult("no pull request for the selected session", true)
+	}
+	return m, m.openPullRequestPage(status.PR)
+}
+
 func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 	help := strings.Join([]string{
 		"Operator commands:",
@@ -232,6 +249,7 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 		"  /new                            — open the new-session dialog",
 		"  /list                           — list all sessions",
 		"  /prs                            — open the pull request inbox page",
+		"  /pr                             — open the selected session's pull request page",
 		"  /triage                         — open the support ticket (RDODCF / RDINC) inbox page",
 		"  /sessions                       — back to the sessions page",
 		"  /help                           — show this help",

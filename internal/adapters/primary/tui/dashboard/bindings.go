@@ -7,6 +7,7 @@ import (
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/prs"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/pullrequest"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/triage"
@@ -39,11 +40,12 @@ var (
 	// consumed by the chat input.
 	chatPassthroughNav = key.NewBinding(key.WithKeys("up", "down"))
 
-	sessionsKeyBindings   = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, openPRKeyBinding, showPullRequestTabKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
-	inspectorKeyBindings  = []key.Binding{inspector.ToggleViewKeyBinding, killPreviewSessionKeyBinding, inspector.SwarmAgentPrevKeyBinding, inspector.SwarmAgentNextKeyBinding}
-	generalKeyBindings    = []key.Binding{helpMenuKeyBinding, overseerPanelKeyBinding, cmdlineKeyBinding, quitKeyBinding}
-	prsPageKeyBindings    = slices.Concat(prs.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})
-	triagePageKeyBindings = slices.Concat(triage.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})
+	sessionsKeyBindings        = []key.Binding{newSessionKeyBinding, attachKeyBinding, sendAgentEnterKeyBinding, openEditorKeyBinding, openPRKeyBinding, showPullRequestTabKeyBinding, session.ReorderSessionUpKeyBinding, session.ReorderSessionDownKeyBinding, session.GoToNextGroupKeyBinding, session.GoToPrevGroupKeyBinding, session.DeleteSessionKeyBinding, session.RenameKeyBinding, session.CycleLabelKeyBinding}
+	inspectorKeyBindings       = []key.Binding{inspector.ToggleViewKeyBinding, killPreviewSessionKeyBinding, inspector.SwarmAgentPrevKeyBinding, inspector.SwarmAgentNextKeyBinding}
+	generalKeyBindings         = []key.Binding{helpMenuKeyBinding, overseerPanelKeyBinding, cmdlineKeyBinding, quitKeyBinding}
+	prsPageKeyBindings         = slices.Concat(prs.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})
+	triagePageKeyBindings      = slices.Concat(triage.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})
+	pullRequestPageKeyBindings = slices.Concat(pullrequest.KeyBindings, []key.Binding{cmdlineKeyBinding, quitKeyBinding})
 
 	sessionsHelpGroups = []shared.HelpPopupGroup{
 		{

@@ -22,6 +22,7 @@ import (
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
 	overseerui "github.com/dnlopes/overseer/internal/adapters/primary/tui/overseer"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/prs"
+	"github.com/dnlopes/overseer/internal/adapters/primary/tui/pullrequest"
 	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/sessiondetails"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
@@ -49,6 +50,7 @@ const (
 	pageSessions pageKind = iota
 	pagePRs
 	pageTriage
+	pagePullRequest
 )
 
 // ReviewOptions is the pullRequests config the dashboard acts on: the launcher
@@ -110,6 +112,13 @@ type Model struct {
 	prsHelpBar      shared.HelpBarModel
 	triagePage      triage.Model
 	triageHelpBar   shared.HelpBarModel
+	prPage          pullrequest.Model
+	prPageHelpBar   shared.HelpBarModel
+	// prPageSessionID and prPageRepoPath identify the PR the page is showing,
+	// so details that arrive after the page moved on are dropped and a refetch
+	// runs in the right repository.
+	prPageSessionID uuid.UUID
+	prPageRepoPath  string
 	// pendingFocusID is a session to select once the next SessionsLoadedMsg
 	// lands, used after a review session is created from the PRs page.
 	pendingFocusID uuid.UUID
@@ -205,6 +214,8 @@ func New(
 		prsHelpBar:              shared.NewHelpBarModel(styles, prsPageKeyBindings),
 		triagePage:              triage.New(styles),
 		triageHelpBar:           shared.NewHelpBarModel(styles, triagePageKeyBindings),
+		prPage:                  pullrequest.New(styles),
+		prPageHelpBar:           shared.NewHelpBarModel(styles, pullRequestPageKeyBindings),
 		triage:                  triageOpts,
 		cmdline:                 cmdline,
 		review:                  review,
@@ -631,6 +642,21 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.page = pageSessions
 		m.reapplySize()
 		return m, nil
+	case shared.PullRequestDetailsLoadedMsg:
+		if m.page != pagePullRequest || msg.SessionID != m.prPageSessionID {
+			return m, nil
+		}
+		if msg.Err != nil {
+			m.prPage.SetError(msg.Err)
+			return m, nil
+		}
+		m.prPage.SetDetails(msg.Details)
+		return m, nil
+	case shared.PullRequestRefetchMsg:
+		if m.page != pagePullRequest {
+			return m, nil
+		}
+		return m, m.refetchPullRequestCmd()
 	case shared.PullRequestOpenMsg:
 		if sess, ok := m.reviewSessionFor(msg.PR); ok {
 			m.page = pageSessions
@@ -677,6 +703,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var inspectorCmd tea.Cmd
 		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
 		cmd = tea.Batch(cmd, inspectorCmd)
+		if m.pullRequestPageIsStale(msg) {
+			cmd = tea.Batch(cmd, m.refetchPullRequestCmd())
+		}
 		if msg.Err == nil {
 			cmd = tea.Batch(cmd, m.reapFinishedReviewCmd(msg.SessionID, msg.PR))
 		}
@@ -867,6 +896,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			var cmd tea.Cmd
 			m.triagePage, cmd = shared.UpdateModel(m.triagePage, keyMsg)
 			return m, cmd
+		case pagePullRequest:
+			var cmd tea.Cmd
+			m.prPage, cmd = shared.UpdateModel(m.prPage, keyMsg)
+			return m, cmd
 		}
 
 		// Normal routing when the chat panel is closed.
@@ -939,6 +972,10 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 		return tea.Batch(cmds...), true
 	}
 	if key.Matches(msg, attachKeyBinding) {
+		// The PR tab has no pane; Enter expands it into the full-screen page.
+		if pr, ok := m.inspector.ShownPullRequest(); ok {
+			return m.openPullRequestPage(pr), true
+		}
 		// Dispatch on the typed preview kind rather than the tab label. The
 		// Agents Board has no pane behind it and reports ok=false, which is what
 		// stops Enter falling through to AttachAgent and lazily spawning an
@@ -1062,6 +1099,75 @@ func (m Model) attachSelectedSessionAgentCmd(agentIndex int) tea.Cmd {
 		})
 		return shared.SessionAttachReadyMsg{Command: resp.Command, Err: err}
 	}
+}
+
+// openPullRequestPage switches to the full-screen PR page for the selected
+// session and starts the details fetch. The page shows the header at once and
+// fills in when the fetch answers.
+func (m *Model) openPullRequestPage(pr domain.PullRequest) tea.Cmd {
+	sessID, err := uuid.Parse(m.leftPane.SelectedSessionID())
+	if err != nil {
+		return nil
+	}
+	repoPath, ok := m.repoPathForSession(sessID)
+	if !ok {
+		return m.showToast("no registered project for this session")
+	}
+	m.page = pagePullRequest
+	m.chatPanelVisible = false
+	m.reapplySize()
+	m.prPageSessionID = sessID
+	m.prPageRepoPath = repoPath
+	m.prPage.SetPullRequest(pr)
+	return m.fetchPullRequestDetailsCmd()
+}
+
+// repoPathForSession is the project path gh runs in for a session's PR.
+func (m Model) repoPathForSession(sessID uuid.UUID) (string, bool) {
+	for _, sess := range m.cachedSessions {
+		if sess.ID != sessID {
+			continue
+		}
+		for _, p := range m.cachedProjects {
+			if p.ID == sess.ProjectID {
+				return p.Path, true
+			}
+		}
+	}
+	return "", false
+}
+
+func (m Model) fetchPullRequestDetailsCmd() tea.Cmd {
+	svc := m.prService
+	sessID, repoPath, number := m.prPageSessionID, m.prPageRepoPath, m.prPage.PullRequest().Number
+	return shared.RequestWithTimeout(pullRequestDetailsTimeout,
+		func(ctx context.Context) (domain.PullRequestDetails, error) {
+			resp, err := svc.GetDetails(ctx, service.GetPullRequestDetailsRequest{RepoPath: repoPath, Number: number})
+			return resp.Details, err
+		},
+		func(details domain.PullRequestDetails, err error) tea.Msg {
+			return shared.PullRequestDetailsLoadedMsg{SessionID: sessID, Details: details, Err: err}
+		},
+	)
+}
+
+func (m *Model) refetchPullRequestCmd() tea.Cmd {
+	return tea.Batch(
+		m.showToast(fmt.Sprintf("refreshing PR #%d…", m.prPage.PullRequest().Number)),
+		m.fetchPullRequestDetailsCmd(),
+	)
+}
+
+// pullRequestPageIsStale reports whether a status for the PR on the page is
+// newer than the loaded details. A page still loading is never stale, so the
+// first fetch is not doubled.
+func (m Model) pullRequestPageIsStale(status shared.PRStatusUpdatedMsg) bool {
+	loadedAt := m.prPage.UpdatedAt()
+	return m.page == pagePullRequest &&
+		status.SessionID == m.prPageSessionID &&
+		status.Err == nil &&
+		!loadedAt.IsZero() &&
+		status.PR.UpdatedAt.After(loadedAt)
 }
 
 // revealAndAttachEditorCmd reveals the inspector's gated Editor tab and, in the
@@ -1469,6 +1575,8 @@ func (m Model) View() tea.View {
 		helpView = m.prsHelpBar.View().Content
 	case m.page == pageTriage:
 		helpView = m.triageHelpBar.View().Content
+	case m.page == pagePullRequest:
+		helpView = m.prPageHelpBar.View().Content
 	}
 	helpHeight := max(lipgloss.Height(helpView), 1)
 
@@ -1488,6 +1596,8 @@ func (m Model) View() tea.View {
 		body = fit(m.styles, m.prsPage.View().Content, m.width, bodyHeight)
 	case pageTriage:
 		body = fit(m.styles, m.triagePage.View().Content, m.width, bodyHeight)
+	case pagePullRequest:
+		body = fit(m.styles, m.prPage.View().Content, m.width, bodyHeight)
 	default:
 		left := fit(m.styles, m.leftPane.View().Content, leftWidth, bodyHeight)
 		right := fit(m.styles, m.inspector.View().Content, rightWidth, bodyHeight)
@@ -1587,10 +1697,12 @@ func (m *Model) reapplySize() {
 	m.inspector.SetSize(rightWidth, bodyHeight)
 	m.prsPage.SetSize(m.width, bodyHeight)
 	m.triagePage.SetSize(m.width, bodyHeight)
+	m.prPage.SetSize(m.width, bodyHeight)
 	m.cmdline.SetWidth(m.width - 1)
 	m.helpBar.SetSize(m.width, HelpBarHeight)
 	m.prsHelpBar.SetSize(m.width, HelpBarHeight)
 	m.triageHelpBar.SetSize(m.width, HelpBarHeight)
+	m.prPageHelpBar.SetSize(m.width, HelpBarHeight)
 	m.titlebar.SetSize(m.width, TitleBarHeight)
 }
 

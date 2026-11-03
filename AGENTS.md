@@ -20,7 +20,8 @@ Key capabilities:
 - Pull-request tracking via GitHub CLI
 - Agent-status detection (idle / running / waiting / dead) per session
 - Overseer chat panel — an LLM meta-agent (Claude Code) that can control sessions
-- Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`, `/prs`, `/sessions` — also runnable from the k9s-style `:` prompt
+- Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`, `/prs`, `/pr`, `/sessions` — also runnable from the k9s-style `:` prompt
+- **PR tab and page** — a session with a pull request gets a `PR` tab in the inspector (`p` jumps to it) showing the header and description; Enter on it, or `:pr`, opens a full-screen page with Overview / Diff / Comments sections, vim-style scrolling and a themed diff
 - **Triage inbox** — `:triage` lists the team's open RDODCF / RDINC tickets (via `acli`); the `triage-poll` job starts a triage session (project session in the `vault` project + the per-project `triage.commands` launcher) for fresh unassigned tickets
 - **Review inbox** — `:prs` lists every open PR with a review requested from the operator; the `pr-review-poll` job starts a review session (detached worktree at the PR head + the configured `pullRequests.reviewCommand`) for eligible PRs
 - Background evaluation loops (`/loop <session> <criteria>`) — runs `claude -p` in the session's working directory; 5s interval between iterations; up to 40 iterations
@@ -106,6 +107,7 @@ overseer/
 │   │   │       ├── leftpane/       # Left pane: session list + session details
 │   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go, bindings.go)
 │   │   │       ├── prs/            # Review inbox page (`:prs`): PRs grouped by repo + review-session column
+│   │   │       ├── pullrequest/    # Full-screen PR page (`:pr` / Enter on the PR tab): Overview, themed Diff, Comments
 │   │   │       ├── session/        # Session list model + create/delete/rename forms
 │   │   │       ├── triage/         # Support ticket inbox page (`:triage`): tickets grouped by Jira project + triage-session column
 │   │   │       ├── sessiondetails/ # Session details card (repo, PR, loop section)
@@ -247,17 +249,18 @@ Chat panel model. Handles:
 ### `internal/adapters/primary/tui/inspector`
 Right-pane preview with generation-counter-based polling (prevents chain doubling on `ForceRefreshMsg`).
 
-Holds **five** views at fixed indexes — `ixAgent`, `ixBoard`, `ixSwarmAgent`, `ixShell`, `ixEditor` — and renders a subset chosen by `visibleIxs()`:
+Holds **six** views at fixed indexes — `ixAgent`, `ixBoard`, `ixSwarmAgent`, `ixShell`, `ixPullRequest`, `ixEditor` — and renders a subset chosen by `visibleIxs()`:
 
 | Session type | Visible tabs |
 |--------------|--------------|
-| Ordinary | `Agent` · `Shell` · `Editor` (once revealed) |
-| Swarm | `Agents Board` · `Agent N/M` · `Shell` · `Editor` (once revealed) |
+| Ordinary | `Agent` · `Shell` · `PR` (while the session has one) · `Editor` (once revealed) |
+| Swarm | `Agents Board` · `Agent N/M` · `Shell` · `PR` (while the session has one) · `Editor` (once revealed) |
 
 Things to know before editing this package:
 
 - `activeIx` indexes `views`, **not** the visible subset. The visible set is no longer a prefix, so anything iterating tabs must walk `visibleIxs()` — a bare `for i := range n` will render the wrong labels.
 - `ixEditor` must stay last so `RevealEditorMsg` and the size loop need no knowledge of the swarm tabs.
+- The `PR` tab fetches nothing. It renders the `PRStatusUpdatedMsg` the dashboard forwards (and replays from `m.prStatuses` on every `SessionSelectedMsg`), so it costs no extra `gh` call and appears the moment the per-minute status finds a PR. A not-found status hides it; any other error keeps the last known PR. `HasPullRequest()` says whether the tab exists, `ShownPullRequest()` whether it is the active one — Enter dispatches on the latter before `ActivePreviewKind`, which reports no pane for it (so `x` does nothing there).
 - `ActivePreviewKind() (service.PreviewKind, int, bool)` is the **only** way to learn what pane the active tab shows. Never map tab *labels* back to a kind: that is exactly how `x` on the Agents Board used to silently kill the shell.
 - `CapturesInput()` reports that the board's compose line owns the keyboard; `CanCompose()` reports that the compose key would do something. The dashboard consults both.
 - `swarmBoardLoadedMsg` / `swarmBoardPostedMsg` are routed to `ixBoard` explicitly, not to `activeIx`, so the board absorbs the tail of its own polling chain after the user tabs away.
@@ -289,6 +292,18 @@ Things to know before editing it:
 - **They stop at the skill's confirm prompts.** The launchers do not override the Confirm tier, so nothing posts to Jira unattended. Keep it that way for RDINC: the customer reads those comments.
 - **Done signal:** the inbox JQL excludes done tickets, so `ListTriageInbox` also fetches every tracked key the query left out (`IssueTrackerPort.GetIssues`) and the dashboard reaps sessions whose issue's status category is `done` (`domain.TriageFinished`). Leaving the query alone (team changed, reassigned) is not "done".
 - **`acli` quirks**, all pinned by fixtures in `secondary/jira/testdata`: `workitem search` rejects `created`, and `--fields key` alone answers a list of nulls, so search asks for `summary` and only yields keys; every issue then comes from one `workitem view` (4 at a time). A failed view keeps the key alone, which is never eligible and never done. Some RDINC statuses have the category `undefined`; anything not `done` counts as open.
+
+### `internal/adapters/primary/tui/pullrequest`
+The full-screen pull request page, opened with Enter on the inspector's `PR` tab or with `:pr`, closed with `esc` or `q`. Three sections — Overview (meta, description, files), Diff, Comments — cycled with `[` / `]`, each with its own viewport so scroll positions are independent. Scrolling is the viewport's default key map (`j`/`k`, arrows, `ctrl+d`/`ctrl+u`, `pgup`/`pgdn`) plus `g`/`G`; `r` emits `PullRequestRefetchMsg`, `o` opens the browser.
+
+Why it is a page and not a focus mode on the tab: the session list owns `j`/`k`/arrows and `g`/`G`, and the inspector has no focus model. A full-width page already takes every key by the existing routing rule (`root.go`, "a full-width page takes the keys"), so the tab stays a read-only preview and nothing about session navigation changes meaning.
+
+Things to know before editing it:
+
+- **It renders only what the dashboard hands it.** `SetPullRequest` shows the header from the per-minute status at once; `fetchPullRequestDetailsCmd` runs `PullRequestService.GetDetails` (three `gh` calls: `pr view --json …,files`, `pr diff`, a GraphQL conversation query) and `PullRequestDetailsLoadedMsg` fills the page. The dashboard drops a result whose `SessionID` is not `prPageSessionID`, so a page that moved on never shows another PR's details.
+- **Refetch**: `r`, and automatically when a `PRStatusUpdatedMsg` for the same session carries an `UpdatedAt` newer than the loaded details (`pullRequestPageIsStale`). A page still loading is never stale, so the first fetch is not doubled.
+- **The diff is parsed, not `gh --color`.** `classifyDiffLine` works on line prefixes; the per-file header prefixes (`--- a/`, `+++ b/`, `--- /dev/null`, …) are checked before `+`/`-` so a removed line starting with `--` is still a removal. Styles come from `styles.PullRequestStyles.Diff` (TUI-10). Rendering happens once in `SetDetails`, never per key.
+- **Comments hide noise on purpose.** Bot comments (GraphQL `__typename == Bot`) are left out and counted in the section header; resolved or outdated threads collapse to one line; open threads show the last `hunkTailLines` of their hunk. Machine *users* (a login that is not a GitHub App) are not bots to GitHub and still show.
 
 ### `internal/adapters/primary/boardhttp`
 Inbound HTTP adapter exposing a swarm session's board to the **agent processes**, which live outside Overseer. Requests flow inward through `SwarmService` like the TUI's do (ARCH-05).
