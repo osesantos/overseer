@@ -190,13 +190,17 @@ type PullRequestStyles struct {
 	}
 }
 
-// DiffStyles colours a unified diff line by line.
+// DiffStyles colours a diff GitHub-style: a rule with the file name between
+// files, hunk headers and changed rows on tinted backgrounds, dimmed context
+// and line numbers.
 type DiffStyles struct {
-	File    lipgloss.Style
-	Hunk    lipgloss.Style
-	Add     lipgloss.Style
-	Remove  lipgloss.Style
-	Context lipgloss.Style
+	FileRule lipgloss.Style
+	FileName lipgloss.Style
+	Hunk     lipgloss.Style
+	Add      lipgloss.Style
+	Remove   lipgloss.Style
+	Context  lipgloss.Style
+	LineNo   lipgloss.Style
 }
 
 type SessionDetailsStyles struct {
@@ -525,11 +529,13 @@ func newStyles(themeName string, disableEmoji bool, palette map[string]string) *
 				Inactive: lipgloss.NewStyle().Foreground(theme.Subtext).Padding(0, 1),
 			},
 			Diff: DiffStyles{
-				File:    lipgloss.NewStyle().Foreground(theme.Text).Bold(true),
-				Hunk:    lipgloss.NewStyle().Foreground(theme.Primary),
-				Add:     lipgloss.NewStyle().Foreground(theme.Accent),
-				Remove:  lipgloss.NewStyle().Foreground(theme.Danger),
-				Context: lipgloss.NewStyle().Foreground(theme.Text),
+				FileRule: lipgloss.NewStyle().Foreground(theme.Border),
+				FileName: lipgloss.NewStyle().Foreground(theme.Text).Bold(true),
+				Hunk:     lipgloss.NewStyle().Foreground(theme.Primary).Background(theme.HelpKeyBg),
+				Add:      lipgloss.NewStyle().Foreground(theme.Text).Background(theme.StatusRunningBg),
+				Remove:   lipgloss.NewStyle().Foreground(theme.Text).Background(theme.StatusDeadBg),
+				Context:  lipgloss.NewStyle().Foreground(theme.Subtext),
+				LineNo:   lipgloss.NewStyle().Foreground(theme.Muted),
 			},
 			Thread: struct {
 				Header   lipgloss.Style

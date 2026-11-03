@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/x/ansi"
+
 	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
@@ -13,13 +15,15 @@ const hunkTailLines = 6
 
 // renderCommentsSection lists open review threads in full, resolved or
 // outdated ones as a single line each, then the conversation with bot
-// comments left out. Hidden counts are shown so nothing vanishes silently.
+// comments left out. A rule separates every entry; hidden counts are shown so
+// nothing vanishes silently.
 func (m Model) renderCommentsSection() string {
 	if pending, ok := m.pendingLine(); ok {
 		return pending
 	}
 	d := m.styles.SessionDetails
 	ps := m.styles.PullRequest
+	rule := m.styles.Chat.Separator.Render(strings.Repeat("─", max(m.width, 1)))
 
 	var open, collapsed []domain.PRReviewThread
 	for _, th := range m.details.Threads {
@@ -48,9 +52,10 @@ func (m Model) renderCommentsSection() string {
 
 	var lines []string
 	if len(m.details.Threads) > 0 {
-		lines = append(lines, d.SectionTitle.Render(fmt.Sprintf("Review threads · %d open · %d resolved", len(open), len(collapsed))), "")
+		lines = append(lines, d.SectionTitle.Render(fmt.Sprintf("Review threads · %d open · %d resolved", len(open), len(collapsed))), rule)
 		for _, th := range open {
 			lines = append(lines, m.renderOpenThread(th)...)
+			lines = append(lines, rule)
 		}
 		for _, th := range collapsed {
 			state := "resolved"
@@ -58,13 +63,14 @@ func (m Model) renderCommentsSection() string {
 				state = "outdated"
 			}
 			lines = append(lines, ps.Thread.Resolved.Render(fmt.Sprintf("%s %s · %s · %d comment%s · %s",
-				m.styles.Glyphs.CheckPass, threadLocation(th), strings.Join(th.Authors, ", "), len(th.Comments), plural(len(th.Comments)), state)))
+				m.styles.Glyphs.CheckPass, threadLocation(th), strings.Join(th.Authors, ", "), len(th.Comments), plural(len(th.Comments)), state)), rule)
 		}
 		lines = append(lines, "")
 	}
-	lines = append(lines, d.SectionTitle.Render(fmt.Sprintf("Conversation · %d%s", len(human), hidden)), "")
+	lines = append(lines, d.SectionTitle.Render(fmt.Sprintf("Conversation · %d%s", len(human), hidden)), rule)
 	for _, c := range human {
 		lines = append(lines, m.renderComment(c)...)
+		lines = append(lines, rule)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -78,7 +84,7 @@ func (m Model) renderOpenThread(th domain.PRReviewThread) []string {
 			hunkLines = hunkLines[len(hunkLines)-hunkTailLines:]
 		}
 		for _, l := range hunkLines {
-			lines = append(lines, ps.Thread.Hunk.Render(strings.ReplaceAll(l, "\t", "    ")))
+			lines = append(lines, ps.Thread.Hunk.Render(ansi.Truncate("  "+strings.ReplaceAll(l, "\t", "    "), max(m.width, 1), "…")))
 		}
 	}
 	for _, c := range th.Comments {
@@ -90,16 +96,17 @@ func (m Model) renderOpenThread(th domain.PRReviewThread) []string {
 	return lines
 }
 
+// renderComment is a blank line, the author line, then the body as markdown.
 func (m Model) renderComment(c domain.PRComment) []string {
 	ps := m.styles.PullRequest
 	head := ps.Thread.Author.Render(c.Author)
 	if c.ReviewState != "" {
-		head += " " + ps.Hint.Render("reviewed: "+strings.ToLower(c.ReviewState))
+		head += ps.Hint.Render(" · reviewed: " + strings.ToLower(c.ReviewState))
 	}
 	if !c.CreatedAt.IsZero() {
-		head += " " + ps.Hint.Render(c.CreatedAt.Local().Format("2006-01-02 15:04"))
+		head += ps.Hint.Render(" · " + c.CreatedAt.Local().Format("2006-01-02 15:04"))
 	}
-	return []string{head, m.markdown.Render(c.Body), ""}
+	return []string{"", head, m.markdown.Render(c.Body)}
 }
 
 func threadLocation(th domain.PRReviewThread) string {

@@ -40,7 +40,7 @@ func TestDiffLineKind(t *testing.T) {
 
 func TestRenderDiff_KeepsEveryLineAndExpandsTabs(t *testing.T) {
 	s := styles.New()
-	out := ansi.Strip(renderDiff(s.PullRequest.Diff, "diff --git a/x b/x\n@@ -1 +1 @@\n-\told\n+\tnew\n"))
+	out := ansi.Strip(renderDiff(s, "diff --git a/x b/x\n@@ -1 +1 @@\n-\told\n+\tnew\n", 80, false))
 	if got := strings.Count(out, "\n"); got != 3 {
 		t.Fatalf("rendered %d newlines, want 3:\n%s", got, out)
 	}

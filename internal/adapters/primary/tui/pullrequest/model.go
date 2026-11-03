@@ -46,9 +46,11 @@ type Model struct {
 	err       error
 	section   section
 	viewports [sectionCount]viewport.Model
-	markdown  styles.Markdown
-	width     int
-	height    int
+	// unifiedDiff is the operator's s toggle; the zero value is the split view.
+	unifiedDiff bool
+	markdown    styles.Markdown
+	width       int
+	height      int
 }
 
 func New(s *styles.Styles) Model {
@@ -62,6 +64,10 @@ func New(s *styles.Styles) Model {
 func (m Model) Init() tea.Cmd { return nil }
 
 func (m Model) Section() section { return m.section }
+
+// diffIsSplit reports whether the Diff section shows old and new side by side:
+// the operator has not toggled it off and the page is wide enough.
+func (m Model) diffIsSplit() bool { return !m.unifiedDiff && m.width >= splitMinWidth }
 
 // PullRequest is the PR on screen, from the details once they are loaded.
 func (m Model) PullRequest() domain.PullRequest { return m.pr }
@@ -132,6 +138,9 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.viewports[m.section].GotoTop()
 	case key.Matches(keyMsg, BottomKeyBinding):
 		m.viewports[m.section].GotoBottom()
+	case key.Matches(keyMsg, SplitKeyBinding):
+		m.unifiedDiff = !m.unifiedDiff
+		m.viewports[sectionDiff].SetContent(m.renderDiffSection())
 	case key.Matches(keyMsg, RefetchKeyBinding):
 		return m, shared.Emit(shared.PullRequestRefetchMsg{})
 	case key.Matches(keyMsg, BrowserKeyBinding):
@@ -189,7 +198,7 @@ func (m Model) renderDiffSection() string {
 	if strings.TrimSpace(m.details.Diff) == "" {
 		return m.styles.PullRequest.Hint.Render("No diff")
 	}
-	return renderDiff(m.styles.PullRequest.Diff, m.details.Diff)
+	return renderDiff(m.styles, m.details.Diff, m.width, m.diffIsSplit())
 }
 
 func (m Model) description() string {
