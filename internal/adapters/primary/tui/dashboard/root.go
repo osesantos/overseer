@@ -506,7 +506,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.inboxLoaded = true
 		m.inboxLoadError = ""
 		m.syncPRsPage()
-		return m, tea.Batch(m.refreshLeftPaneStatuses(), m.autoReviewCmd(msg.Inbox))
+		return m, m.autoReviewCmd(msg.Inbox)
 	case shared.AutoReviewCompletedMsg:
 		if msg.Err != nil {
 			return m, m.showToast("auto-review: " + msg.Err.Error())
@@ -683,21 +683,30 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case shared.PullRequestDismissMsg:
 		svc := m.prService
 		ref := msg.PR.Ref()
+		dismiss := !msg.PR.Dismissed
 		return m, func() tea.Msg {
-			_, err := svc.Dismiss(context.Background(), service.DismissPullRequestRequest{Ref: ref})
-			return shared.PullRequestDismissedMsg{Ref: ref, Err: err}
+			var err error
+			if dismiss {
+				_, err = svc.Dismiss(context.Background(), service.DismissPullRequestRequest{Ref: ref})
+			} else {
+				_, err = svc.Restore(context.Background(), service.RestorePullRequestRequest{Ref: ref})
+			}
+			return shared.PullRequestDismissedMsg{Ref: ref, Dismissed: dismiss, Err: err}
 		}
 	case shared.PullRequestDismissedMsg:
 		if msg.Err != nil {
-			return m, m.showToast("could not dismiss PR: " + msg.Err.Error())
+			return m, m.showToast("could not update PR dismissal: " + msg.Err.Error())
 		}
 		m.reviewInbox.PullRequests = slices.Clone(m.reviewInbox.PullRequests)
 		for i := range m.reviewInbox.PullRequests {
 			if m.reviewInbox.PullRequests[i].Ref() == msg.Ref {
-				m.reviewInbox.PullRequests[i].Dismissed = true
+				m.reviewInbox.PullRequests[i].Dismissed = msg.Dismissed
 			}
 		}
 		m.syncPRsPage()
+		if !msg.Dismissed {
+			return m, m.showToast(fmt.Sprintf("PR #%d restored to the inbox", msg.Ref.Number))
+		}
 		return m, m.showToast(fmt.Sprintf("PR #%d hidden from the inbox", msg.Ref.Number))
 	case shared.ReviewSessionStartedMsg:
 		if msg.Err != nil {
@@ -713,7 +722,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.leftPane, cmd = shared.UpdateModel(m.leftPane, msg)
 		var inspectorCmd tea.Cmd
 		m.inspector, inspectorCmd = shared.UpdateModel(m.inspector, msg)
-		cmd = tea.Batch(cmd, inspectorCmd)
+		cmd = tea.Batch(cmd, inspectorCmd, m.refreshLeftPaneStatuses())
 		if m.pullRequestPageIsStale(msg) {
 			cmd = tea.Batch(cmd, m.refetchPullRequestCmd())
 		}
@@ -1385,11 +1394,17 @@ func (m *Model) showToast(text string) tea.Cmd {
 // syncPRsPage hands the page the slices it renders from; cheap enough to run on
 // every change of inbox, sessions, projects or agent statuses.
 // refreshLeftPaneStatuses hands the session list the agent statuses with
-// pending GitHub reviews laid over them; m.agentStatuses stays the raw detection.
+// the viewer's GitHub review states laid over them; m.agentStatuses stays the raw detection.
 func (m *Model) refreshLeftPaneStatuses() tea.Cmd {
+	prs := make(map[uuid.UUID]domain.PullRequest, len(m.prStatuses))
+	for id, st := range m.prStatuses {
+		if st.Err == nil {
+			prs[id] = st.PR
+		}
+	}
 	var cmd tea.Cmd
 	m.leftPane, cmd = shared.UpdateModel(m.leftPane, shared.AgentStatusesUpdatedMsg{
-		Statuses: domain.WithPendingReviews(m.agentStatuses, m.cachedSessions, m.reviewInbox),
+		Statuses: domain.WithReviewStates(m.agentStatuses, m.cachedSessions, prs),
 	})
 	return cmd
 }

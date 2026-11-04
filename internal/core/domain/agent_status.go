@@ -32,12 +32,8 @@ const (
 	AgentStatusUnknown AgentStatusKind = "unknown"
 	AgentStatusRunning AgentStatusKind = "running"
 	AgentStatusWaiting AgentStatusKind = "waiting"
-	// AgentStatusAsking marks an agent that finished its turn by asking the
-	// operator something in prose ("Shall I…?", "say yes to write it"). Unlike
-	// Waiting, no dialog blocks it; it only looks idle.
-	AgentStatusAsking AgentStatusKind = "asking"
-	AgentStatusIdle   AgentStatusKind = "idle"
-	AgentStatusDead   AgentStatusKind = "dead"
+	AgentStatusIdle    AgentStatusKind = "idle"
+	AgentStatusDead    AgentStatusKind = "dead"
 	// AgentStatusSwarm marks a session whose agents are not tracked individually.
 	// A swarm has one pane per agent, and this API carries a single status per
 	// session, so there is nothing honest to report — but it is not Unknown
@@ -46,14 +42,16 @@ const (
 	AgentStatusSwarm AgentStatusKind = "swarm"
 	// AgentStatusReviewPending marks a review session whose PR holds a review the
 	// operator staged on GitHub but has not submitted. It is never detected from a
-	// pane; WithPendingReviews lays it over the detected status.
+	// pane; WithReviewStates lays it over the detected status.
 	AgentStatusReviewPending AgentStatusKind = "review-pending"
+	// AgentStatusReviewApproved marks a review session whose PR the viewer has
+	// approved and nobody asked them to look at again. Laid over like ReviewPending.
+	AgentStatusReviewApproved AgentStatusKind = "review-approved"
 )
 
-// outranksPendingReview reports whether k beats a pending review: the agent is
-// still working or blocked on a dialog. A prose question (Asking) does not: once
-// the review is staged, submitting it is the operator's next move.
-func outranksPendingReview(k AgentStatusKind) bool {
+// outranksReviewState reports whether k beats a GitHub review state: the agent
+// is still working or blocked on a dialog.
+func outranksReviewState(k AgentStatusKind) bool {
 	switch k {
 	case AgentStatusRunning, AgentStatusWaiting, AgentStatusSwarm:
 		return true
@@ -61,24 +59,32 @@ func outranksPendingReview(k AgentStatusKind) bool {
 	return false
 }
 
-// WithPendingReviews returns a copy of statuses in which every review session
-// whose PR carries an unsubmitted review by the viewer reads
-// AgentStatusReviewPending, unless its agent is busy.
-func WithPendingReviews(statuses map[uuid.UUID]AgentStatus, sessions []Session, inbox ReviewInbox) map[uuid.UUID]AgentStatus {
-	pending := make(map[PullRequestRef]bool)
-	for _, pr := range inbox.PullRequests {
-		if pr.ViewerReviewPending {
-			pending[pr.Ref()] = true
-		}
+// reviewStateKind is the status a review session shows for the viewer's verdict;
+// false when the verdict does not change the session's status.
+func reviewStateKind(v PRReviewState) (AgentStatusKind, bool) {
+	switch v {
+	case PRReviewStatePending:
+		return AgentStatusReviewPending, true
+	case PRReviewStateApproved:
+		return AgentStatusReviewApproved, true
 	}
+	return "", false
+}
+
+// WithReviewStates returns a copy of statuses in which every review session
+// whose PR (keyed by session) holds the viewer's unsubmitted review reads
+// AgentStatusReviewPending, or their approval AgentStatusReviewApproved, unless
+// its agent is busy.
+func WithReviewStates(statuses map[uuid.UUID]AgentStatus, sessions []Session, prs map[uuid.UUID]PullRequest) map[uuid.UUID]AgentStatus {
 	out := make(map[uuid.UUID]AgentStatus, len(statuses))
 	maps.Copy(out, statuses)
 	for _, sess := range sessions {
 		current := statuses[sess.ID]
-		if !sess.IsReview() || !pending[sess.ReviewPR] || outranksPendingReview(current.Kind) {
+		kind, ok := reviewStateKind(prs[sess.ID].ViewerVerdict())
+		if !sess.IsReview() || !ok || outranksReviewState(current.Kind) {
 			continue
 		}
-		out[sess.ID] = AgentStatus{Kind: AgentStatusReviewPending, DetectedAt: current.DetectedAt, Source: "github/pending-review"}
+		out[sess.ID] = AgentStatus{Kind: kind, DetectedAt: current.DetectedAt, Source: "github/viewer-review"}
 	}
 	return out
 }

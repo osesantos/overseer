@@ -5,7 +5,7 @@ import "charm.land/bubbles/v2/key"
 var (
 	OpenKeyBinding       = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "open review session"))
 	ReviewKeyBinding     = key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "start review"))
-	DismissKeyBinding    = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "dismiss PR"))
+	DismissKeyBinding    = key.NewBinding(key.WithKeys("d"), key.WithHelp("d", "dismiss/restore PR"))
 	BrowserKeyBinding    = key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "open in browser"))
 	AutoReviewKeyBinding = key.NewBinding(key.WithKeys("a"), key.WithHelp("a", "toggle auto-review"))
 	HiddenKeyBinding     = key.NewBinding(key.WithKeys("h"), key.WithHelp("h", "show/hide bot and dismissed PRs"))

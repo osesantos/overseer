@@ -586,6 +586,40 @@ func TestReviewStore_SettingsPersistAcrossReload(t *testing.T) {
 	}
 }
 
+func TestReviewStore_RestoreUndoesADismissalAcrossReload(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "data.json")
+	store, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() error = %v", err)
+	}
+	ctx := context.Background()
+	kept := domain.PullRequestRef{Repo: "o/r", Number: 7}
+	restored := domain.PullRequestRef{Repo: "o/r", Number: 8}
+	for _, ref := range []domain.PullRequestRef{kept, restored} {
+		if err := store.Reviews().Dismiss(ctx, ref); err != nil {
+			t.Fatalf("Dismiss(%v) error = %v", ref, err)
+		}
+	}
+	if err := store.Reviews().Restore(ctx, restored); err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+	if err := store.Reviews().Restore(ctx, restored); err != nil {
+		t.Fatalf("second Restore() error = %v", err)
+	}
+
+	reloaded, err := storage.New(path, discardLogger())
+	if err != nil {
+		t.Fatalf("New() reload error = %v", err)
+	}
+	got, err := reloaded.Reviews().Load(ctx)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(got.Dismissed) != 1 || got.Dismissed[0] != kept {
+		t.Fatalf("Dismissed = %+v, want only [%+v]", got.Dismissed, kept)
+	}
+}
+
 func TestReviewStore_EmptyStoreHasNoOverride(t *testing.T) {
 	got, err := newStore(t).Reviews().Load(context.Background())
 	if err != nil || got.AutoReview != nil || len(got.Dismissed) != 0 || len(got.Handled) != 0 {

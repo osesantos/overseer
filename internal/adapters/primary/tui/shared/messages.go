@@ -145,14 +145,16 @@ type AutoReviewCompletedMsg struct {
 	Err     error
 }
 
-// PullRequestDismissMsg is emitted by the PRs page to hide a PR from the inbox
-// for good.
+// PullRequestDismissMsg is emitted by the PRs page to toggle a PR's dismissal:
+// a dismissed PR is restored, any other one is hidden from the inbox.
 type PullRequestDismissMsg struct{ PR domain.PullRequest }
 
-// PullRequestDismissedMsg reports the outcome of a dismissal.
+// PullRequestDismissedMsg reports the outcome of a dismissal toggle; Dismissed
+// is the state the PR was moved to.
 type PullRequestDismissedMsg struct {
-	Ref domain.PullRequestRef
-	Err error
+	Ref       domain.PullRequestRef
+	Dismissed bool
+	Err       error
 }
 
 // PullRequestDetailsLoadedMsg carries what the PR page shows for one session's

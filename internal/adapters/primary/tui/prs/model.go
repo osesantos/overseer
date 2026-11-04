@@ -1,5 +1,6 @@
 // Package prs is the review inbox page: every open PR with a review requested
-// from the operator, grouped by repository, with the state of its review session.
+// from the operator or already reviewed by them, grouped by repository, with the
+// state of its review session.
 package prs
 
 import (

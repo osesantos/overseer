@@ -194,6 +194,16 @@ func (r *ReviewStore) Dismiss(_ context.Context, ref domain.PullRequestRef) erro
 	return r.store.persist()
 }
 
+func (r *ReviewStore) Restore(_ context.Context, ref domain.PullRequestRef) error {
+	r.store.mu.Lock()
+	defer r.store.mu.Unlock()
+	if !slices.Contains(r.store.review.Dismissed, ref) {
+		return nil
+	}
+	r.store.review.Dismissed = slices.DeleteFunc(slices.Clone(r.store.review.Dismissed), func(d domain.PullRequestRef) bool { return d == ref })
+	return r.store.persist()
+}
+
 func (r *ReviewStore) MarkHandled(_ context.Context, ref domain.PullRequestRef) error {
 	r.store.mu.Lock()
 	defer r.store.mu.Unlock()

@@ -645,17 +645,17 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 	waiting := testutil.MakeSessionWithWorktree("waiting-sess", overseerID, "/tmp/wt-b", "branch-b")
 	dead := testutil.MakeSessionWithWorktree("dead-sess", overseerID, "/tmp/wt-c", "branch-c")
 	idle := testutil.MakeSessionWithWorktree("idle-sess", overseerID, "/tmp/wt-d", "branch-d")
-	asking := testutil.MakeSessionWithWorktree("asking-sess", overseerID, "/tmp/wt-e", "branch-e")
 	publish := testutil.MakeSessionWithWorktree("publish-sess", overseerID, "/tmp/wt-f", "branch-f")
-	sessions := []domain.Session{running, waiting, dead, idle, asking, publish}
+	approved := testutil.MakeSessionWithWorktree("approved-sess", overseerID, "/tmp/wt-g", "branch-g")
+	sessions := []domain.Session{running, waiting, dead, idle, publish, approved}
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: sessions})
 	statuses := map[uuid.UUID]domain.AgentStatus{
-		running.ID: {Kind: domain.AgentStatusRunning},
-		waiting.ID: {Kind: domain.AgentStatusWaiting},
-		dead.ID:    {Kind: domain.AgentStatusDead},
-		idle.ID:    {Kind: domain.AgentStatusIdle},
-		asking.ID:  {Kind: domain.AgentStatusAsking},
-		publish.ID: {Kind: domain.AgentStatusReviewPending},
+		running.ID:  {Kind: domain.AgentStatusRunning},
+		waiting.ID:  {Kind: domain.AgentStatusWaiting},
+		dead.ID:     {Kind: domain.AgentStatusDead},
+		idle.ID:     {Kind: domain.AgentStatusIdle},
+		publish.ID:  {Kind: domain.AgentStatusReviewPending},
+		approved.ID: {Kind: domain.AgentStatusReviewApproved},
 	}
 
 	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{Statuses: statuses})
@@ -669,8 +669,8 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 		{"waiting-sess", "◐ waiting-sess"},
 		{"dead-sess", "■ dead-sess"},
 		{"idle-sess", "○ idle-sess"},
-		{"asking-sess", "◇ asking-sess"},
 		{"publish-sess", "⇡ publish-sess"},
+		{"approved-sess", "✓ approved-sess"},
 	}
 	for _, tc := range cases {
 		row := findRow(t, view, tc.marker)

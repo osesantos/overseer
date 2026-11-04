@@ -25,7 +25,6 @@ type Glyphs struct {
 	LabelDraft    string
 	StatusRunning string
 	StatusWaiting string
-	StatusAsking  string
 	StatusIdle    string
 	StatusDead    string
 	StatusUnknown string
@@ -36,6 +35,8 @@ type Glyphs struct {
 	StatusSwarm string
 	// StatusPublish marks a review session whose staged GitHub review is not submitted yet.
 	StatusPublish string
+	// StatusLGTM marks a review session whose PR the operator approved.
+	StatusLGTM string
 }
 
 func NewGlyphs(disableEmoji bool) Glyphs {
@@ -63,12 +64,12 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 			LabelDraft:    "◌",
 			StatusRunning: "●",
 			StatusWaiting: "◐",
-			StatusAsking:  "◇",
 			StatusIdle:    "○",
 			StatusDead:    "■",
 			StatusUnknown: "?",
 			StatusSwarm:   "⁂",
 			StatusPublish: "⇡",
+			StatusLGTM:    "✓",
 		}
 	}
 	return Glyphs{
@@ -94,12 +95,12 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 		LabelDone:     "✅",
 		StatusRunning: "⚙️",
 		StatusWaiting: "🙋",
-		StatusAsking:  "💬",
 		StatusIdle:    "💤",
 		StatusDead:    "🟥",
 		StatusUnknown: "❓",
 		StatusSwarm:   "🐝",
 		StatusPublish: "📤",
+		StatusLGTM:    "✅",
 	}
 }
 
@@ -125,8 +126,6 @@ func (g Glyphs) AgentStatus(kind domain.AgentStatusKind) string {
 		return g.StatusRunning
 	case domain.AgentStatusWaiting:
 		return g.StatusWaiting
-	case domain.AgentStatusAsking:
-		return g.StatusAsking
 	case domain.AgentStatusIdle:
 		return g.StatusIdle
 	case domain.AgentStatusDead:
@@ -135,6 +134,8 @@ func (g Glyphs) AgentStatus(kind domain.AgentStatusKind) string {
 		return g.StatusSwarm
 	case domain.AgentStatusReviewPending:
 		return g.StatusPublish
+	case domain.AgentStatusReviewApproved:
+		return g.StatusLGTM
 	default:
 		return g.StatusUnknown
 	}

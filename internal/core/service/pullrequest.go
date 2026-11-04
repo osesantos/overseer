@@ -137,7 +137,7 @@ type DismissPullRequestRequest struct {
 
 type DismissPullRequestResponse struct{}
 
-// Dismiss hides a PR from the inbox for good.
+// Dismiss hides a PR from the inbox until Restore brings it back.
 func (s *PullRequestService) Dismiss(ctx context.Context, req DismissPullRequestRequest) (DismissPullRequestResponse, error) {
 	if req.Ref.Repo == "" || req.Ref.Number <= 0 {
 		return DismissPullRequestResponse{}, domain.ErrPullRequestInvalidNumber
@@ -147,6 +147,24 @@ func (s *PullRequestService) Dismiss(ctx context.Context, req DismissPullRequest
 	}
 	s.logger.InfoContext(ctx, "pull request dismissed", "repo", req.Ref.Repo, "pr", req.Ref.Number)
 	return DismissPullRequestResponse{}, nil
+}
+
+type RestorePullRequestRequest struct {
+	Ref domain.PullRequestRef
+}
+
+type RestorePullRequestResponse struct{}
+
+// Restore puts a dismissed PR back in the inbox.
+func (s *PullRequestService) Restore(ctx context.Context, req RestorePullRequestRequest) (RestorePullRequestResponse, error) {
+	if req.Ref.Repo == "" || req.Ref.Number <= 0 {
+		return RestorePullRequestResponse{}, domain.ErrPullRequestInvalidNumber
+	}
+	if err := s.settings.Restore(ctx, req.Ref); err != nil {
+		return RestorePullRequestResponse{}, fmt.Errorf("restore pull request %s#%d: %w", req.Ref.Repo, req.Ref.Number, err)
+	}
+	s.logger.InfoContext(ctx, "pull request restored", "repo", req.Ref.Repo, "pr", req.Ref.Number)
+	return RestorePullRequestResponse{}, nil
 }
 
 type OpenPullRequestInBrowserRequest struct {

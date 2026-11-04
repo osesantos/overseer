@@ -1,4 +1,4 @@
-{"data":{"viewer":{"login":"me"},"repository":{"pullRequest":{"reviewThreads":{"nodes":[
+{"data":{"viewer":{"login":"me"},"repository":{"pullRequest":{"reviewDecision":"CHANGES_REQUESTED","mergeStateStatus":"BLOCKED","viewerLatestReview":{"state":"COMMENTED"},"viewerLatestReviewRequest":{"id":"RR_1"},"pendingReviews":{"totalCount":1},"reviewThreads":{"nodes":[
   {"isResolved":true, "comments":{"nodes":[{"author":{"__typename":"User","login":"alice"}}]}},
   {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"User","login":"bob"}}]}},
   {"isResolved":false,"comments":{"nodes":[{"author":{"__typename":"User","login":"alice"}},{"author":{"__typename":"User","login":"me"}}]}},

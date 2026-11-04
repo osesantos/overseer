@@ -48,6 +48,64 @@ func PullRequestHeader(s *styles.Styles, pr domain.PullRequest) []string {
 	return lines
 }
 
+// PullRequestStatusLines answers "can it merge, and where do I stand?" for an
+// open or draft PR: the merge verdict and the viewer's own review.
+func PullRequestStatusLines(s *styles.Styles, pr domain.PullRequest) []string {
+	if pr.State != domain.PRStateOpen && pr.State != domain.PRStateDraft {
+		return nil
+	}
+	lines := []string{PRReadinessLine(s, pr)}
+	if review := PRViewerReviewLine(s, pr); review != "" {
+		lines = append(lines, s.SessionDetails.FieldLabel.Render("you ")+review)
+	}
+	return lines
+}
+
+// PRViewerReviewLine is where the viewer stands on pr; empty when they are not involved.
+func PRViewerReviewLine(s *styles.Styles, pr domain.PullRequest) string {
+	verdict := pr.ViewerVerdict()
+	if verdict == "" {
+		return ""
+	}
+	glyph, style, label := PRReviewLook(s, verdict)
+	return style.Render(glyph + " " + label)
+}
+
+// PRReadinessLine is GitHub's merge verdict with the reasons for a block.
+func PRReadinessLine(s *styles.Styles, pr domain.PullRequest) string {
+	d, g := s.SessionDetails, s.Glyphs
+	r := pr.MergeReadiness()
+	switch {
+	case !r.Known:
+		return s.PullRequest.Hint.Render("Merge state not computed yet")
+	case r.Ready && len(r.Reasons) == 0:
+		return d.Good.Render(g.CheckPass + " Ready to merge")
+	case r.Ready:
+		return d.Warn.Render(g.Warning + " Mergeable · " + strings.Join(r.Reasons, " · "))
+	default:
+		return d.Bad.Render(g.CheckFail + " Blocked · " + strings.Join(r.Reasons, " · "))
+	}
+}
+
+// PRReviewLook is the glyph, style and label for a review state.
+func PRReviewLook(s *styles.Styles, state domain.PRReviewState) (glyph string, style lipgloss.Style, label string) {
+	d, g := s.SessionDetails, s.Glyphs
+	switch state {
+	case domain.PRReviewStateApproved:
+		return g.CheckPass, d.Good, "approved"
+	case domain.PRReviewStateChangesRequested:
+		return g.CheckFail, d.Bad, "changes requested"
+	case domain.PRReviewStateRequested:
+		return g.CheckPending, d.Warn, "review requested"
+	case domain.PRReviewStatePending:
+		return g.CheckPending, d.Warn, "review not submitted"
+	case domain.PRReviewStateDismissed:
+		return g.ProjectMode, d.Hint, "approval dismissed"
+	default:
+		return g.ProjectMode, d.Hint, "commented"
+	}
+}
+
 // PRCommentsLine summarises review threads: open (and awaiting the viewer)
 // next to resolved; empty when the PR has no threads.
 func PRCommentsLine(d styles.SessionDetailsStyles, g styles.Glyphs, c domain.PRComments) string {

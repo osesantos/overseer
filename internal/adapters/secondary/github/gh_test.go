@@ -229,19 +229,42 @@ func TestAdapter_New_ProductionConstructor_UsesRealCommander(t *testing.T) {
 
 var _ domain.PullRequestPort = (*Adapter)(nil)
 
-func TestSummariseThreads_DropsBotsAndAppliesViewerRule(t *testing.T) {
-	got, err := summariseThreads(readFixture(t, "review_threads.json"))
+func TestWithReviewStatus_DropsBotsAndAppliesViewerRule(t *testing.T) {
+	got, err := withReviewStatus(readFixture(t, "review_threads.json"), domain.PullRequest{Number: 42})
 	if err != nil {
-		t.Fatalf("summariseThreads() error = %v", err)
+		t.Fatalf("withReviewStatus() error = %v", err)
 	}
-	if want := (domain.PRComments{Resolved: 2, Unresolved: 3, AwaitingViewer: 2}); got != want {
-		t.Fatalf("summariseThreads() = %+v, want %+v", got, want)
+	if want := (domain.PRComments{Resolved: 2, Unresolved: 3, AwaitingViewer: 2}); got.Comments != want {
+		t.Fatalf("Comments = %+v, want %+v", got.Comments, want)
 	}
 }
 
-func TestSummariseThreads_MalformedJSON_ReturnsError(t *testing.T) {
-	if _, err := summariseThreads([]byte("{nope")); err == nil {
-		t.Fatal("summariseThreads() error = nil, want decode error")
+func TestWithReviewStatus_ReadsMergeStateAndViewerReview(t *testing.T) {
+	got, err := withReviewStatus(readFixture(t, "review_threads.json"), domain.PullRequest{Number: 42})
+	if err != nil {
+		t.Fatalf("withReviewStatus() error = %v", err)
+	}
+	if got.ReviewDecision != domain.PRReviewDecisionChangesRequested || got.MergeState != domain.PRMergeStateBlocked ||
+		got.ViewerReview != domain.PRReviewStateCommented || !got.ViewerReviewRequested || !got.ViewerReviewPending {
+		t.Fatalf("withReviewStatus() = decision %q merge %q viewer %q requested %v pending %v",
+			got.ReviewDecision, got.MergeState, got.ViewerReview, got.ViewerReviewRequested, got.ViewerReviewPending)
+	}
+}
+
+func TestWithReviewStatus_NeverReviewed_LeavesViewerFieldsEmpty(t *testing.T) {
+	data := []byte(`{"data":{"viewer":{"login":"me"},"repository":{"pullRequest":{"viewerLatestReview":null,"viewerLatestReviewRequest":null,"pendingReviews":{"totalCount":0}}}}}`)
+	got, err := withReviewStatus(data, domain.PullRequest{Number: 42})
+	if err != nil {
+		t.Fatalf("withReviewStatus() error = %v", err)
+	}
+	if got.ViewerReview != "" || got.ViewerReviewRequested || got.ViewerReviewPending {
+		t.Fatalf("withReviewStatus() viewer %q requested %v pending %v, want all empty", got.ViewerReview, got.ViewerReviewRequested, got.ViewerReviewPending)
+	}
+}
+
+func TestWithReviewStatus_MalformedJSON_ReturnsError(t *testing.T) {
+	if _, err := withReviewStatus([]byte("{nope"), domain.PullRequest{}); err == nil {
+		t.Fatal("withReviewStatus() error = nil, want decode error")
 	}
 }
 
@@ -308,7 +331,7 @@ func (s *scriptedCommander) Run(context.Context, string, ...string) ([]byte, []b
 }
 
 func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
-	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos\n"), readFixture(t, "search_requested_reviews.json")}}
+	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos\n"), readFixture(t, "search_requested_reviews.json"), emptySearch}}
 	adapter := NewWithCommander(cmd, testLogger())
 
 	inbox, err := adapter.ListRequestedReviews(context.Background())
@@ -318,8 +341,8 @@ func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
 	if inbox.Viewer != "osesantos" {
 		t.Fatalf("Viewer = %q", inbox.Viewer)
 	}
-	if len(cmd.calls) != 2 || cmd.calls[1].dir != "" {
-		t.Fatalf("calls = %+v, want a login lookup then a repo-independent search", cmd.calls)
+	if len(cmd.calls) != 3 || cmd.calls[1].dir != "" {
+		t.Fatalf("calls = %+v, want a login lookup then two repo-independent searches", cmd.calls)
 	}
 	if !strings.Contains(strings.Join(cmd.calls[1].args, " "), "review-requested:osesantos") {
 		t.Fatalf("search args = %v, want the viewer login in the query", cmd.calls[1].args)
@@ -353,6 +376,29 @@ func TestAdapter_ListRequestedReviews_ParsesInboxForTheViewer(t *testing.T) {
 	}
 }
 
+var emptySearch = []byte(`{"data":{"search":{"issueCount":0,"nodes":[]}}}`)
+
+func TestAdapter_ListRequestedReviews_KeepsPullRequestsTheViewerAlreadyReviewed(t *testing.T) {
+	reviewed := []byte(`{"data":{"search":{"issueCount":1,"nodes":[{"number":1259,"title":"t","url":"u","state":"OPEN","headRefName":"b",
+		"author":{"login":"alice","__typename":"User"},"repository":{"nameWithOwner":"OutSystems/TimerManager"},
+		"reviews":{"nodes":[{"author":{"login":"osesantos"},"state":"APPROVED"}]}}]}}}`)
+	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos"), readFixture(t, "search_requested_reviews.json"), reviewed}}
+
+	inbox, err := NewWithCommander(cmd, testLogger()).ListRequestedReviews(context.Background())
+	if err != nil {
+		t.Fatalf("ListRequestedReviews() error = %v", err)
+	}
+	if q := strings.Join(cmd.calls[2].args, " "); !strings.Contains(q, "reviewed-by:osesantos -review-requested:osesantos -author:osesantos") {
+		t.Fatalf("second search args = %v, want the viewer's reviewed PRs without the requested ones", cmd.calls[2].args)
+	}
+	if len(inbox.PullRequests) != 4 {
+		t.Fatalf("PullRequests = %d, want the 3 requested plus the 1 reviewed", len(inbox.PullRequests))
+	}
+	if pr := inbox.PullRequests[3]; pr.Number != 1259 || !pr.ReviewedByViewer {
+		t.Fatalf("reviewed PR = %+v, want #1259 marked as reviewed by the viewer", pr)
+	}
+}
+
 func TestAdapter_ListRequestedReviews_LoginFailure_IsAnError(t *testing.T) {
 	cmd := &fakeCommander{err: errors.New("boom"), stderr: []byte("not logged in")}
 	adapter := NewWithCommander(cmd, testLogger())
@@ -364,15 +410,15 @@ func TestAdapter_ListRequestedReviews_LoginFailure_IsAnError(t *testing.T) {
 
 func TestAdapter_ListRequestedReviews_RetriesAnEmptyPage(t *testing.T) {
 	empty := []byte(`{"data":{"search":{"issueCount":0,"nodes":[]}}}`)
-	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos"), empty, readFixture(t, "search_requested_reviews.json")}}
+	cmd := &fakeCommander{outputs: [][]byte{[]byte("osesantos"), empty, readFixture(t, "search_requested_reviews.json"), empty}}
 	adapter := NewWithCommander(cmd, testLogger())
 
 	inbox, err := adapter.ListRequestedReviews(context.Background())
 	if err != nil {
 		t.Fatalf("ListRequestedReviews() error = %v", err)
 	}
-	if len(inbox.PullRequests) != 3 || len(cmd.calls) != 3 {
-		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup and two searches", len(inbox.PullRequests), len(cmd.calls))
+	if len(inbox.PullRequests) != 3 || len(cmd.calls) != 4 {
+		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup, a retried search and the reviewed search", len(inbox.PullRequests), len(cmd.calls))
 	}
 }
 
@@ -381,6 +427,7 @@ func TestAdapter_ListRequestedReviews_RetriesAServerError(t *testing.T) {
 		{stdout: []byte("osesantos")},
 		{err: errors.New("exit status 1"), stderr: []byte("gh: HTTP 504")},
 		{stdout: readFixture(t, "search_requested_reviews.json")},
+		{stdout: emptySearch},
 	}}
 	adapter := NewWithCommander(cmd, testLogger())
 
@@ -388,8 +435,8 @@ func TestAdapter_ListRequestedReviews_RetriesAServerError(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRequestedReviews() error = %v", err)
 	}
-	if len(inbox.PullRequests) != 3 || cmd.n != 3 {
-		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup and two searches", len(inbox.PullRequests), cmd.n)
+	if len(inbox.PullRequests) != 3 || cmd.n != 4 {
+		t.Fatalf("got %d PRs after %d calls, want 3 PRs after a login lookup, a retried search and the reviewed search", len(inbox.PullRequests), cmd.n)
 	}
 }
 
@@ -426,8 +473,8 @@ func TestAdapter_ListRequestedReviews_AcceptsEmptyAfterLastRetry(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ListRequestedReviews() error = %v", err)
 	}
-	if len(inbox.PullRequests) != 0 || len(cmd.calls) != 1+searchRetries {
-		t.Fatalf("got %d PRs after %d calls, want none after %d searches", len(inbox.PullRequests), len(cmd.calls), searchRetries)
+	if len(inbox.PullRequests) != 0 || len(cmd.calls) != 2+searchRetries {
+		t.Fatalf("got %d PRs after %d calls, want none after %d requested searches and one reviewed search", len(inbox.PullRequests), len(cmd.calls), searchRetries)
 	}
 }
 

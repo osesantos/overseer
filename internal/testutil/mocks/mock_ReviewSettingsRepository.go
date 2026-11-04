@@ -212,6 +212,63 @@ func (_c *MockReviewSettingsRepository_MarkHandled_Call) RunAndReturn(run func(c
 	return _c
 }
 
+// Restore provides a mock function for the type MockReviewSettingsRepository
+func (_mock *MockReviewSettingsRepository) Restore(ctx context.Context, ref domain.PullRequestRef) error {
+	ret := _mock.Called(ctx, ref)
+
+	if len(ret) == 0 {
+		panic("no return value specified for Restore")
+	}
+
+	var r0 error
+	if returnFunc, ok := ret.Get(0).(func(context.Context, domain.PullRequestRef) error); ok {
+		r0 = returnFunc(ctx, ref)
+	} else {
+		r0 = ret.Error(0)
+	}
+	return r0
+}
+
+// MockReviewSettingsRepository_Restore_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'Restore'
+type MockReviewSettingsRepository_Restore_Call struct {
+	*mock.Call
+}
+
+// Restore is a helper method to define mock.On call
+//   - ctx context.Context
+//   - ref domain.PullRequestRef
+func (_e *MockReviewSettingsRepository_Expecter) Restore(ctx interface{}, ref interface{}) *MockReviewSettingsRepository_Restore_Call {
+	return &MockReviewSettingsRepository_Restore_Call{Call: _e.mock.On("Restore", ctx, ref)}
+}
+
+func (_c *MockReviewSettingsRepository_Restore_Call) Run(run func(ctx context.Context, ref domain.PullRequestRef)) *MockReviewSettingsRepository_Restore_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		var arg0 context.Context
+		if args[0] != nil {
+			arg0 = args[0].(context.Context)
+		}
+		var arg1 domain.PullRequestRef
+		if args[1] != nil {
+			arg1 = args[1].(domain.PullRequestRef)
+		}
+		run(
+			arg0,
+			arg1,
+		)
+	})
+	return _c
+}
+
+func (_c *MockReviewSettingsRepository_Restore_Call) Return(err error) *MockReviewSettingsRepository_Restore_Call {
+	_c.Call.Return(err)
+	return _c
+}
+
+func (_c *MockReviewSettingsRepository_Restore_Call) RunAndReturn(run func(ctx context.Context, ref domain.PullRequestRef) error) *MockReviewSettingsRepository_Restore_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
 // SetAutoReview provides a mock function for the type MockReviewSettingsRepository
 func (_mock *MockReviewSettingsRepository) SetAutoReview(ctx context.Context, on bool) error {
 	ret := _mock.Called(ctx, on)

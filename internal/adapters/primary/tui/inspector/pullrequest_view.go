@@ -63,7 +63,11 @@ func (v *pullRequestView) Body() string {
 		return components.CenteredContent(v.styles, v.styles.EmptyState.Title.Render("No pull request for this session"), v.width, v.height)
 	}
 
-	lines := append(components.PullRequestHeader(v.styles, v.pr), "")
+	lines := components.PullRequestHeader(v.styles, v.pr)
+	if status := components.PullRequestStatusLines(v.styles, v.pr); len(status) > 0 {
+		lines = append(append(lines, ""), status...)
+	}
+	lines = append(lines, "")
 	description := v.rendered
 	if strings.TrimSpace(v.pr.Body) == "" {
 		description = v.styles.PullRequest.Hint.Render("No description")

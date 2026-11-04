@@ -201,13 +201,19 @@ type PullRequest struct {
 	ReviewedByViewer bool
 	// ViewerReviewPending: the viewer has a review staged on GitHub but not submitted.
 	ViewerReviewPending bool
+	// ViewerReviewRequested: GitHub is waiting on a review from the viewer, directly
+	// or through a team. Filled by the per-minute status poll only.
+	ViewerReviewRequested bool
+	// ViewerReview is the viewer's latest review state; empty when they never
+	// reviewed. Filled by the per-minute status poll only.
+	ViewerReview PRReviewState
 	// Dismissed: the operator hid this PR from the inbox; it is never auto-reviewed.
 	Dismissed bool
 	Stats     PRStats
 	Checks    PRChecks
 	Comments  PRComments
-	// ReviewDecision, MergeState and Reviewers are only filled by GetDetails;
-	// the per-minute status poll leaves them empty.
+	// Reviewers is only filled by GetDetails; the inbox leaves ReviewDecision and
+	// MergeState empty too.
 	ReviewDecision PRReviewDecision
 	MergeState     PRMergeState
 	Reviewers      []PRReviewer
@@ -268,6 +274,19 @@ func (p PullRequest) MergeReadiness() MergeReadiness {
 	return r
 }
 
+// ViewerVerdict is where the viewer stands on the PR: a staged review first,
+// then an open request (a re-request outranks an older review), then their
+// latest review. Empty when none applies.
+func (p PullRequest) ViewerVerdict() PRReviewState {
+	switch {
+	case p.ViewerReviewPending || p.ViewerReview == PRReviewStatePending:
+		return PRReviewStatePending
+	case p.ViewerReviewRequested:
+		return PRReviewStateRequested
+	}
+	return p.ViewerReview
+}
+
 // reasons names failing and pending checks, with counts.
 func (c PRChecks) reasons() []string {
 	var out []string
@@ -297,7 +316,8 @@ func ReviewFinished(sess Session, pr PullRequest) bool {
 // that the PR number replaces.
 const ReviewCommandNumberToken = "{{number}}"
 
-// ReviewInbox is every open PR with a review requested from Viewer.
+// ReviewInbox is every open PR with a review requested from Viewer, plus the
+// open PRs Viewer already reviewed (GitHub clears the request on review).
 type ReviewInbox struct {
 	Viewer       string
 	PullRequests []PullRequest
@@ -343,7 +363,8 @@ type PullRequestPort interface {
 	// branch name or a PR number.
 	GetForBranch(ctx context.Context, repoPath, branch string) (PullRequest, error)
 	// ListRequestedReviews fetches every open PR with a review requested from the
-	// authenticated user, directly or through a team.
+	// authenticated user, directly or through a team, plus the open PRs they
+	// already reviewed.
 	ListRequestedReviews(ctx context.Context) (ReviewInbox, error)
 	// OpenInBrowser opens the PR page in the operator's default browser.
 	OpenInBrowser(ctx context.Context, prURL string) error
@@ -366,6 +387,7 @@ type ReviewSettings struct {
 type ReviewSettingsRepository interface {
 	Load(ctx context.Context) (ReviewSettings, error)
 	Dismiss(ctx context.Context, ref PullRequestRef) error
+	Restore(ctx context.Context, ref PullRequestRef) error
 	MarkHandled(ctx context.Context, ref PullRequestRef) error
 	SetAutoReview(ctx context.Context, on bool) error
 }

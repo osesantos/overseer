@@ -306,7 +306,7 @@ func (m Model) reviewLines() []string {
 		return nil
 	}
 	d := m.styles.SessionDetails
-	lines := []string{"", m.readinessLine(), "", d.SectionTitle.Render("Reviewers")}
+	lines := []string{"", components.PRReadinessLine(m.styles, m.pr), "", d.SectionTitle.Render("Reviewers")}
 	width := 0
 	for _, r := range m.pr.Reviewers {
 		if r.Login != m.pr.Author {
@@ -320,43 +320,10 @@ func (m Model) reviewLines() []string {
 		if r.Login == m.pr.Author {
 			continue
 		}
-		glyph, style, label := m.reviewerLook(r.State)
+		glyph, style, label := components.PRReviewLook(m.styles, r.State)
 		lines = append(lines, style.Render(glyph)+" "+d.Value.Render(fmt.Sprintf("%-*s", width, r.Login))+"  "+style.Render(label))
 	}
 	return lines
-}
-
-func (m Model) readinessLine() string {
-	d, g := m.styles.SessionDetails, m.styles.Glyphs
-	r := m.pr.MergeReadiness()
-	switch {
-	case !r.Known:
-		return m.styles.PullRequest.Hint.Render("Merge state not computed yet")
-	case r.Ready && len(r.Reasons) == 0:
-		return d.Good.Render(g.CheckPass + " Ready to merge")
-	case r.Ready:
-		return d.Warn.Render(g.Warning + " Mergeable · " + strings.Join(r.Reasons, " · "))
-	default:
-		return d.Bad.Render(g.CheckFail + " Blocked · " + strings.Join(r.Reasons, " · "))
-	}
-}
-
-func (m Model) reviewerLook(state domain.PRReviewState) (glyph string, style lipgloss.Style, label string) {
-	d, g := m.styles.SessionDetails, m.styles.Glyphs
-	switch state {
-	case domain.PRReviewStateApproved:
-		return g.CheckPass, d.Good, "approved"
-	case domain.PRReviewStateChangesRequested:
-		return g.CheckFail, d.Bad, "changes requested"
-	case domain.PRReviewStateRequested:
-		return g.CheckPending, d.Warn, "review requested"
-	case domain.PRReviewStatePending:
-		return g.CheckPending, d.Warn, "review not submitted"
-	case domain.PRReviewStateDismissed:
-		return g.ProjectMode, d.Hint, "approval dismissed"
-	default:
-		return g.ProjectMode, d.Hint, "commented"
-	}
 }
 
 // renderDiffSection fills the diff viewport and records the search hits; it

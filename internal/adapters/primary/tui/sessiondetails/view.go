@@ -6,9 +6,11 @@ import (
 	"strings"
 
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
 	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/dnlopes/overseer/internal/core/domain"
 )
 
 const (
@@ -21,6 +23,8 @@ const (
 	labelChanges    = "Changes"
 	labelChecks     = "Checks"
 	labelComments   = "Comments"
+	labelMerge      = "Merge"
+	labelYourReview = "Your review"
 
 	labelColumnWidth = 14
 	columnGap        = 2
@@ -113,6 +117,13 @@ func (m Model) renderPRSection(width int) []string {
 
 	if pr.PR.URL != "" {
 		rows = append(rows, twoColumnRow(s, labelLink, pathLine(s, g.PRLink, pr.PR.URL, valueW)))
+	}
+
+	if pr.PR.State == domain.PRStateOpen || pr.PR.State == domain.PRStateDraft {
+		rows = append(rows, twoColumnRow(s, labelMerge, ansi.Truncate(components.PRReadinessLine(m.styles, pr.PR), valueW, "…")))
+		if review := components.PRViewerReviewLine(m.styles, pr.PR); review != "" {
+			rows = append(rows, twoColumnRow(s, labelYourReview, review))
+		}
 	}
 
 	changesValue := s.Good.Render(fmt.Sprintf("%s +%d", g.Added, pr.PR.Stats.Additions)) +

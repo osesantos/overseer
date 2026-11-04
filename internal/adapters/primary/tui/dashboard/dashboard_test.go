@@ -412,7 +412,7 @@ func TestDashboard_PullRequestDismissed_MarksItInTheInbox(t *testing.T) {
 	}}})
 	m = updated.(Model)
 
-	updated, cmd := m.Update(shared.PullRequestDismissedMsg{Ref: domain.PullRequestRef{Repo: "o/r", Number: 6}})
+	updated, cmd := m.Update(shared.PullRequestDismissedMsg{Ref: domain.PullRequestRef{Repo: "o/r", Number: 6}, Dismissed: true})
 	m = updated.(Model)
 
 	prs := m.reviewInbox.PullRequests
@@ -421,6 +421,21 @@ func TestDashboard_PullRequestDismissed_MarksItInTheInbox(t *testing.T) {
 	}
 	if cmd == nil || !strings.Contains(m.toast, "#6") {
 		t.Fatalf("toast = %q, want a hidden notice for #6", m.toast)
+	}
+}
+
+func TestDashboard_PullRequestRestored_ClearsTheDismissal(t *testing.T) {
+	m := sizedDashboard(t)
+	updated, _ := m.Update(shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
+		{Repo: "o/r", Number: 6, Title: "back", Author: "ana", State: domain.PRStateOpen, Dismissed: true},
+	}}})
+	m = updated.(Model)
+
+	updated, _ = m.Update(shared.PullRequestDismissedMsg{Ref: domain.PullRequestRef{Repo: "o/r", Number: 6}, Dismissed: false})
+	m = updated.(Model)
+
+	if m.reviewInbox.PullRequests[0].Dismissed || !strings.Contains(m.toast, "restored") {
+		t.Fatalf("inbox = %+v, toast = %q; want #6 restored", m.reviewInbox.PullRequests, m.toast)
 	}
 }
 
@@ -476,18 +491,18 @@ func TestDashboard_PendingReview_ShowsThePublishGlyphUntilSubmitted(t *testing.T
 		return ""
 	}
 
-	inbox := func(pending bool) shared.PullRequestsLoadedMsg {
-		return shared.PullRequestsLoadedMsg{Inbox: domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{
-			{Repo: ref.Repo, Number: ref.Number, ViewerReviewPending: pending},
-		}}}
+	status := func(pending bool) shared.PRStatusUpdatedMsg {
+		return shared.PRStatusUpdatedMsg{SessionID: sess.ID, PR: domain.PullRequest{
+			Repo: ref.Repo, Number: ref.Number, State: domain.PRStateOpen, ViewerReviewPending: pending,
+		}}
 	}
-	updated, _ = m.Update(inbox(true))
+	updated, _ = m.Update(status(true))
 	m = updated.(Model)
 	if got := row(m); !strings.Contains(got, m.styles.Glyphs.StatusPublish) {
 		t.Fatalf("row %q missing the publish glyph after a pending review arrived", got)
 	}
 
-	updated, _ = m.Update(inbox(false))
+	updated, _ = m.Update(status(false))
 	m = updated.(Model)
 	if got := row(m); !strings.Contains(got, m.styles.Glyphs.StatusIdle) || strings.Contains(got, m.styles.Glyphs.StatusPublish) {
 		t.Fatalf("row %q should be back to idle after the review was submitted", got)

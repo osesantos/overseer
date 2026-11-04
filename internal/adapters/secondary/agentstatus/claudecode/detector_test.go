@@ -6,7 +6,6 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
-	"time"
 
 	"github.com/google/uuid"
 
@@ -73,6 +72,9 @@ func TestPaneDetector_Detect_IdleFixtures(t *testing.T) {
 		"idle_done_footer.txt",
 		"idle_next_steps_only.txt",
 		"idle_nothing_pending.txt",
+		"idle_should_i.txt",
+		"idle_say_command.txt",
+		"idle_say_yes.txt",
 	}
 	for _, name := range cases {
 		t.Run(name, func(t *testing.T) {
@@ -84,39 +86,6 @@ func TestPaneDetector_Detect_IdleFixtures(t *testing.T) {
 				t.Fatalf("Detect(%s).Source = %q, want %q", name, status.Source, "claude-code/pane-parser")
 			}
 		})
-	}
-}
-
-func TestPaneDetector_Detect_AskingFixtures(t *testing.T) {
-	cases := []string{
-		"asking_should_i.txt",
-		"asking_say_command.txt",
-		"asking_say_yes.txt",
-	}
-	for _, name := range cases {
-		t.Run(name, func(t *testing.T) {
-			status := detectFromFixture(t, name)
-			if status.Kind != domain.AgentStatusAsking {
-				t.Fatalf("Detect(%s) = %q, want %q (reason=%q)", name, status.Kind, domain.AgentStatusAsking, status.Reason)
-			}
-			if status.Reason == "" {
-				t.Fatalf("Detect(%s).Reason is empty, want a signal explanation", name)
-			}
-		})
-	}
-}
-
-func TestClassify_QuestionInEarlierTurn_StaysIdle(t *testing.T) {
-	lines := []string{
-		"⏺ Should I run the tests?",
-		"❯ yes",
-		"⏺ Tests pass. Done.",
-		"✻ Baked for 3s · done 9:00 AM",
-		"❯ ",
-		"  new task? /clear to save 10k tokens",
-	}
-	if got := classify(lines, time.Now()); got.Kind != domain.AgentStatusIdle {
-		t.Fatalf("classify = %q, want %q (reason=%q)", got.Kind, domain.AgentStatusIdle, got.Reason)
 	}
 }
 

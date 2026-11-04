@@ -23,16 +23,24 @@ var _ domain.PullRequestPort = (*Adapter)(nil)
 
 const prJSONFields = "number,title,state,isDraft,url,headRefName,author,additions,deletions,changedFiles,statusCheckRollup,updatedAt,body,baseRefName,labels"
 
-// prDetailsJSONFields adds what only the PR page shows. The per-minute status
-// poll does not ask for them: mergeStateStatus makes GitHub compute a test
-// merge on every call.
+// prDetailsJSONFields adds what only the PR page shows; the per-minute status
+// poll gets the review decision and merge state from reviewStatusQuery.
 const prDetailsJSONFields = prJSONFields + ",files,reviewDecision,mergeStateStatus,latestReviews,reviewRequests"
 
+// reviewStatusQuery is the per-minute poll's GraphQL half: thread counts, merge
+// state and where the viewer stands. Pending reviews are only visible to their
+// author, so any PENDING review counted here is the viewer's. mergeStateStatus
+// answers UNKNOWN until GitHub has computed it, then is cached until the PR moves.
 // ponytail: first 100 threads / 50 comments each; paginate if a PR ever outgrows that.
-const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!) {
+const reviewStatusQuery = `query($owner: String!, $repo: String!, $number: Int!) {
   viewer { login }
   repository(owner: $owner, name: $repo) {
     pullRequest(number: $number) {
+      reviewDecision
+      mergeStateStatus
+      viewerLatestReview { state }
+      viewerLatestReviewRequest { id }
+      pendingReviews: reviews(first: 1, states: PENDING) { totalCount }
       reviewThreads(first: 100) {
         nodes { isResolved comments(first: 50) { nodes { author { __typename login } } } }
       }
@@ -41,7 +49,7 @@ const reviewThreadsQuery = `query($owner: String!, $repo: String!, $number: Int!
 }`
 
 // pullRequestDetailsQuery feeds the PR page: the conversation and every thread
-// with its bodies. It is separate from reviewThreadsQuery so the per-minute
+// with its bodies. It is separate from reviewStatusQuery so the per-minute
 // status poll never pays for bodies. Same first-100 caps as the lean query.
 const pullRequestDetailsQuery = `query($owner: String!, $repo: String!, $number: Int!) {
   viewer { login }
@@ -116,17 +124,20 @@ func (a *Adapter) GetForBranch(ctx context.Context, repoPath, branch string) (do
 	if err != nil || (pr.State != domain.PRStateOpen && pr.State != domain.PRStateDraft) {
 		return pr, err
 	}
-	comments, err := a.reviewComments(ctx, repoPath, pr)
-	if err != nil {
-		a.logger.WarnContext(ctx, "fetch pr review threads", "pr", pr.Number, "err", err)
-		return pr, nil
+	stdout, err = a.queryPullRequest(ctx, repoPath, pr, reviewStatusQuery)
+	if err == nil {
+		pr, err = withReviewStatus(stdout, pr)
 	}
-	pr.Comments = comments
+	if err != nil {
+		a.logger.WarnContext(ctx, "fetch pr review status", "pr", pr.Number, "err", err)
+	}
 	return pr, nil
 }
 
 // ListRequestedReviews resolves the viewer first because GraphQL search does not
 // expand "@me"; "review-requested:<login>" already includes team requests.
+// GitHub drops the request once the viewer submits a review, so the PRs they
+// already reviewed come from a second search (search has no OR across qualifiers).
 func (a *Adapter) ListRequestedReviews(ctx context.Context) (domain.ReviewInbox, error) {
 	stdout, stderr, err := a.cmd.Run(ctx, "", "api", "user", "--jq", ".login")
 	if err != nil {
@@ -134,41 +145,55 @@ func (a *Adapter) ListRequestedReviews(ctx context.Context) (domain.ReviewInbox,
 	}
 	viewer := strings.TrimSpace(string(stdout))
 
+	requested, err := a.searchPullRequests(ctx, "is:pr is:open review-requested:"+viewer, viewer, true)
+	if err != nil {
+		return domain.ReviewInbox{}, fmt.Errorf("requested reviews: %w", err)
+	}
+	reviewed, err := a.searchPullRequests(ctx, "is:pr is:open reviewed-by:"+viewer+" -review-requested:"+viewer+" -author:"+viewer, viewer, false)
+	if err != nil {
+		return domain.ReviewInbox{}, fmt.Errorf("reviewed pull requests: %w", err)
+	}
+	return domain.ReviewInbox{Viewer: viewer, PullRequests: append(requested, reviewed...)}, nil
+}
+
+// searchPullRequests retries a GitHub 5xx, and an empty page when retryEmpty is
+// set, since search intermittently answers one for a query that has results.
+func (a *Adapter) searchPullRequests(ctx context.Context, q, viewer string, retryEmpty bool) ([]domain.PullRequest, error) {
 	var prs []domain.PullRequest
 	for attempt := 1; attempt <= searchRetries; attempt++ {
 		if attempt > 1 {
 			select {
 			case <-ctx.Done():
-				return domain.ReviewInbox{}, ctx.Err()
+				return nil, ctx.Err()
 			case <-time.After(a.retryDelay):
 			}
 		}
-		stdout, stderr, err = a.cmd.Run(ctx, "",
+		stdout, stderr, err := a.cmd.Run(ctx, "",
 			"api", "graphql",
 			"-f", "query="+requestedReviewsQuery,
-			"-f", "q=is:pr is:open review-requested:"+viewer,
+			"-f", "q="+q,
 		)
 		if err != nil {
 			if attempt < searchRetries && isServerError(stderr) {
-				a.logger.WarnContext(ctx, "review inbox search failed on GitHub's side, retrying", "attempt", attempt, "stderr", strings.TrimSpace(string(stderr)))
+				a.logger.WarnContext(ctx, "review inbox search failed on GitHub's side, retrying", "q", q, "attempt", attempt, "stderr", strings.TrimSpace(string(stderr)))
 				continue
 			}
-			return domain.ReviewInbox{}, fmt.Errorf("gh api graphql requested reviews: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
+			return nil, fmt.Errorf("gh api graphql search: %w (stderr: %s)", err, strings.TrimSpace(string(stderr)))
 		}
 		var total int
 		prs, total, err = parseRequestedReviews(stdout, viewer)
 		if err != nil {
-			return domain.ReviewInbox{}, err
+			return nil, err
 		}
 		if total > len(prs) {
-			a.logger.WarnContext(ctx, "review inbox truncated by the search page size", "total", total, "fetched", len(prs))
+			a.logger.WarnContext(ctx, "review inbox truncated by the search page size", "q", q, "total", total, "fetched", len(prs))
 		}
-		if len(prs) > 0 || attempt == searchRetries {
+		if len(prs) > 0 || !retryEmpty || attempt == searchRetries {
 			break
 		}
 		a.logger.WarnContext(ctx, "review inbox came back empty, retrying", "attempt", attempt)
 	}
-	return domain.ReviewInbox{Viewer: viewer, PullRequests: prs}, nil
+	return prs, nil
 }
 
 // isServerError reports whether gh failed on a GitHub 5xx, which is worth retrying.
@@ -252,15 +277,6 @@ func (a *Adapter) OpenInBrowser(ctx context.Context, prURL string) error {
 	return nil
 }
 
-// reviewComments is best-effort: a failure here must not hide the rest of the PR.
-func (a *Adapter) reviewComments(ctx context.Context, repoPath string, pr domain.PullRequest) (domain.PRComments, error) {
-	stdout, err := a.queryPullRequest(ctx, repoPath, pr, reviewThreadsQuery)
-	if err != nil {
-		return domain.PRComments{}, err
-	}
-	return summariseThreads(stdout)
-}
-
 // queryPullRequest runs one of the pull-request GraphQL queries, with owner and
 // repo taken from the PR's URL.
 func (a *Adapter) queryPullRequest(ctx context.Context, repoPath string, pr domain.PullRequest, query string) ([]byte, error) {
@@ -283,7 +299,7 @@ func (a *Adapter) queryPullRequest(ctx context.Context, repoPath string, pr doma
 
 // GetDetails runs three gh commands in repoPath: the PR with its files, the
 // unified diff, and the conversation query. The conversation is best-effort,
-// like reviewComments: the page is still useful without it.
+// like the per-minute review status: the page is still useful without it.
 func (a *Adapter) GetDetails(ctx context.Context, repoPath string, number int) (domain.PullRequestDetails, error) {
 	sel := strconv.Itoa(number)
 	stdout, stderr, err := a.cmd.Run(ctx, repoPath, "pr", "view", sel, "--json", prDetailsJSONFields)
@@ -361,6 +377,15 @@ type ghThreadJSON struct {
 }
 
 type ghPullRequestJSON struct {
+	ReviewDecision     string `json:"reviewDecision"`
+	MergeStateStatus   string `json:"mergeStateStatus"`
+	ViewerLatestReview *struct {
+		State string `json:"state"`
+	} `json:"viewerLatestReview"`
+	ViewerLatestReviewRequest *struct{} `json:"viewerLatestReviewRequest"`
+	PendingReviews            struct {
+		TotalCount int `json:"totalCount"`
+	} `json:"pendingReviews"`
 	Comments struct {
 		Nodes []ghCommentJSON `json:"nodes"`
 	} `json:"comments"`
@@ -372,7 +397,7 @@ type ghPullRequestJSON struct {
 	} `json:"reviewThreads"`
 }
 
-// ghThreadsJSON decodes both reviewThreadsQuery and pullRequestDetailsQuery.
+// ghThreadsJSON decodes both reviewStatusQuery and pullRequestDetailsQuery.
 type ghThreadsJSON struct {
 	Data struct {
 		Viewer struct {
@@ -434,13 +459,22 @@ func parseConversation(pr ghPullRequestJSON) []domain.PRComment {
 	return out
 }
 
-func summariseThreads(data []byte) (domain.PRComments, error) {
+// withReviewStatus returns pr with the reviewStatusQuery answer laid over it.
+func withReviewStatus(data []byte, pr domain.PullRequest) (domain.PullRequest, error) {
 	var raw ghThreadsJSON
 	if err := json.Unmarshal(data, &raw); err != nil {
-		return domain.PRComments{}, fmt.Errorf("decode gh graphql json: %w", err)
+		return pr, fmt.Errorf("decode gh graphql json: %w", err)
 	}
-	threads := parseThreads(raw.Data.Repository.PullRequest.ReviewThreads.Nodes)
-	return domain.SummariseReviewThreads(threads, raw.Data.Viewer.Login), nil
+	gpr := raw.Data.Repository.PullRequest
+	pr.Comments = domain.SummariseReviewThreads(parseThreads(gpr.ReviewThreads.Nodes), raw.Data.Viewer.Login)
+	pr.ReviewDecision = domain.PRReviewDecision(gpr.ReviewDecision)
+	pr.MergeState = domain.PRMergeState(gpr.MergeStateStatus)
+	pr.ViewerReviewPending = gpr.PendingReviews.TotalCount > 0
+	pr.ViewerReviewRequested = gpr.ViewerLatestReviewRequest != nil
+	if gpr.ViewerLatestReview != nil {
+		pr.ViewerReview = domain.PRReviewState(gpr.ViewerLatestReview.State)
+	}
+	return pr, nil
 }
 
 type ghPRJSON struct {

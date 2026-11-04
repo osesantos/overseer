@@ -291,3 +291,25 @@ func TestPullRequest_MergeReadiness(t *testing.T) {
 		})
 	}
 }
+
+func TestPullRequest_ViewerVerdict(t *testing.T) {
+	tests := []struct {
+		name string
+		pr   PullRequest
+		want PRReviewState
+	}{
+		{name: "never involved", pr: PullRequest{}, want: ""},
+		{name: "requested", pr: PullRequest{ViewerReviewRequested: true}, want: PRReviewStateRequested},
+		{name: "approved", pr: PullRequest{ViewerReview: PRReviewStateApproved}, want: PRReviewStateApproved},
+		{name: "re-requested after a review", pr: PullRequest{ViewerReview: PRReviewStateCommented, ViewerReviewRequested: true}, want: PRReviewStateRequested},
+		{name: "staged review outranks the request", pr: PullRequest{ViewerReviewPending: true, ViewerReviewRequested: true}, want: PRReviewStatePending},
+		{name: "latest review is the pending one", pr: PullRequest{ViewerReview: PRReviewStatePending}, want: PRReviewStatePending},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := tt.pr.ViewerVerdict(); got != tt.want {
+				t.Fatalf("ViewerVerdict() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}

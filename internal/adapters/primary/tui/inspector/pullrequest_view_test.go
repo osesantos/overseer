@@ -150,6 +150,58 @@ func TestPullRequestView_BodyShowsHeaderAndRenderedDescription(t *testing.T) {
 	}
 }
 
+func TestPullRequestView_BodyShowsMergeVerdictAndViewerReview(t *testing.T) {
+	tests := []struct {
+		name  string
+		edit  func(*domain.PullRequest)
+		wants []string
+	}{
+		{name: "ready and approved", edit: func(pr *domain.PullRequest) {
+			pr.MergeState, pr.ViewerReview = domain.PRMergeStateClean, domain.PRReviewStateApproved
+		}, wants: []string{"Ready to merge", "you", "approved"}},
+		{name: "blocked and waiting on the viewer", edit: func(pr *domain.PullRequest) {
+			pr.MergeState, pr.ReviewDecision, pr.ViewerReviewRequested = domain.PRMergeStateBlocked, domain.PRReviewDecisionReviewRequired, true
+		}, wants: []string{"Blocked · review required", "review requested"}},
+		{name: "staged review", edit: func(pr *domain.PullRequest) {
+			pr.MergeState, pr.ViewerReviewPending = domain.PRMergeStateBlocked, true
+		}, wants: []string{"review not submitted"}},
+		{name: "changes requested", edit: func(pr *domain.PullRequest) {
+			pr.ViewerReview = domain.PRReviewStateChangesRequested
+		}, wants: []string{"Merge state not computed yet", "changes requested"}},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			sess := ordinarySession(t)
+			m := newTestModel(t)
+			m.SetSize(80, 30)
+			pr := samplePR()
+			tt.edit(&pr)
+			m = withPRStatus(t, selectSession(t, m, sess), sess, pr, nil)
+
+			body := ansi.Strip(m.views[ixPullRequest].Body())
+
+			for _, want := range tt.wants {
+				if !strings.Contains(body, want) {
+					t.Errorf("body is missing %q:\n%s", want, body)
+				}
+			}
+		})
+	}
+}
+
+func TestPullRequestView_MergedPRShowsNoStatusLines(t *testing.T) {
+	sess := ordinarySession(t)
+	m := newTestModel(t)
+	m.SetSize(80, 30)
+	pr := samplePR()
+	pr.State, pr.ViewerReview = domain.PRStateMerged, domain.PRReviewStateApproved
+	m = withPRStatus(t, selectSession(t, m, sess), sess, pr, nil)
+
+	if body := ansi.Strip(m.views[ixPullRequest].Body()); strings.Contains(body, "Merge state") || strings.Contains(body, "approved") {
+		t.Fatalf("merged PR body should carry no merge or review status:\n%s", body)
+	}
+}
+
 func TestPullRequestView_EmptyDescriptionShowsAPlaceholder(t *testing.T) {
 	sess := ordinarySession(t)
 	m := newTestModel(t)

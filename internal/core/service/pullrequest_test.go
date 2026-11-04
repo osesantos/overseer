@@ -180,6 +180,24 @@ func TestPullRequestService_Dismiss_RejectsAnEmptyRef(t *testing.T) {
 	}
 }
 
+func TestPullRequestService_Restore_RemovesTheRef(t *testing.T) {
+	settings := mocks.NewMockReviewSettingsRepository(t)
+	ref := domain.PullRequestRef{Repo: "o/r", Number: 7}
+	settings.EXPECT().Restore(mock.Anything, ref).Return(nil).Once()
+
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), settings, testLogger())
+	if _, err := svc.Restore(context.Background(), RestorePullRequestRequest{Ref: ref}); err != nil {
+		t.Fatalf("Restore() error = %v", err)
+	}
+}
+
+func TestPullRequestService_Restore_RejectsAnEmptyRef(t *testing.T) {
+	svc := NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), testLogger())
+	if _, err := svc.Restore(context.Background(), RestorePullRequestRequest{}); !errors.Is(err, domain.ErrPullRequestInvalidNumber) {
+		t.Fatalf("Restore() error = %v, want ErrPullRequestInvalidNumber", err)
+	}
+}
+
 func TestPullRequestService_ListRequestedReviews_PassesTheInboxThrough(t *testing.T) {
 	port := mocks.NewMockPullRequestPort(t)
 	want := domain.ReviewInbox{Viewer: "me", PullRequests: []domain.PullRequest{{Number: 1, Repo: "o/r"}}}

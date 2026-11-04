@@ -112,6 +112,7 @@ func (noopReviews) Load(context.Context) (domain.ReviewSettings, error) {
 	return domain.ReviewSettings{}, nil
 }
 func (noopReviews) Dismiss(context.Context, domain.PullRequestRef) error     { return nil }
+func (noopReviews) Restore(context.Context, domain.PullRequestRef) error     { return nil }
 func (noopReviews) MarkHandled(context.Context, domain.PullRequestRef) error { return nil }
 func (noopReviews) SetAutoReview(context.Context, bool) error                { return nil }
 
