@@ -20,7 +20,7 @@ import (
 	"github.com/osesantos/skipper/internal/adapters/primary/tui/inspector"
 	"github.com/osesantos/skipper/internal/adapters/primary/tui/jobs"
 	"github.com/osesantos/skipper/internal/adapters/primary/tui/leftpane"
-	overseerui "github.com/osesantos/skipper/internal/adapters/primary/tui/overseer"
+	mateui "github.com/osesantos/skipper/internal/adapters/primary/tui/mate"
 	"github.com/osesantos/skipper/internal/adapters/primary/tui/prs"
 	"github.com/osesantos/skipper/internal/adapters/primary/tui/pullrequest"
 	sessionui "github.com/osesantos/skipper/internal/adapters/primary/tui/session"
@@ -38,7 +38,7 @@ const (
 	TitleBarGap              = 1
 	HelpBarHeight            = 1
 	// ChatPanelHeightPercent is the share of body height reserved for the
-	// Overseer chat panel when it is visible.
+	// First Mate chat panel when it is visible.
 	ChatPanelHeightPercent = 30
 )
 
@@ -89,7 +89,7 @@ const (
 	popupHelp
 	popupKillPreview
 	popupDiscoveryWarning
-	popupOverseerConfirm
+	popupMateConfirm
 )
 
 // toastDismissMsg is an internal message that clears the gap-line toast
@@ -158,9 +158,9 @@ type Model struct {
 	discoveryWarningPaths []string // non-empty = show warning popup
 	discoveryCount        int      // newly registered repos (shown in warning popup)
 
-	// Overseer chat panel
-	chatPanel        overseerui.Model
-	overseerConfirm  overseerui.ConfirmModel
+	// First Mate chat panel
+	chatPanel        mateui.Model
+	mateConfirm      mateui.ConfirmModel
 	chatPanelVisible bool
 
 	width           int
@@ -174,7 +174,7 @@ type Model struct {
 	projectsService service.ProjectService
 	prService       service.PullRequestService
 	issueService    service.IssueService
-	overseerService *service.OverseerService
+	mateService     *service.MateService
 	swarmService    *service.SwarmService
 	launchers       []domain.Launcher
 	labels          []domain.Label
@@ -192,7 +192,7 @@ func New(
 	projectsService service.ProjectService,
 	prService service.PullRequestService,
 	issueService service.IssueService,
-	overseerService *service.OverseerService,
+	mateService *service.MateService,
 	swarmService *service.SwarmService,
 	scheduler jobs.Model,
 	launchers []domain.Launcher,
@@ -235,7 +235,7 @@ func New(
 		projectsService:         projectsService,
 		prService:               prService,
 		issueService:            issueService,
-		overseerService:         overseerService,
+		mateService:             mateService,
 		swarmService:            swarmService,
 		swarmBoardURL:           swarmBoardURL,
 		swarmMaxAgents:          swarmMaxAgents,
@@ -248,7 +248,7 @@ func New(
 		cachedBranchesByProject: make(map[uuid.UUID]projectBranchCache),
 		discoveryPaths:          discoveryPaths,
 		discovering:             len(discoveryPaths) > 0,
-		chatPanel:               overseerui.New(styles),
+		chatPanel:               mateui.New(styles),
 	}
 	return m
 }
@@ -763,34 +763,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			cmd = tea.Batch(cmd, shared.Emit(focus))
 		}
 		return m, cmd
-	case shared.OverseerTogglePanelMsg:
+	case shared.MateTogglePanelMsg:
 		m.chatPanelVisible = !m.chatPanelVisible
 		m.reapplySize()
 		return m, nil
-	case shared.OverseerSubmitMsg:
+	case shared.MateSubmitMsg:
 		// The panel has already appended the user message and started the
 		// spinner. We build the session context here — reading from the
 		// live cachedSessions — and fire the service call.
-		return m, m.overseerChatCmd(msg.UserMessage)
-	case shared.OverseerCommandMsg:
+		return m, m.mateChatCmd(msg.UserMessage)
+	case shared.MateCommandMsg:
 		// Operator mode: parse and execute the slash command.
 		return m.executeCommand(msg.Raw)
-	case shared.OverseerChatResponseMsg:
+	case shared.MateChatResponseMsg:
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
 		if msg.Action != nil {
-			m.overseerConfirm = overseerui.NewConfirmModel(m.styles, *msg.Action)
-			m.activePopup = popupOverseerConfirm
-			return m, tea.Batch(cmd, m.overseerConfirm.Init())
+			m.mateConfirm = mateui.NewConfirmModel(m.styles, *msg.Action)
+			m.activePopup = popupMateConfirm
+			return m, tea.Batch(cmd, m.mateConfirm.Init())
 		}
 		return m, cmd
-	case shared.OverseerConfirmActionMsg:
+	case shared.MateConfirmActionMsg:
 		m.activePopup = popupNone
 		return m, m.sendAgentPromptCmd(msg.Action)
-	case shared.OverseerCancelActionMsg:
+	case shared.MateCancelActionMsg:
 		m.activePopup = popupNone
 		return m, nil
-	case shared.OverseerPromptSentMsg:
+	case shared.MatePromptSentMsg:
 		var cmd tea.Cmd
 		m.chatPanel, cmd = shared.UpdateModel(m.chatPanel, msg)
 		// Immediately refresh the preview so the user sees the sent prompt
@@ -798,7 +798,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var refreshCmd tea.Cmd
 		m.inspector, refreshCmd = shared.UpdateModel(m.inspector, inspector.ForceRefreshMsg{})
 		return m, tea.Batch(cmd, refreshCmd)
-	case shared.OverseerCommandResultMsg:
+	case shared.MateCommandResultMsg:
 		// Command feedback renders in the chat panel as a dimmed system message,
 		// or in the gap line when the command came from ":" with the chat hidden.
 		if !m.chatPanelVisible {
@@ -874,7 +874,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		// ctrl+o toggles the chat panel regardless of focus state.
-		if key.Matches(keyMsg, overseerPanelKeyBinding) {
+		if key.Matches(keyMsg, matePanelKeyBinding) {
 			if cmd, handled := m.handleKey(keyMsg); handled {
 				return m, cmd
 			}
@@ -957,8 +957,8 @@ func (m *Model) handleKey(msg tea.KeyPressMsg) (tea.Cmd, bool) {
 	if key.Matches(msg, quitKeyBinding) {
 		return tea.Quit, true
 	}
-	if key.Matches(msg, overseerPanelKeyBinding) {
-		return shared.Emit(shared.OverseerTogglePanelMsg{}), true
+	if key.Matches(msg, matePanelKeyBinding) {
+		return shared.Emit(shared.MateTogglePanelMsg{}), true
 	}
 	if key.Matches(msg, helpMenuKeyBinding) {
 		m.helpPopup = shared.NewHelpPopupModel(m.styles, sessionsHelpGroups, m.width)
@@ -1329,9 +1329,9 @@ func (m Model) routeToPopup(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.killPreviewForm, cmd = shared.UpdateModel(m.killPreviewForm, msg)
 		return m, cmd
-	case popupOverseerConfirm:
+	case popupMateConfirm:
 		var cmd tea.Cmd
-		m.overseerConfirm, cmd = shared.UpdateModel(m.overseerConfirm, msg)
+		m.mateConfirm, cmd = shared.UpdateModel(m.mateConfirm, msg)
 		return m, cmd
 	case popupDiscoveryWarning:
 		if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
@@ -1484,7 +1484,7 @@ func (m *Model) startReviewCmd(pr domain.PullRequest) tea.Cmd {
 		ProjectID:    m.cachedProjects[idx].ID,
 		AgentCommand: strings.ReplaceAll(m.review.Command, domain.ReviewCommandNumberToken, strconv.Itoa(pr.Number)),
 	}
-	return shared.RequestWithTimeout(overseerRequestTimeout,
+	return shared.RequestWithTimeout(mateRequestTimeout,
 		func(ctx context.Context) (service.CreateReviewSessionResponse, error) {
 			return svc.CreateForPullRequest(ctx, req)
 		},
@@ -1578,7 +1578,7 @@ func (m *Model) startTriageCmd(issue domain.Issue) tea.Cmd {
 		ProjectID:    m.cachedProjects[idx].ID,
 		AgentCommand: strings.ReplaceAll(command, domain.TriageCommandKeyToken, issue.Key),
 	}
-	return shared.RequestWithTimeout(overseerRequestTimeout,
+	return shared.RequestWithTimeout(mateRequestTimeout,
 		func(ctx context.Context) (service.CreateTriageSessionResponse, error) {
 			return svc.CreateForIssue(ctx, req)
 		},
@@ -1683,8 +1683,8 @@ func (m Model) popupView() string {
 		return m.killPreviewForm.View().Content
 	case popupDiscoveryWarning:
 		return m.discoveryWarningView()
-	case popupOverseerConfirm:
-		return m.overseerConfirm.View().Content
+	case popupMateConfirm:
+		return m.mateConfirm.View().Content
 	}
 	return ""
 }
@@ -1748,7 +1748,7 @@ func (m *Model) reapplySize() {
 }
 
 // sendAgentPromptCmd fires the async SendAgentPrompt call.
-func (m Model) sendAgentPromptCmd(action domain.OverseerAction) tea.Cmd {
+func (m Model) sendAgentPromptCmd(action domain.MateAction) tea.Cmd {
 	svc := m.sessionsService
 	sessionName := action.SessionName
 	return shared.Request(
@@ -1759,16 +1759,16 @@ func (m Model) sendAgentPromptCmd(action domain.OverseerAction) tea.Cmd {
 			})
 		},
 		func(_ service.SendAgentPromptResponse, err error) tea.Msg {
-			return shared.OverseerPromptSentMsg{SessionName: sessionName, Err: err}
+			return shared.MatePromptSentMsg{SessionName: sessionName, Err: err}
 		},
 	)
 }
 
 // sessionSnapshots returns a snapshot of all current sessions for injection
-// into the Overseer Agent's context. Called by overseerChatCmd at the moment
+// into the First Mate's context. Called by mateChatCmd at the moment
 // the user submits a message, so it always reads from the live cachedSessions.
-func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
-	snaps := make([]overseerui.SessionSnapshot, 0, len(m.cachedSessions))
+func (m *Model) sessionSnapshots() []mateui.SessionSnapshot {
+	snaps := make([]mateui.SessionSnapshot, 0, len(m.cachedSessions))
 	for _, sess := range m.cachedSessions {
 		projectName := ""
 		for _, p := range m.cachedProjects {
@@ -1781,7 +1781,7 @@ func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
 		if st, ok := m.agentStatuses[sess.ID]; ok {
 			status = st.Kind
 		}
-		snaps = append(snaps, overseerui.SessionSnapshot{
+		snaps = append(snaps, mateui.SessionSnapshot{
 			SessionID:   sess.ID,
 			SessionName: sess.Name,
 			ProjectName: projectName,
@@ -1793,24 +1793,24 @@ func (m *Model) sessionSnapshots() []overseerui.SessionSnapshot {
 	return snaps
 }
 
-// overseerChatCmd builds the async tea.Cmd that calls OverseerService.Chat.
+// mateChatCmd builds the async tea.Cmd that calls MateService.Chat.
 // It is called from the dashboard's Update so that it always reads from the
 // live cachedSessions at submit time — never from a stale closure.
 //
 // Before invoking the LLM the command concurrently captures the agent-pane
-// output for every session so the Overseer has real context when deciding
+// output for every session so the First Mate has real context when deciding
 // what to do.
-func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
-	if m.overseerService == nil {
+func (m *Model) mateChatCmd(userMsg string) tea.Cmd {
+	if m.mateService == nil {
 		return nil
 	}
-	svc := m.overseerService
+	svc := m.mateService
 	sessSvc := m.sessionsService
 	snaps := m.sessionSnapshots()
 
 	return shared.RequestWithTimeout(
-		overseerRequestTimeout,
-		func(ctx context.Context) (service.OverseerChatResponse, error) {
+		mateRequestTimeout,
+		func(ctx context.Context) (service.MateChatResponse, error) {
 			// Concurrently capture each session's agent-pane output so the
 			// LLM gets real context without blocking on N sequential calls.
 			type paneResult struct {
@@ -1838,9 +1838,9 @@ func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
 				paneOutputs[r.idx] = r.output
 			}
 
-			sessions := make([]domain.OverseerSessionContext, 0, len(snaps))
+			sessions := make([]domain.MateSessionContext, 0, len(snaps))
 			for i, snap := range snaps {
-				sessions = append(sessions, domain.OverseerSessionContext{
+				sessions = append(sessions, domain.MateSessionContext{
 					SessionID:   snap.SessionID,
 					SessionName: snap.SessionName,
 					ProjectName: snap.ProjectName,
@@ -1850,16 +1850,16 @@ func (m *Model) overseerChatCmd(userMsg string) tea.Cmd {
 					PaneOutput:  paneOutputs[i],
 				})
 			}
-			return svc.Chat(ctx, service.OverseerChatRequest{
+			return svc.Chat(ctx, service.MateChatRequest{
 				UserMessage: userMsg,
 				Sessions:    sessions,
 			})
 		},
-		func(resp service.OverseerChatResponse, err error) tea.Msg {
+		func(resp service.MateChatResponse, err error) tea.Msg {
 			if err != nil {
-				return shared.OverseerChatResponseMsg{Err: err}
+				return shared.MateChatResponseMsg{Err: err}
 			}
-			return shared.OverseerChatResponseMsg{
+			return shared.MateChatResponseMsg{
 				Text:   resp.Text,
 				Action: resp.Action,
 			}

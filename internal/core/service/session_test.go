@@ -157,11 +157,11 @@ func expectSwarmAgentTmuxGone(tmux *mocks.MockTmuxAdapter, sess domain.Session) 
 }
 
 func TestSessionService_Create_Swarm_CreatesOneTmuxSessionPerAgent(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 	board := mocks.NewMockSwarmBoardRepository(t)
 
-	expectProjectLookup(t, projects, overseerID, "overseer")
+	expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-shell", nil).Once()
@@ -179,7 +179,7 @@ func TestSessionService_Create_Swarm_CreatesOneTmuxSessionPerAgent(t *testing.T)
 	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
 	resp, err := svc.Create(context.Background(), CreateSessionRequest{
 		Name:      "hive",
-		ProjectID: overseerID,
+		ProjectID: skipperID,
 		SwarmSize: 3,
 	})
 
@@ -201,11 +201,11 @@ func TestSessionService_Create_Swarm_CreatesOneTmuxSessionPerAgent(t *testing.T)
 }
 
 func TestSessionService_Create_Swarm_NeverCreatesABareAgentPane(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 	board := mocks.NewMockSwarmBoardRepository(t)
 
-	expectProjectLookup(t, projects, overseerID, "overseer")
+	expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 
 	var createdTmuxIDs []string
@@ -218,7 +218,7 @@ func TestSessionService_Create_Swarm_NeverCreatesABareAgentPane(t *testing.T) {
 	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
 	resp, err := svc.Create(context.Background(), CreateSessionRequest{
 		Name:      "hive",
-		ProjectID: overseerID,
+		ProjectID: skipperID,
 		SwarmSize: 2,
 	})
 	if err != nil {
@@ -268,11 +268,11 @@ func TestSessionService_Create_Swarm_RejectsOutOfRangeSize(t *testing.T) {
 func TestSessionService_Create_SwarmSizeOne_StaysASingleAgentSession(t *testing.T) {
 	// A size of 1 is rejected outright rather than silently downgraded, so the
 	// only way to get a single-agent session is to leave SwarmSize at zero.
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 	board := mocks.NewMockSwarmBoardRepository(t)
 
-	expectProjectLookup(t, projects, overseerID, "overseer")
+	expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-shell", nil).Once()
@@ -284,7 +284,7 @@ func TestSessionService_Create_SwarmSizeOne_StaysASingleAgentSession(t *testing.
 	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
 	resp, err := svc.Create(context.Background(), CreateSessionRequest{
 		Name:      "solo",
-		ProjectID: overseerID,
+		ProjectID: skipperID,
 	})
 
 	if err != nil {
@@ -608,10 +608,10 @@ func TestSessionService_SendAgentEnter_NonSwarm_IgnoresAgentIndex(t *testing.T) 
 }
 
 func TestSessionService_Create_WorktreeMode_HappyPath(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -625,7 +625,7 @@ func TestSessionService_Create_WorktreeMode_HappyPath(t *testing.T) {
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.Create(context.Background(), worktreeCreateReq("alpha", overseerID, "main"))
+	resp, err := svc.Create(context.Background(), worktreeCreateReq("alpha", skipperID, "main"))
 
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -633,8 +633,8 @@ func TestSessionService_Create_WorktreeMode_HappyPath(t *testing.T) {
 	if resp.Session.Name != "alpha" {
 		t.Fatalf("Create() Session.Name = %q, want %q", resp.Session.Name, "alpha")
 	}
-	if resp.Session.ProjectID != overseerID {
-		t.Fatalf("Create() Session.ProjectID = %v, want %v", resp.Session.ProjectID, overseerID)
+	if resp.Session.ProjectID != skipperID {
+		t.Fatalf("Create() Session.ProjectID = %v, want %v", resp.Session.ProjectID, skipperID)
 	}
 	if resp.Session.Order != 1 {
 		t.Fatalf("Create() Session.Order = %d, want 1", resp.Session.Order)
@@ -656,10 +656,10 @@ func TestSessionService_Create_WorktreeMode_HappyPath(t *testing.T) {
 }
 
 func TestSessionService_Create_ProjectMode_SkipsGit_PersistsWithoutWorktree(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), repoPath, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), repoPath, "opencode").Return("tmux-alpha-agent", nil).Once()
@@ -673,7 +673,7 @@ func TestSessionService_Create_ProjectMode_SkipsGit_PersistsWithoutWorktree(t *t
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
 	resp, err := svc.Create(context.Background(), CreateSessionRequest{
 		Name:           "alpha",
-		ProjectID:      overseerID,
+		ProjectID:      skipperID,
 		CreateWorktree: false,
 	})
 
@@ -708,7 +708,7 @@ func TestSessionService_Create_EmptyName(t *testing.T) {
 func TestSessionService_Create_WorktreeMode_EmptyBaseBranch_ResolvesProjectDefault(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("trunk", nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "trunk").Return(nil).Once()
@@ -729,7 +729,7 @@ func TestSessionService_Create_WorktreeMode_EmptyBaseBranch_ResolvesProjectDefau
 func TestSessionService_Create_WorktreeMode_DefaultBranchResolveError(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	gitErr := errors.New("no remote configured")
 	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("", gitErr).Once()
 
@@ -755,7 +755,7 @@ func TestSessionService_Create_EmptyProjectID(t *testing.T) {
 func TestSessionService_Create_WorktreeMode_UsesUserProvidedBranch(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", "my-feature", mock.Anything).Return(nil).Once()
@@ -791,7 +791,7 @@ func TestSessionService_Create_WorktreeMode_UsesUserProvidedBranch(t *testing.T)
 func TestSessionService_Create_WorktreeMode_BlankBranchGeneratesDefault(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -819,14 +819,14 @@ func TestSessionService_Create_WorktreeMode_BlankBranchGeneratesDefault(t *testi
 }
 
 func TestSessionService_Create_DuplicateNameWithinSameProject(t *testing.T) {
-	overseerID := uuid.New()
-	existing := testutil.MakeSession("alpha", overseerID)
+	skipperID := uuid.New()
+	existing := testutil.MakeSession("alpha", skipperID)
 	repo, projects, tmux, git := newSessionMocks(t)
-	expectProjectLookup(t, projects, overseerID, "overseer")
+	expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{existing}, nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	_, err := svc.Create(context.Background(), worktreeCreateReq("alpha", overseerID, "main"))
+	_, err := svc.Create(context.Background(), worktreeCreateReq("alpha", skipperID, "main"))
 
 	if !errors.Is(err, domain.ErrSessionAlreadyExists) {
 		t.Fatalf("Create() error = %v, want %v", err, domain.ErrSessionAlreadyExists)
@@ -834,11 +834,11 @@ func TestSessionService_Create_DuplicateNameWithinSameProject(t *testing.T) {
 }
 
 func TestSessionService_Create_DuplicateNameAcrossProjectsAllowed(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	otherID := uuid.New()
 	existing := testutil.MakeSession("alpha", otherID)
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{existing}, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -848,7 +848,7 @@ func TestSessionService_Create_DuplicateNameAcrossProjectsAllowed(t *testing.T) 
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	_, err := svc.Create(context.Background(), worktreeCreateReq("alpha", overseerID, "main"))
+	_, err := svc.Create(context.Background(), worktreeCreateReq("alpha", skipperID, "main"))
 
 	if err != nil {
 		t.Fatalf("Create() error = %v, want nil (same name in different project is allowed)", err)
@@ -856,16 +856,16 @@ func TestSessionService_Create_DuplicateNameAcrossProjectsAllowed(t *testing.T) 
 }
 
 func TestSessionService_Create_OrderIncrement(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	otherID := uuid.New()
-	first := testutil.MakeSession("alpha", overseerID)
+	first := testutil.MakeSession("alpha", skipperID)
 	first.Order = 1
-	second := testutil.MakeSession("beta", overseerID)
+	second := testutil.MakeSession("beta", skipperID)
 	second.Order = 2
 	otherProject := testutil.MakeSession("gamma", otherID)
 	otherProject.Order = 9
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).
 		Return([]domain.Session{first, second, otherProject}, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
@@ -880,7 +880,7 @@ func TestSessionService_Create_OrderIncrement(t *testing.T) {
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.Create(context.Background(), worktreeCreateReq("gamma", overseerID, "main"))
+	resp, err := svc.Create(context.Background(), worktreeCreateReq("gamma", skipperID, "main"))
 
 	if err != nil {
 		t.Fatalf("Create() error = %v", err)
@@ -897,7 +897,7 @@ func TestSessionService_Create_AgentTmuxErrorKillsShellAndPropagates(t *testing.
 	tmuxErr := errors.New("tmux out of capacity")
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -919,7 +919,7 @@ func TestSessionService_Create_TmuxError(t *testing.T) {
 	tmuxErr := errors.New("tmux unavailable")
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -937,7 +937,7 @@ func TestSessionService_Create_GitError(t *testing.T) {
 	gitErr := errors.New("git refused")
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(gitErr).Once()
@@ -953,7 +953,7 @@ func TestSessionService_Create_GitError(t *testing.T) {
 func TestSessionService_Create_WorktreeMode_PullFails_ContinuesWithWorktreeCreation(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(errors.New("no remote configured")).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -987,7 +987,7 @@ func TestSessionService_Create_ProjectLookupErrorBubblesUp(t *testing.T) {
 func TestSessionService_Create_WithAgentCommand(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -1042,7 +1042,7 @@ func TestSessionService_Create_RejectsInvalidAgentCommand(t *testing.T) {
 func TestCreateSession_CapturesAgentTypeFromLauncher(t *testing.T) {
 	projID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, projID, "overseer")
+	repoPath := expectProjectLookup(t, projects, projID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	git.EXPECT().PullBranch(mock.Anything, repoPath, "main").Return(nil).Once()
 	git.EXPECT().CreateWorktree(mock.Anything, repoPath, "main", mock.Anything, mock.Anything).Return(nil).Once()
@@ -1132,9 +1132,9 @@ func TestSessionService_Rename_NotFound(t *testing.T) {
 }
 
 func TestSessionService_Rename_DuplicateNameInSameProject(t *testing.T) {
-	overseerID := uuid.New()
-	original := testutil.MakeSession("alpha", overseerID)
-	conflicting := testutil.MakeSession("beta", overseerID)
+	skipperID := uuid.New()
+	original := testutil.MakeSession("alpha", skipperID)
+	conflicting := testutil.MakeSession("beta", skipperID)
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, original.ID).Return(original, nil).Once()
 	repo.EXPECT().List(mock.Anything).
@@ -1189,9 +1189,9 @@ func TestSessionService_List_SortsByOrderWithinSameProject(t *testing.T) {
 }
 
 func TestSessionService_ListBranches_HappyPath(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 
 	when := time.Now()
 	branches := []domain.BranchInfo{
@@ -1202,7 +1202,7 @@ func TestSessionService_ListBranches_HappyPath(t *testing.T) {
 	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("main", nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: overseerID})
+	resp, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: skipperID})
 
 	if err != nil {
 		t.Fatalf("ListBranches() error = %v", err)
@@ -1219,14 +1219,14 @@ func TestSessionService_ListBranches_HappyPath(t *testing.T) {
 }
 
 func TestSessionService_ListBranches_DefaultBranchResolveError_NotFatal(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	git.EXPECT().ListBranches(mock.Anything, repoPath).Return(nil, nil).Once()
 	git.EXPECT().GetDefaultBranch(mock.Anything, repoPath).Return("", errors.New("no default")).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: overseerID})
+	resp, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: skipperID})
 
 	if err != nil {
 		t.Fatalf("ListBranches() error = %v, want nil (default-branch error is non-fatal)", err)
@@ -1237,13 +1237,13 @@ func TestSessionService_ListBranches_DefaultBranchResolveError_NotFatal(t *testi
 }
 
 func TestSessionService_ListBranches_ProjectLookupErrorBubblesUp(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	lookupErr := errors.New("project store down")
 	repo, projects, tmux, git := newSessionMocks(t)
-	projects.EXPECT().Get(mock.Anything, overseerID).Return(domain.Project{}, lookupErr).Once()
+	projects.EXPECT().Get(mock.Anything, skipperID).Return(domain.Project{}, lookupErr).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	_, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: overseerID})
+	_, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: skipperID})
 
 	if !errors.Is(err, lookupErr) {
 		t.Fatalf("ListBranches() error = %v, want wrapped %v", err, lookupErr)
@@ -1251,14 +1251,14 @@ func TestSessionService_ListBranches_ProjectLookupErrorBubblesUp(t *testing.T) {
 }
 
 func TestSessionService_ListBranches_GitErrorBubblesUp(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	gitErr := errors.New("git refused")
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	git.EXPECT().ListBranches(mock.Anything, repoPath).Return(nil, gitErr).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	_, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: overseerID})
+	_, err := svc.ListBranches(context.Background(), ListBranchesRequest{ProjectID: skipperID})
 
 	if !errors.Is(err, gitErr) {
 		t.Fatalf("ListBranches() error = %v, want wrapped %v", err, gitErr)
@@ -1266,13 +1266,13 @@ func TestSessionService_ListBranches_GitErrorBubblesUp(t *testing.T) {
 }
 
 func TestSessionService_ProjectCurrentBranch_HappyPath(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
-	repoPath := expectProjectLookup(t, projects, overseerID, "overseer")
+	repoPath := expectProjectLookup(t, projects, skipperID, "skipper")
 	git.EXPECT().CurrentBranch(mock.Anything, repoPath).Return("feat/foo", nil).Once()
 
 	svc := newTestSessionService(repo, projects, tmux, git, testLogger())
-	resp, err := svc.ProjectCurrentBranch(context.Background(), ProjectCurrentBranchRequest{ProjectID: overseerID})
+	resp, err := svc.ProjectCurrentBranch(context.Background(), ProjectCurrentBranchRequest{ProjectID: skipperID})
 
 	if err != nil {
 		t.Fatalf("ProjectCurrentBranch() error = %v", err)
@@ -1283,7 +1283,7 @@ func TestSessionService_ProjectCurrentBranch_HappyPath(t *testing.T) {
 }
 
 func TestSessionService_ReviewBranch(t *testing.T) {
-	project := testutil.MakeProject("/repo/overseer", "overseer")
+	project := testutil.MakeProject("/repo/skipper", "skipper")
 	cases := []struct {
 		name    string
 		session domain.Session
@@ -1461,7 +1461,7 @@ func TestSessionService_AttachShell_SessionNotFound(t *testing.T) {
 
 func TestSessionService_AttachShell_TmuxSessionMissing_RecreatesAtWorktreePath(t *testing.T) {
 	worktreePath := "/abs/worktree/alpha"
-	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "skipper/alpha")
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
@@ -1483,16 +1483,16 @@ func TestSessionService_AttachShell_TmuxSessionMissing_RecreatesAtWorktreePath(t
 }
 
 func TestSessionService_AttachShell_ProjectMode_TmuxMissing_RecreatesAtProjectPath(t *testing.T) {
-	overseerID := uuid.New()
-	sess := testutil.MakeSession("alpha", overseerID)
-	project := testutil.MakeProject("/repo/overseer", "overseer")
-	project.ID = overseerID
+	skipperID := uuid.New()
+	sess := testutil.MakeSession("alpha", skipperID)
+	project := testutil.MakeProject("/repo/skipper", "skipper")
+	project.ID = skipperID
 
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
-	projects.EXPECT().Get(mock.Anything, overseerID).Return(project, nil).Once()
+	projects.EXPECT().Get(mock.Anything, skipperID).Return(project, nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, sess.ID.String(), project.Path, "").
 		Return(sess.ID.String(), nil).Once()
 	wantCmd := exec.Command("tmux", "attach-session", "-t", sess.ID.String())
@@ -1531,7 +1531,7 @@ func TestSessionService_AttachAgent_HappyPath(t *testing.T) {
 
 func TestSessionService_AttachAgent_AgentTmuxMissing_RecreatesWithCommand(t *testing.T) {
 	worktreePath := "/abs/worktree/alpha"
-	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "skipper/alpha")
 	if err := sess.AssignAgentCommand("opencode --config /tmp/cfg"); err != nil {
 		t.Fatalf("seed AssignAgentCommand: %v", err)
 	}
@@ -1690,19 +1690,19 @@ func pinWorktreeRoot(t *testing.T) string {
 
 func TestSessionService_Delete_HappyPath_WorktreeSession(t *testing.T) {
 	pinWorktreeRoot(t)
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	sess := testutil.MakeSessionWithWorktree(
 		"alpha",
-		overseerID,
+		skipperID,
 		paths.NewResolver("").SessionWorktreePath(uuid.New()),
-		"overseer/alpha",
+		"skipper/alpha",
 	)
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
-	project := testutil.MakeProject("/repo/overseer", "overseer")
-	project.ID = overseerID
-	projects.EXPECT().Get(mock.Anything, overseerID).Return(project, nil).Once()
-	git.EXPECT().RemoveWorktree(mock.Anything, "/repo/overseer", sess.WorktreePath).Return(nil).Once()
+	project := testutil.MakeProject("/repo/skipper", "skipper")
+	project.ID = skipperID
+	projects.EXPECT().Get(mock.Anything, skipperID).Return(project, nil).Once()
+	git.EXPECT().RemoveWorktree(mock.Anything, "/repo/skipper", sess.WorktreePath).Return(nil).Once()
 	agentTmuxID := sess.ID.String() + "-agent"
 	editorTmuxID := sess.ID.String() + "-editor"
 	// All three backing tmux sessions exist and are torn down.
@@ -1764,7 +1764,7 @@ func TestSessionService_Delete_WorktreePathOutsideRoot_Refused(t *testing.T) {
 		"malicious",
 		uuid.New(),
 		"/etc/passwd",
-		"overseer/malicious",
+		"skipper/malicious",
 	)
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
@@ -1797,19 +1797,19 @@ func TestSessionService_Delete_TmuxSessionAlreadyGone_StillDeletes(t *testing.T)
 
 func TestSessionService_Delete_GitWorktreeAlreadyGone_StillDeletes(t *testing.T) {
 	pinWorktreeRoot(t)
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	sess := testutil.MakeSessionWithWorktree(
 		"alpha",
-		overseerID,
+		skipperID,
 		paths.NewResolver("").SessionWorktreePath(uuid.New()),
-		"overseer/alpha",
+		"skipper/alpha",
 	)
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
-	project := testutil.MakeProject("/repo/overseer", "overseer")
-	project.ID = overseerID
-	projects.EXPECT().Get(mock.Anything, overseerID).Return(project, nil).Once()
-	git.EXPECT().RemoveWorktree(mock.Anything, "/repo/overseer", sess.WorktreePath).
+	project := testutil.MakeProject("/repo/skipper", "skipper")
+	project.ID = skipperID
+	projects.EXPECT().Get(mock.Anything, skipperID).Return(project, nil).Once()
+	git.EXPECT().RemoveWorktree(mock.Anything, "/repo/skipper", sess.WorktreePath).
 		Return(domain.ErrGitWorktreeNotFound).Once()
 	tmux.EXPECT().GetSession(mock.Anything, sess.ID.String()).
 		Return(domain.TmuxSession{}, domain.ErrTmuxSessionNotFound).Once()
@@ -1847,7 +1847,7 @@ func TestSessionService_AttachEditor_EditorTmuxExists_ReusesWithoutRecreate(t *t
 
 func TestSessionService_AttachEditor_EditorTmuxMissing_CreatesRunningConfiguredEditor(t *testing.T) {
 	worktreePath := "/abs/worktree/alpha"
-	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "skipper/alpha")
 	editorTmuxID := sess.ID.String() + "-editor"
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
@@ -1871,7 +1871,7 @@ func TestSessionService_AttachEditor_EditorTmuxMissing_CreatesRunningConfiguredE
 
 func TestSessionService_AttachEditor_EmptyEditorCommand_FallsBackToNvim(t *testing.T) {
 	worktreePath := "/abs/worktree/alpha"
-	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "overseer/alpha")
+	sess := testutil.MakeSessionWithWorktree("alpha", uuid.New(), worktreePath, "skipper/alpha")
 	editorTmuxID := sess.ID.String() + "-editor"
 	repo, projects, tmux, git := newSessionMocks(t)
 	repo.EXPECT().Get(mock.Anything, sess.ID).Return(sess, nil).Once()
@@ -1947,11 +1947,11 @@ func TestSessionService_CycleLabel_NotFound(t *testing.T) {
 }
 
 func TestSessionService_Create_ClaudeSwarm_LaunchesEachAgentWithItsOwnConversationID(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	repo, projects, tmux, git := newSessionMocks(t)
 	board := mocks.NewMockSwarmBoardRepository(t)
 
-	expectProjectLookup(t, projects, overseerID, "overseer")
+	expectProjectLookup(t, projects, skipperID, "skipper")
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").
 		Return("tmux-shell", nil).Once()
@@ -1970,7 +1970,7 @@ func TestSessionService_Create_ClaudeSwarm_LaunchesEachAgentWithItsOwnConversati
 	svc := newTestSessionServiceWithBoard(repo, projects, tmux, git, board, testLogger())
 	_, err := svc.Create(context.Background(), CreateSessionRequest{
 		Name:         "hive",
-		ProjectID:    overseerID,
+		ProjectID:    skipperID,
 		SwarmSize:    2,
 		AgentCommand: "claude --permission-mode auto",
 	})
@@ -2012,7 +2012,7 @@ func TestSessionService_AttachAgent_ClaudePaneMissing_RecreatesWithoutThePrompt(
 			projectID := uuid.New()
 			sess := testutil.MakeSession("alpha", projectID)
 			if tt.worktree != "" {
-				sess = testutil.MakeSessionWithWorktree("alpha", projectID, tt.worktree, "overseer/alpha")
+				sess = testutil.MakeSessionWithWorktree("alpha", projectID, tt.worktree, "skipper/alpha")
 			}
 			if err := sess.AssignAgentCommand(review); err != nil {
 				t.Fatalf("seed AssignAgentCommand: %v", err)

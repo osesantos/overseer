@@ -117,7 +117,7 @@ func TestRenameForm_SessionSubmitServiceErrorEmitsErrMsg(t *testing.T) {
 }
 
 func TestRenameForm_ProjectSubmitCallsRenameAndEmitsRenamedMsg(t *testing.T) {
-	project := testutil.MakeProject("/repo/overseer", "old")
+	project := testutil.MakeProject("/repo/skipper", "old")
 	svc, repo := newProjectsServiceWithMocks(t)
 	repo.EXPECT().Get(mock.Anything, project.ID).Return(project, nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
@@ -140,7 +140,7 @@ func TestRenameForm_ProjectSubmitCallsRenameAndEmitsRenamedMsg(t *testing.T) {
 }
 
 func TestRenameForm_ProjectSubmitServiceErrorEmitsErrMsg(t *testing.T) {
-	project := testutil.MakeProject("/repo/overseer", "old")
+	project := testutil.MakeProject("/repo/skipper", "old")
 	svc, repo := newProjectsServiceWithMocks(t)
 	repo.EXPECT().Get(mock.Anything, project.ID).
 		Return(domain.Project{}, errors.New("boom")).Once()
@@ -178,15 +178,15 @@ func TestRenameForm_ViewShowsSessionTitleAndCurrentName(t *testing.T) {
 
 func TestRenameForm_ViewShowsGroupTitleForProject(t *testing.T) {
 	svc, _ := newProjectsServiceWithMocks(t)
-	form := NewRenameProjectForm(styles.New(), svc, uuid.New(), "overseer", 100)
+	form := NewRenameProjectForm(styles.New(), svc, uuid.New(), "skipper", 100)
 
 	view := form.View().Content
 
 	if !strings.Contains(view, "Rename Group") {
 		t.Fatalf("view missing 'Rename Group' title: %q", view)
 	}
-	if !strings.Contains(view, "overseer") {
-		t.Fatalf("view missing current group name 'overseer': %q", view)
+	if !strings.Contains(view, "skipper") {
+		t.Fatalf("view missing current group name 'skipper': %q", view)
 	}
 }
 

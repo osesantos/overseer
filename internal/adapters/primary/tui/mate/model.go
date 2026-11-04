@@ -1,4 +1,4 @@
-package overseer
+package mate
 
 import (
 	"strings"
@@ -37,7 +37,7 @@ const (
 
 // SessionSnapshot is a lightweight view into a session's static state that
 // the dashboard builds at submit time. PaneOutput is intentionally absent:
-// overseerChatCmd fetches it fresh via PreviewSession inside the request
+// mateChatCmd fetches it fresh via PreviewSession inside the request
 // goroutine so it is never stale.
 type SessionSnapshot struct {
 	SessionID   uuid.UUID
@@ -48,17 +48,17 @@ type SessionSnapshot struct {
 	Status      domain.AgentStatusKind
 }
 
-// Model is the Overseer chat panel. It holds a scrollable message history
+// Model is the First Mate chat panel. It holds a scrollable message history
 // (viewport), a single-line text input, and a thinking-spinner shown while
 // the agent is processing. It is embedded directly in dashboard.Model and
 // becomes visible when the user presses ctrl+o.
 //
-// The panel itself never calls OverseerService directly. On submit it emits
-// either OverseerSubmitMsg (agent mode) or OverseerCommandMsg (operator mode,
+// The panel itself never calls MateService directly. On submit it emits
+// either MateSubmitMsg (agent mode) or MateCommandMsg (operator mode,
 // any line starting with '/'); the dashboard handles execution in both cases.
 type Model struct {
 	// history accumulates all chat messages for the viewport.
-	history []domain.OverseerMessage
+	history []domain.MateMessage
 	// rendered holds each history entry already converted to styled text, index
 	// for index. Markdown rendering is far too costly to redo for the whole
 	// transcript on every incoming message, so each entry is rendered once and
@@ -78,7 +78,7 @@ type Model struct {
 // New constructs a Model.
 func New(s *styles.Styles) Model {
 	ti := textinput.New()
-	ti.Placeholder = "Ask the Overseer Agent… or type /help for commands"
+	ti.Placeholder = "Ask the First Mate… or type /help for commands"
 	ti.Prompt = agentPrompt
 	ti.SetStyles(s.Form.Input)
 	ti.Focus()
@@ -162,41 +162,41 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, nil
 
-	case shared.OverseerChatResponseMsg:
+	case shared.MateChatResponseMsg:
 		m.thinking = false
 		if msg.Err != nil {
-			m.appendMessage(domain.OverseerMessage{
-				Role:      domain.OverseerRoleAgent,
+			m.appendMessage(domain.MateMessage{
+				Role:      domain.MateRoleAgent,
 				Content:   "Error: " + msg.Err.Error(),
 				Timestamp: time.Now(),
 			})
 			return m, nil
 		}
-		m.appendMessage(domain.OverseerMessage{
-			Role:      domain.OverseerRoleAgent,
+		m.appendMessage(domain.MateMessage{
+			Role:      domain.MateRoleAgent,
 			Content:   msg.Text,
 			Timestamp: time.Now(),
 		})
 		return m, nil
 
-	case shared.OverseerPromptSentMsg:
+	case shared.MatePromptSentMsg:
 		var note string
 		if msg.Err != nil {
 			note = "Failed to send prompt to " + msg.SessionName + ": " + msg.Err.Error()
 		} else {
 			note = "Prompt sent to " + msg.SessionName + "."
 		}
-		m.appendMessage(domain.OverseerMessage{
-			Role:      domain.OverseerRoleSystem,
+		m.appendMessage(domain.MateMessage{
+			Role:      domain.MateRoleSystem,
 			Content:   note,
 			Timestamp: time.Now(),
 		})
 		return m, nil
 
-	case shared.OverseerCommandResultMsg:
+	case shared.MateCommandResultMsg:
 		m.thinking = false
-		m.appendMessage(domain.OverseerMessage{
-			Role:      domain.OverseerRoleSystem,
+		m.appendMessage(domain.MateMessage{
+			Role:      domain.MateRoleSystem,
 			Content:   msg.Text,
 			Timestamp: time.Now(),
 		})
@@ -226,7 +226,7 @@ func (m Model) View() tea.View {
 }
 
 // appendMessage adds msg to history and refreshes the viewport.
-func (m *Model) appendMessage(msg domain.OverseerMessage) {
+func (m *Model) appendMessage(msg domain.MateMessage) {
 	m.history = append(m.history, msg)
 	m.rendered = append(m.rendered, m.renderBody(msg))
 	m.refreshViewport()
@@ -235,8 +235,8 @@ func (m *Model) appendMessage(msg domain.OverseerMessage) {
 // renderBody converts one message's content to styled text. Agent and user prose
 // goes through markdown; system notices stay literal, because they are Skipper's
 // own one-line notes and markdown would only mangle paths and errors in them.
-func (m Model) renderBody(msg domain.OverseerMessage) string {
-	if msg.Role == domain.OverseerRoleSystem {
+func (m Model) renderBody(msg domain.MateMessage) string {
+	if msg.Role == domain.MateRoleSystem {
 		return m.styles.Chat.SystemText.Render("  ○ " + msg.Content)
 	}
 	return m.markdown.Render(msg.Content)
@@ -266,15 +266,15 @@ func (m *Model) refreshViewport() {
 		}
 
 		switch msg.Role {
-		case domain.OverseerRoleUser:
+		case domain.MateRoleUser:
 			b.WriteString(s.Chat.UserLabel.Render("You"))
 			b.WriteByte('\n')
 			b.WriteString(body)
-		case domain.OverseerRoleAgent:
+		case domain.MateRoleAgent:
 			b.WriteString(s.Chat.AgentLabel.Render("Agent"))
 			b.WriteByte('\n')
 			b.WriteString(body)
-		case domain.OverseerRoleSystem:
+		case domain.MateRoleSystem:
 			b.WriteString(body)
 		}
 		b.WriteByte('\n')
@@ -311,28 +311,28 @@ func (m Model) submit() (tea.Model, tea.Cmd) {
 
 	if strings.HasPrefix(text, "/") {
 		// Operator mode: emit the raw command; dashboard parses and executes.
-		m.appendMessage(domain.OverseerMessage{
-			Role:      domain.OverseerRoleUser,
+		m.appendMessage(domain.MateMessage{
+			Role:      domain.MateRoleUser,
 			Content:   text,
 			Timestamp: time.Now(),
 		})
 		m.thinking = true
 		return m, tea.Batch(
 			m.spinner.Tick,
-			shared.Emit(shared.OverseerCommandMsg{Raw: text}),
+			shared.Emit(shared.MateCommandMsg{Raw: text}),
 		)
 	}
 
 	// Agent mode: existing LLM flow.
-	m.appendMessage(domain.OverseerMessage{
-		Role:      domain.OverseerRoleUser,
+	m.appendMessage(domain.MateMessage{
+		Role:      domain.MateRoleUser,
 		Content:   text,
 		Timestamp: time.Now(),
 	})
 	m.thinking = true
 	return m, tea.Batch(
 		m.spinner.Tick,
-		shared.Emit(shared.OverseerSubmitMsg{UserMessage: text}),
+		shared.Emit(shared.MateSubmitMsg{UserMessage: text}),
 	)
 }
 

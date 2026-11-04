@@ -29,7 +29,7 @@ func TestParseResponse(t *testing.T) {
 		raw        string
 		wantText   string
 		wantAction bool
-		wantType   domain.OverseerActionType
+		wantType   domain.MateActionType
 	}{
 		{
 			name:       "no action block — plain text reply",
@@ -44,7 +44,7 @@ func TestParseResponse(t *testing.T) {
 				"\n</action>",
 			wantText:   "I'll send the prompt.",
 			wantAction: true,
-			wantType:   domain.OverseerActionSendPrompt,
+			wantType:   domain.MateActionSendPrompt,
 		},
 		{
 			name:       "action fence with malformed JSON — fallback to text-only",

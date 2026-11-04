@@ -160,11 +160,11 @@ func TestBoardView_ResizeRerendersEveryBodyAtTheNewWidth(t *testing.T) {
 }
 
 func TestBoardView_SystemNoticesAreNotMarkdownRendered(t *testing.T) {
-	// Overseer's own notices carry paths and errors that markdown would reflow.
+	// Skipper's own notices carry paths and errors that markdown would reflow.
 	board := boardWithSession(t, 3)
 	postToBoard(t, board, domain.SwarmMessage{
 		Seq:       1,
-		Author:    "overseer",
+		Author:    "skipper",
 		Role:      domain.SwarmRoleSystem,
 		Content:   "board capped at 500 messages",
 		CreatedAt: time.Date(2026, 8, 19, 9, 30, 0, 0, time.UTC),

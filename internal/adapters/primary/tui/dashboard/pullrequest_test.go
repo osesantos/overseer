@@ -141,7 +141,7 @@ func TestDashboard_PRCommand_WithoutAPR_ReportsAnError(t *testing.T) {
 	if m.page != pageSessions || cmd == nil {
 		t.Fatalf("page = %v, cmd nil = %v; want to stay on sessions with a result", m.page, cmd == nil)
 	}
-	if res, ok := cmd().(shared.OverseerCommandResultMsg); !ok || !res.IsError {
+	if res, ok := cmd().(shared.MateCommandResultMsg); !ok || !res.IsError {
 		t.Fatalf("result = %#v, want an error result", cmd())
 	}
 }

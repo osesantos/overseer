@@ -17,7 +17,7 @@ import (
 	"github.com/osesantos/skipper/internal/core/domain"
 )
 
-var _ domain.OverseerAgentPort = (*Adapter)(nil)
+var _ domain.MateAgentPort = (*Adapter)(nil)
 
 // actionFence matches a <action>…</action> block in Claude's response. The
 // inner content is expected to be a JSON object. We use a non-greedy match so
@@ -34,38 +34,38 @@ type rawAction struct {
 }
 
 // Adapter invokes `claude -p` as a non-interactive subprocess and returns a
-// structured OverseerResponse. The adapter is stateless — each Chat call is a
+// structured MateResponse. The adapter is stateless — each Chat call is a
 // fresh subprocess invocation.
 type Adapter struct {
 	claudeBin string
 	logger    *slog.Logger
 }
 
-// New constructs an Adapter. Returns ErrOverseerAgentNotFound when the
+// New constructs an Adapter. Returns ErrMateAgentNotFound when the
 // `claude` binary cannot be located on PATH.
 func New(logger *slog.Logger) (*Adapter, error) {
 	path, err := exec.LookPath("claude")
 	if err != nil {
-		return nil, fmt.Errorf("%w: %w", domain.ErrOverseerAgentNotFound, err)
+		return nil, fmt.Errorf("%w: %w", domain.ErrMateAgentNotFound, err)
 	}
 	return &Adapter{claudeBin: path, logger: logger}, nil
 }
 
 // Chat builds a system-enriched prompt, invokes `claude -p`, parses the
-// response text, and returns an OverseerResponse. The <action>…</action>
+// response text, and returns an MateResponse. The <action>…</action>
 // fence is stripped from Text before it is returned so the chat history shows
 // only the human-readable portion.
-func (a *Adapter) Chat(ctx context.Context, userMsg string, sessions []domain.OverseerSessionContext) (domain.OverseerResponse, error) {
+func (a *Adapter) Chat(ctx context.Context, userMsg string, sessions []domain.MateSessionContext) (domain.MateResponse, error) {
 	prompt := buildPrompt(userMsg, sessions)
 
-	a.logger.Debug("overseer: invoking claude", slog.Int("prompt_len", len(prompt)))
+	a.logger.Debug("mate: invoking claude", slog.Int("prompt_len", len(prompt)))
 
 	raw, err := a.run(ctx, prompt)
 	if err != nil {
-		return domain.OverseerResponse{}, err
+		return domain.MateResponse{}, err
 	}
 
-	a.logger.Debug("overseer: claude replied", slog.Int("response_len", len(raw)))
+	a.logger.Debug("mate: claude replied", slog.Int("response_len", len(raw)))
 	return parseResponse(raw)
 }
 
@@ -86,18 +86,18 @@ func (a *Adapter) run(ctx context.Context, prompt string) (string, error) {
 		var exitErr *exec.ExitError
 		if errors.As(err, &exitErr) {
 			return "", fmt.Errorf("%w: exit %d: %s",
-				domain.ErrOverseerAgentFailed, exitErr.ExitCode(), strings.TrimSpace(stderr.String()))
+				domain.ErrMateAgentFailed, exitErr.ExitCode(), strings.TrimSpace(stderr.String()))
 		}
-		return "", fmt.Errorf("%w: %w", domain.ErrOverseerAgentFailed, err)
+		return "", fmt.Errorf("%w: %w", domain.ErrMateAgentFailed, err)
 	}
 	return stdout.String(), nil
 }
 
 // buildPrompt assembles the full text sent to `claude -p` for Chat calls.
-func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) string {
+func buildPrompt(userMsg string, sessions []domain.MateSessionContext) string {
 	var b strings.Builder
 
-	b.WriteString("You are the Overseer Agent, a meta-agent managing AI coding sessions.\n")
+	b.WriteString("You are the First Mate, a meta-agent managing AI coding sessions in Skipper.\n")
 	b.WriteString("You can read session output and send prompts to sessions.\n\n")
 
 	b.WriteString("=== Current Sessions ===\n")
@@ -137,11 +137,11 @@ func buildPrompt(userMsg string, sessions []domain.OverseerSessionContext) strin
 // parseResponse extracts the human-readable text and optional action from
 // Claude's raw stdout. The <action>…</action> block (if any) is stripped from
 // the returned Text.
-func parseResponse(raw string) (domain.OverseerResponse, error) {
+func parseResponse(raw string) (domain.MateResponse, error) {
 	match := actionFence.FindStringSubmatchIndex(raw)
 	if match == nil {
 		// No action block — plain text reply.
-		return domain.OverseerResponse{Text: strings.TrimSpace(raw)}, nil
+		return domain.MateResponse{Text: strings.TrimSpace(raw)}, nil
 	}
 
 	// Extract JSON between the fences.
@@ -153,18 +153,18 @@ func parseResponse(raw string) (domain.OverseerResponse, error) {
 		// Malformed JSON: surface the reply text without an action rather
 		// than dropping the entire response.
 		textOnly := actionFence.ReplaceAllString(raw, "")
-		return domain.OverseerResponse{Text: strings.TrimSpace(textOnly)}, nil
+		return domain.MateResponse{Text: strings.TrimSpace(textOnly)}, nil
 	}
 
 	sessionID, err := uuid.Parse(ra.SessionID)
 	if err != nil {
 		// Unparseable UUID: same fallback — show text, drop action.
 		textOnly := actionFence.ReplaceAllString(raw, "")
-		return domain.OverseerResponse{Text: strings.TrimSpace(textOnly)}, nil
+		return domain.MateResponse{Text: strings.TrimSpace(textOnly)}, nil
 	}
 
-	action := &domain.OverseerAction{
-		Type:        domain.OverseerActionType(ra.Type),
+	action := &domain.MateAction{
+		Type:        domain.MateActionType(ra.Type),
 		SessionID:   sessionID,
 		SessionName: ra.SessionName,
 		Project:     ra.Project,
@@ -174,6 +174,6 @@ func parseResponse(raw string) (domain.OverseerResponse, error) {
 	// Strip the action block from the display text.
 	text := strings.TrimSpace(actionFence.ReplaceAllString(raw, ""))
 
-	return domain.OverseerResponse{Text: text, Action: action}, nil
+	return domain.MateResponse{Text: text, Action: action}, nil
 }
 

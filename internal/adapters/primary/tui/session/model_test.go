@@ -23,13 +23,13 @@ import (
 )
 
 func TestModel_SessionsLoadedRendersProjectTree(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
-	beta := testutil.MakeSession("beta", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
+	beta := testutil.MakeSession("beta", skipperID)
 
 	updated, cmd := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
@@ -44,7 +44,7 @@ func TestModel_SessionsLoadedRendersProjectTree(t *testing.T) {
 		t.Fatalf("initial SessionSelectedMsg.Session.ID = %v, want %v", msg.Session.ID, alpha.ID)
 	}
 	view := updated.(Model).View().Content
-	for _, want := range []string{"▼ overseer", "alpha", "beta"} {
+	for _, want := range []string{"▼ skipper", "alpha", "beta"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() missing %q: %q", want, view)
 		}
@@ -126,19 +126,19 @@ func TestModel_NoDividerWithoutReviewSessions(t *testing.T) {
 }
 
 func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	otherID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer", otherID: "other"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper", otherID: "other"})
 	model.groupingMode = sessionGroupingNone
 	model.SetSize(80, 20)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	beta := testutil.MakeSession("beta", otherID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
 	view := updated.(Model).View().Content
-	if strings.Contains(view, "▼ overseer") || strings.Contains(view, "▼ other") {
+	if strings.Contains(view, "▼ skipper") || strings.Contains(view, "▼ other") {
 		t.Fatalf("View() rendered virtual group rows in raw mode: %q", view)
 	}
 	for _, want := range []string{"alpha", "beta"} {
@@ -149,11 +149,11 @@ func TestModel_RawGroupingModeRendersSessionsWithoutVirtualRows(t *testing.T) {
 }
 
 func TestModel_SelectionEmitsClearedWhenCursorLandsOnGroup(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 
 	updated, cmd := updated.(Model).Update(keyPress("k"))
@@ -194,12 +194,12 @@ func TestModel_LoadSessionsUsesRawSessions(t *testing.T) {
 }
 
 func TestModel_GroupRowRendersDifferentlyWhenCursorMovesToIt(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	viewSessionFocused := updated.(Model).View().Content
@@ -213,12 +213,12 @@ func TestModel_GroupRowRendersDifferentlyWhenCursorMovesToIt(t *testing.T) {
 }
 
 func TestModel_RenderHasNoNumberPrefix(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 
@@ -229,13 +229,13 @@ func TestModel_RenderHasNoNumberPrefix(t *testing.T) {
 }
 
 func TestModel_NextGroupJumpsToNextProject(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	otherID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer", otherID: "other"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper", otherID: "other"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	beta := testutil.MakeSession("beta", otherID)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 	updated = navigateToTop(t, updated)
@@ -243,39 +243,39 @@ func TestModel_NextGroupJumpsToNextProject(t *testing.T) {
 	updated, _ = updated.(Model).Update(keyPress("g"))
 
 	got := updated.(Model).tree.SelectedID()
-	if got != "project:"+overseerID.String() {
-		t.Fatalf("SelectedID after 'g' = %q, want overseer group id", got)
+	if got != "project:"+skipperID.String() {
+		t.Fatalf("SelectedID after 'g' = %q, want skipper group id", got)
 	}
 }
 
 func TestModel_PrevGroupJumpsToPreviousProject(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	otherID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer", otherID: "other"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper", otherID: "other"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	beta := testutil.MakeSession("beta", otherID)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
 	updated, _ = updated.(Model).Update(keyPress("G"))
 
 	got := updated.(Model).tree.SelectedID()
-	if got != "project:"+overseerID.String() {
-		t.Fatalf("SelectedID after 'G' from alpha = %q, want overseer group id", got)
+	if got != "project:"+skipperID.String() {
+		t.Fatalf("SelectedID after 'G' from alpha = %q, want skipper group id", got)
 	}
 }
 
 func TestModel_CtrlDownMovesCursorFiveRows(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
 	sessions := make([]domain.Session, 0, 10)
 	for i := 0; i < 10; i++ {
-		sessions = append(sessions, testutil.MakeSession("session-"+string(rune('a'+i)), overseerID))
+		sessions = append(sessions, testutil.MakeSession("session-"+string(rune('a'+i)), skipperID))
 	}
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: sessions})
 
@@ -295,13 +295,13 @@ func TestModel_CtrlDownMovesCursorFiveRows(t *testing.T) {
 }
 
 func TestModel_CtrlUpMovesCursorFiveRowsClampedAtTop(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
-	beta := testutil.MakeSession("beta", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
+	beta := testutil.MakeSession("beta", skipperID)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
 	updated, _ = updated.(Model).Update(tea.KeyPressMsg{Code: tea.KeyUp, Mod: tea.ModCtrl})
@@ -313,17 +313,17 @@ func TestModel_CtrlUpMovesCursorFiveRowsClampedAtTop(t *testing.T) {
 }
 
 func TestModel_ShiftDownReordersSelectedSession(t *testing.T) {
-	overseerID := uuid.New()
-	alpha := testutil.MakeSession("alpha", overseerID)
+	skipperID := uuid.New()
+	alpha := testutil.MakeSession("alpha", skipperID)
 	alpha.Order = 1
-	beta := testutil.MakeSession("beta", overseerID)
+	beta := testutil.MakeSession("beta", skipperID)
 	beta.Order = 2
 	svc, repo := newSessionServiceWithRepo(t)
 	repo.EXPECT().Get(mock.Anything, alpha.ID).Return(alpha, nil).Once()
 	repo.EXPECT().List(mock.Anything).Return([]domain.Session{alpha, beta}, nil).Twice()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Twice()
 	model := New(styles.New(), svc, domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
@@ -346,10 +346,10 @@ func TestModel_ShiftDownReordersSelectedSession(t *testing.T) {
 }
 
 func TestModel_ShiftDownNoOpOnGroupRow(t *testing.T) {
-	overseerID := uuid.New()
-	alpha := testutil.MakeSession("alpha", overseerID)
+	skipperID := uuid.New()
+	alpha := testutil.MakeSession("alpha", skipperID)
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
@@ -363,13 +363,13 @@ func TestModel_ShiftDownNoOpOnGroupRow(t *testing.T) {
 }
 
 func TestModel_SessionReorderedMsgRestoresCursorOnMovedSession(t *testing.T) {
-	overseerID := uuid.New()
-	alpha := testutil.MakeSession("alpha", overseerID)
+	skipperID := uuid.New()
+	alpha := testutil.MakeSession("alpha", skipperID)
 	alpha.Order = 1
-	beta := testutil.MakeSession("beta", overseerID)
+	beta := testutil.MakeSession("beta", skipperID)
 	beta.Order = 2
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
@@ -400,12 +400,12 @@ func navigateToTop(t *testing.T, m tea.Model) tea.Model {
 }
 
 func TestModel_DKeyEmitsDeleteRequestedForSelectedSession(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	_, cmd := updated.(Model).Update(keyPress("d"))
@@ -426,12 +426,12 @@ func TestModel_DKeyEmitsDeleteRequestedForSelectedSession(t *testing.T) {
 }
 
 func TestModel_DKeyWithGroupNodeSelected_NoOp(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	updated, _ = updated.(Model).Update(keyPress("k"))
@@ -463,12 +463,12 @@ func TestModel_SessionDeletedMsg_TriggersReload(t *testing.T) {
 }
 
 func TestModel_RKeyEmitsSessionRenameRequestedForSelectedSession(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	_, cmd := updated.(Model).Update(keyPress("r"))
@@ -489,12 +489,12 @@ func TestModel_RKeyEmitsSessionRenameRequestedForSelectedSession(t *testing.T) {
 }
 
 func TestModel_RKeyEmitsProjectRenameRequestedForSelectedGroup(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	updated, _ = updated.(Model).Update(keyPress("k"))
@@ -507,11 +507,11 @@ func TestModel_RKeyEmitsProjectRenameRequestedForSelectedGroup(t *testing.T) {
 	if !ok {
 		t.Fatalf("Update(R) msg type = %T, want shared.ProjectRenameRequestedMsg", cmd())
 	}
-	if msg.ProjectID != overseerID {
-		t.Fatalf("ProjectRenameRequestedMsg.ProjectID = %v, want %v", msg.ProjectID, overseerID)
+	if msg.ProjectID != skipperID {
+		t.Fatalf("ProjectRenameRequestedMsg.ProjectID = %v, want %v", msg.ProjectID, skipperID)
 	}
-	if msg.CurrentName != "overseer" {
-		t.Fatalf("ProjectRenameRequestedMsg.CurrentName = %q, want %q", msg.CurrentName, "overseer")
+	if msg.CurrentName != "skipper" {
+		t.Fatalf("ProjectRenameRequestedMsg.CurrentName = %q, want %q", msg.CurrentName, "skipper")
 	}
 }
 
@@ -552,14 +552,14 @@ func keyPress(value string) tea.KeyPressMsg {
 }
 
 func TestModel_View_RendersUpdatedAtDurationRightAlignedOnEachSessionRow(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	alpha.UpdatedAt = time.Now().Add(-3 * time.Hour)
-	beta := testutil.MakeSession("beta", overseerID)
+	beta := testutil.MakeSession("beta", skipperID)
 	beta.UpdatedAt = time.Now().Add(-2 * 24 * time.Hour)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
@@ -584,18 +584,18 @@ func TestModel_View_RendersUpdatedAtDurationRightAlignedOnEachSessionRow(t *test
 }
 
 func TestModel_View_DoesNotRenderDurationOnGroupRows(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.New(), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	alpha.UpdatedAt = time.Now().Add(-3 * time.Hour)
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 
 	view := ansi.Strip(updated.(Model).View().Content)
-	groupRow := findRow(t, view, "overseer")
+	groupRow := findRow(t, view, "skipper")
 
 	if strings.Contains(groupRow, "3h") {
 		t.Errorf("group row should not carry a per-session duration label, got: %q", groupRow)
@@ -619,12 +619,12 @@ func rowSuffixIs(row, suffix string) bool {
 }
 
 func TestModel_RendersUnknownStatusGlyphBeforeAgentStatusesArrive(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.NewWithTheme("dark", true), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSessionWithWorktree("alpha", overseerID, "/tmp/wt", "branch")
+	alpha := testutil.MakeSessionWithWorktree("alpha", skipperID, "/tmp/wt", "branch")
 
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 
@@ -636,17 +636,17 @@ func TestModel_RendersUnknownStatusGlyphBeforeAgentStatusesArrive(t *testing.T) 
 }
 
 func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.NewWithTheme("dark", true), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	running := testutil.MakeSessionWithWorktree("running-sess", overseerID, "/tmp/wt-a", "branch-a")
-	waiting := testutil.MakeSessionWithWorktree("waiting-sess", overseerID, "/tmp/wt-b", "branch-b")
-	dead := testutil.MakeSessionWithWorktree("dead-sess", overseerID, "/tmp/wt-c", "branch-c")
-	idle := testutil.MakeSessionWithWorktree("idle-sess", overseerID, "/tmp/wt-d", "branch-d")
-	publish := testutil.MakeSessionWithWorktree("publish-sess", overseerID, "/tmp/wt-f", "branch-f")
-	approved := testutil.MakeSessionWithWorktree("approved-sess", overseerID, "/tmp/wt-g", "branch-g")
+	running := testutil.MakeSessionWithWorktree("running-sess", skipperID, "/tmp/wt-a", "branch-a")
+	waiting := testutil.MakeSessionWithWorktree("waiting-sess", skipperID, "/tmp/wt-b", "branch-b")
+	dead := testutil.MakeSessionWithWorktree("dead-sess", skipperID, "/tmp/wt-c", "branch-c")
+	idle := testutil.MakeSessionWithWorktree("idle-sess", skipperID, "/tmp/wt-d", "branch-d")
+	publish := testutil.MakeSessionWithWorktree("publish-sess", skipperID, "/tmp/wt-f", "branch-f")
+	approved := testutil.MakeSessionWithWorktree("approved-sess", skipperID, "/tmp/wt-g", "branch-g")
 	sessions := []domain.Session{running, waiting, dead, idle, publish, approved}
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: sessions})
 	statuses := map[uuid.UUID]domain.AgentStatus{
@@ -681,12 +681,12 @@ func TestModel_AgentStatusesUpdatedMsg_RendersStatusGlyphPerSession(t *testing.T
 }
 
 func TestModel_AgentStatusesUpdatedMsg_KeepsLabelBadgeIntact(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.NewWithTheme("dark", true), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSessionWithWorktree("alpha", overseerID, "/tmp/wt", "branch")
+	alpha := testutil.MakeSessionWithWorktree("alpha", skipperID, "/tmp/wt", "branch")
 	alpha.Label = "WIP"
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{
@@ -704,13 +704,13 @@ func TestModel_AgentStatusesUpdatedMsg_KeepsLabelBadgeIntact(t *testing.T) {
 }
 
 func TestModel_AgentStatusesUpdatedMsg_DropsUnknownGlyphForMissingStatus(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.NewWithTheme("dark", true), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSessionWithWorktree("alpha", overseerID, "/tmp/wt-a", "branch-a")
-	beta := testutil.MakeSessionWithWorktree("beta", overseerID, "/tmp/wt-b", "branch-b")
+	alpha := testutil.MakeSessionWithWorktree("alpha", skipperID, "/tmp/wt-a", "branch-a")
+	beta := testutil.MakeSessionWithWorktree("beta", skipperID, "/tmp/wt-b", "branch-b")
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha, beta}})
 
 	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{
@@ -725,12 +725,12 @@ func TestModel_AgentStatusesUpdatedMsg_DropsUnknownGlyphForMissingStatus(t *test
 }
 
 func TestModel_AgentStatusesUpdatedMsg_ErrorIsIgnored(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.NewWithTheme("dark", true), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	alpha := testutil.MakeSession("alpha", overseerID)
+	alpha := testutil.MakeSession("alpha", skipperID)
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{alpha}})
 	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{
 		Statuses: map[uuid.UUID]domain.AgentStatus{alpha.ID: {Kind: domain.AgentStatusRunning}},
@@ -755,13 +755,13 @@ type errPlaceholder string
 func (e errPlaceholder) Error() string { return string(e) }
 
 func TestModel_AgentStatusesUpdatedMsg_SelectionWinsOverStatusTint(t *testing.T) {
-	overseerID := uuid.New()
+	skipperID := uuid.New()
 	model := New(styles.NewWithTheme("dark", true), newSessionService(t), domain.DefaultLabels)
-	model.SetProjectNames(map[uuid.UUID]string{overseerID: "overseer"})
+	model.SetProjectNames(map[uuid.UUID]string{skipperID: "skipper"})
 	model.SetSize(80, 20)
 	model.SetFocus(true)
-	running := testutil.MakeSessionWithWorktree("running-sess", overseerID, "/tmp/wt-a", "branch-a")
-	other := testutil.MakeSessionWithWorktree("other-sess", overseerID, "/tmp/wt-b", "branch-b")
+	running := testutil.MakeSessionWithWorktree("running-sess", skipperID, "/tmp/wt-a", "branch-a")
+	other := testutil.MakeSessionWithWorktree("other-sess", skipperID, "/tmp/wt-b", "branch-b")
 	updated, _ := model.Update(shared.SessionsLoadedMsg{Sessions: []domain.Session{running, other}})
 	updated, _ = updated.(Model).Update(shared.AgentStatusesUpdatedMsg{
 		Statuses: map[uuid.UUID]domain.AgentStatus{

@@ -28,7 +28,7 @@ func discardLogger() *slog.Logger {
 
 func uniqueSessionName(t *testing.T) string {
 	t.Helper()
-	return fmt.Sprintf("overseer-it-%s-%s", t.Name(), uuid.NewString()[:8])
+	return fmt.Sprintf("skipper-it-%s-%s", t.Name(), uuid.NewString()[:8])
 }
 
 func newAdapter(t *testing.T) *tmux.Adapter {
@@ -186,7 +186,7 @@ func TestIntegration_Adapter_CapturePane_ReturnsContent(t *testing.T) {
 	a := newAdapter(t)
 	ctx := context.Background()
 	name := uniqueSessionName(t)
-	marker := "overseer-capture-pane-marker-" + uuid.NewString()[:8]
+	marker := "skipper-capture-pane-marker-" + uuid.NewString()[:8]
 
 	startCmd := fmt.Sprintf("sh -c 'echo %s; tail -f /dev/null'", marker)
 	tmuxID, err := a.CreateSession(ctx, name, "", startCmd)

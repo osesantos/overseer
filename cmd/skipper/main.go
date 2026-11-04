@@ -141,13 +141,13 @@ func main() {
 		}()
 	}
 
-	// Overseer Agent (optional: gracefully disabled when claude is not on PATH).
-	var overseerSvc *service.OverseerService
+	// First Mate (optional: gracefully disabled when claude is not on PATH).
+	var mateSvc *service.MateService
 	claudeAgent, err := claudeadapter.New(log)
 	if err != nil {
-		log.Warn("overseer agent disabled: claude binary not found", "error", err)
+		log.Warn("first mate disabled: claude binary not found", "error", err)
 	} else {
-		overseerSvc = service.NewOverseerService(claudeAgent, log)
+		mateSvc = service.NewMateService(claudeAgent, log)
 	}
 
 	agentStatusRegistry := agentstatusregistry.New()
@@ -182,7 +182,7 @@ func main() {
 	}
 
 	s := styles.NewWithTheme(cfg.Theme, cfg.DisableEmoji)
-	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, *issueSvc, overseerSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, dashboard.ReviewOptions{
+	dash := dashboard.New(s, *sessionSvc, *projectSvc, *prSvc, *issueSvc, mateSvc, swarmSvc, scheduler, launchers, labels, cfg.Dashboard.MinWidth, cfg.Dashboard.MinHeight, previewRefresh, discoveryPaths, boardURL, cfg.Swarm.MaxAgents, dashboard.ReviewOptions{
 		Command:    cfg.PullRequests.ReviewCommand,
 		AutoReview: autoReview.On,
 		MaxPerPoll: cfg.PullRequests.MaxPerPoll,

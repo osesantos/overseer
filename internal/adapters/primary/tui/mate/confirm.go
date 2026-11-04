@@ -1,4 +1,4 @@
-package overseer
+package mate
 
 import (
 	"strings"
@@ -19,17 +19,17 @@ var (
 	cancelKeyBinding  = key.NewBinding(key.WithKeys("n", "esc"), key.WithHelp("n/esc", "cancel"))
 )
 
-// ConfirmModel is the confirmation popup shown before the Overseer Agent
+// ConfirmModel is the confirmation popup shown before the First Mate
 // executes any action. It follows the same pattern as DeleteFormModel: it
 // holds no logic beyond presenting the action details and emitting the
 // appropriate message on key press.
 type ConfirmModel struct {
-	action domain.OverseerAction
+	action domain.MateAction
 	styles *styles.Styles
 }
 
 // NewConfirmModel constructs a ConfirmModel for the given action.
-func NewConfirmModel(s *styles.Styles, action domain.OverseerAction) ConfirmModel {
+func NewConfirmModel(s *styles.Styles, action domain.MateAction) ConfirmModel {
 	return ConfirmModel{action: action, styles: s}
 }
 
@@ -41,10 +41,10 @@ func (m ConfirmModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	if key.Matches(keyMsg, confirmKeyBinding) {
-		return m, shared.Emit(shared.OverseerConfirmActionMsg{Action: m.action})
+		return m, shared.Emit(shared.MateConfirmActionMsg{Action: m.action})
 	}
 	if key.Matches(keyMsg, cancelKeyBinding) {
-		return m, shared.Emit(shared.OverseerCancelActionMsg{})
+		return m, shared.Emit(shared.MateCancelActionMsg{})
 	}
 	return m, nil
 }
@@ -79,9 +79,9 @@ func (m ConfirmModel) View() tea.View {
 	return tea.NewView(components.Modal(s, b.String(), confirmPopupWidth, 0))
 }
 
-func actionTypeLabel(t domain.OverseerActionType) string {
+func actionTypeLabel(t domain.MateActionType) string {
 	switch t {
-	case domain.OverseerActionSendPrompt:
+	case domain.MateActionSendPrompt:
 		return "Send prompt"
 	default:
 		return string(t)

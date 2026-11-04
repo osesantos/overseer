@@ -73,7 +73,7 @@ func swarmDashboard(t *testing.T) Model {
 
 func TestDashboard_QDoesNotQuitWhileTypingInTheChat(t *testing.T) {
 	// Regression: the quit binding is "q" or ctrl+c, and it used to be matched
-	// before the chat branch — so typing "q" into the Overseer chat quit the app.
+	// before the chat branch — so typing "q" into the First Mate chat quit the app.
 	m := sizedDashboard(t)
 	m.chatPanelVisible = true
 

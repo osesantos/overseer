@@ -267,7 +267,7 @@ func TestBoard_Append_ResumesSeqAcrossInstances(t *testing.T) {
 		}
 	}
 
-	// A fresh Board (as after an Overseer restart) must read the existing board
+	// A fresh Board (as after a Skipper restart) must read the existing board
 	// rather than overwrite it, and continue the sequence where it left off.
 	second := swarmboard.New(resolver, discardLogger())
 

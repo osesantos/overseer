@@ -285,59 +285,59 @@ type ProjectDiscoveryCompletedMsg struct {
 	Err          error
 }
 
-// --- Overseer chat panel messages ---
+// --- First Mate chat panel messages ---
 
-// OverseerTogglePanelMsg is emitted when the user presses ctrl+o. The
+// MateTogglePanelMsg is emitted when the user presses ctrl+o. The
 // dashboard uses it to flip chatPanelVisible and resize child panels.
-type OverseerTogglePanelMsg struct{}
+type MateTogglePanelMsg struct{}
 
-// OverseerSubmitMsg is emitted by the chat panel when the user presses Enter.
+// MateSubmitMsg is emitted by the chat panel when the user presses Enter.
 // The dashboard receives it, attaches a live session context snapshot, and
-// fires the OverseerService.Chat command. Keeping the service call in the
+// fires the MateService.Chat command. Keeping the service call in the
 // dashboard ensures it always reads from the current cachedSessions rather
 // than from a stale closure captured at panel construction time.
-type OverseerSubmitMsg struct {
+type MateSubmitMsg struct {
 	UserMessage string
 }
 
-// OverseerChatResponseMsg carries the result of a completed Chat call from
-// the OverseerService. The overseer panel appends Text to history and, when
+// MateChatResponseMsg carries the result of a completed Chat call from
+// the MateService. The mate panel appends Text to history and, when
 // Action is non-nil, asks the dashboard to open the confirmation popup.
-type OverseerChatResponseMsg struct {
+type MateChatResponseMsg struct {
 	Text   string
-	Action *domain.OverseerAction
+	Action *domain.MateAction
 	Err    error
 }
 
-// OverseerConfirmActionMsg is emitted by the confirmation popup when the user
+// MateConfirmActionMsg is emitted by the confirmation popup when the user
 // presses y/Enter. The dashboard forwards it to the session service as a
 // SendAgentPrompt call.
-type OverseerConfirmActionMsg struct {
-	Action domain.OverseerAction
+type MateConfirmActionMsg struct {
+	Action domain.MateAction
 }
 
-// OverseerCancelActionMsg is emitted by the confirmation popup when the user
+// MateCancelActionMsg is emitted by the confirmation popup when the user
 // presses Esc/n. The dashboard closes the popup without sending anything.
-type OverseerCancelActionMsg struct{}
+type MateCancelActionMsg struct{}
 
-// OverseerPromptSentMsg is emitted after SendAgentPrompt completes. The
-// overseer panel uses it to append a system note to the chat history.
-type OverseerPromptSentMsg struct {
+// MatePromptSentMsg is emitted after SendAgentPrompt completes. The
+// mate panel uses it to append a system note to the chat history.
+type MatePromptSentMsg struct {
 	SessionName string
 	Err         error
 }
 
-// OverseerCommandMsg is emitted by the chat panel when the user submits a
+// MateCommandMsg is emitted by the chat panel when the user submits a
 // line that starts with '/'. The dashboard parses the raw text, resolves
 // session names against cachedSessions, and executes the command without
 // calling the LLM.
-type OverseerCommandMsg struct {
+type MateCommandMsg struct {
 	Raw string
 }
 
-// OverseerCommandResultMsg carries the outcome of an operator command back
+// MateCommandResultMsg carries the outcome of an operator command back
 // to the chat panel, which renders it as a dimmed system message.
-type OverseerCommandResultMsg struct {
+type MateCommandResultMsg struct {
 	Text    string
 	IsError bool
 }

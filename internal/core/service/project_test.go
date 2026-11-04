@@ -23,9 +23,9 @@ func newProjectMocks(t *testing.T) (*mocks.MockProjectRepository, *mocks.MockGit
 
 func TestProjectService_Register_HappyPath(t *testing.T) {
 	repo, git := newProjectMocks(t)
-	repo.EXPECT().GetByPath(mock.Anything, "/repo/overseer").
+	repo.EXPECT().GetByPath(mock.Anything, "/repo/skipper").
 		Return(domain.Project{}, domain.ErrProjectNotFound).Once()
-	git.EXPECT().IsGitRepo(mock.Anything, "/repo/overseer").Return(nil).Once()
+	git.EXPECT().IsGitRepo(mock.Anything, "/repo/skipper").Return(nil).Once()
 
 	var savedProject domain.Project
 	repo.EXPECT().Save(mock.Anything, mock.Anything).
@@ -33,19 +33,19 @@ func TestProjectService_Register_HappyPath(t *testing.T) {
 		Return(nil).Once()
 
 	svc := NewProjectService(repo, git, testLogger())
-	resp, err := svc.Register(context.Background(), RegisterProjectRequest{Path: "/repo/overseer", Name: "Overseer"})
+	resp, err := svc.Register(context.Background(), RegisterProjectRequest{Path: "/repo/skipper", Name: "Skipper"})
 
 	if err != nil {
 		t.Fatalf("Register() error = %v", err)
 	}
-	if resp.Project.Name != "Overseer" {
-		t.Fatalf("Register() Project.Name = %q, want %q", resp.Project.Name, "Overseer")
+	if resp.Project.Name != "Skipper" {
+		t.Fatalf("Register() Project.Name = %q, want %q", resp.Project.Name, "Skipper")
 	}
-	if resp.Project.Path != "/repo/overseer" {
-		t.Fatalf("Register() Project.Path = %q, want %q", resp.Project.Path, "/repo/overseer")
+	if resp.Project.Path != "/repo/skipper" {
+		t.Fatalf("Register() Project.Path = %q, want %q", resp.Project.Path, "/repo/skipper")
 	}
-	if savedProject.Name != "Overseer" {
-		t.Fatalf("Saved Project.Name = %q, want %q", savedProject.Name, "Overseer")
+	if savedProject.Name != "Skipper" {
+		t.Fatalf("Saved Project.Name = %q, want %q", savedProject.Name, "Skipper")
 	}
 }
 
@@ -105,13 +105,13 @@ func TestProjectService_Register_RejectsNonGitRepo(t *testing.T) {
 }
 
 func TestProjectService_Register_RejectsDuplicatePath(t *testing.T) {
-	existing := testutil.MakeProject("/repo/overseer", "OldName")
+	existing := testutil.MakeProject("/repo/skipper", "OldName")
 	repo, git := newProjectMocks(t)
-	repo.EXPECT().GetByPath(mock.Anything, "/repo/overseer").
+	repo.EXPECT().GetByPath(mock.Anything, "/repo/skipper").
 		Return(existing, nil).Once()
 
 	svc := NewProjectService(repo, git, testLogger())
-	_, err := svc.Register(context.Background(), RegisterProjectRequest{Path: "/repo/overseer", Name: "NewName"})
+	_, err := svc.Register(context.Background(), RegisterProjectRequest{Path: "/repo/skipper", Name: "NewName"})
 
 	if !errors.Is(err, domain.ErrProjectAlreadyExists) {
 		t.Fatalf("Register() error = %v, want %v", err, domain.ErrProjectAlreadyExists)
@@ -121,11 +121,11 @@ func TestProjectService_Register_RejectsDuplicatePath(t *testing.T) {
 func TestProjectService_Register_GetByPathInfrastructureError(t *testing.T) {
 	infraErr := errors.New("disk failed")
 	repo, git := newProjectMocks(t)
-	repo.EXPECT().GetByPath(mock.Anything, "/repo/overseer").
+	repo.EXPECT().GetByPath(mock.Anything, "/repo/skipper").
 		Return(domain.Project{}, infraErr).Once()
 
 	svc := NewProjectService(repo, git, testLogger())
-	_, err := svc.Register(context.Background(), RegisterProjectRequest{Path: "/repo/overseer", Name: ""})
+	_, err := svc.Register(context.Background(), RegisterProjectRequest{Path: "/repo/skipper", Name: ""})
 
 	if !errors.Is(err, infraErr) {
 		t.Fatalf("Register() error = %v, want wrapped %v", err, infraErr)
@@ -176,7 +176,7 @@ func TestProjectService_List_SortsByName(t *testing.T) {
 // --- Rename ---
 
 func TestProjectService_Rename_HappyPath(t *testing.T) {
-	original := testutil.MakeProject("/repo/overseer", "old")
+	original := testutil.MakeProject("/repo/skipper", "old")
 	repo, git := newProjectMocks(t)
 	repo.EXPECT().Get(mock.Anything, original.ID).Return(original, nil).Once()
 
@@ -206,7 +206,7 @@ func TestProjectService_Rename_HappyPath(t *testing.T) {
 }
 
 func TestProjectService_Rename_EmptyName(t *testing.T) {
-	original := testutil.MakeProject("/repo/overseer", "old")
+	original := testutil.MakeProject("/repo/skipper", "old")
 	repo, git := newProjectMocks(t)
 	repo.EXPECT().Get(mock.Anything, original.ID).Return(original, nil).Once()
 
@@ -233,7 +233,7 @@ func TestProjectService_Rename_NotFound(t *testing.T) {
 }
 
 func TestProjectService_Rename_UpdatedAtChanges(t *testing.T) {
-	original := testutil.MakeProject("/repo/overseer", "old")
+	original := testutil.MakeProject("/repo/skipper", "old")
 	original.UpdatedAt = time.Now().Add(-time.Minute)
 	beforeRename := original.UpdatedAt
 

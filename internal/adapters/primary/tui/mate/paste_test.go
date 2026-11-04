@@ -1,4 +1,4 @@
-package overseer
+package mate
 
 import (
 	"strings"

@@ -1,4 +1,4 @@
-package overseer
+package mate
 
 import "charm.land/bubbles/v2/key"
 

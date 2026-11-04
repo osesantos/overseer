@@ -16,7 +16,7 @@ import (
 )
 
 const (
-	overseerRequestTimeout = 60 * time.Second
+	mateRequestTimeout = 60 * time.Second
 	// pullRequestDetailsTimeout bounds the three gh calls behind the PR page;
 	// a large diff plus the conversation query can take a while on GitHub's side.
 	pullRequestDetailsTimeout = 60 * time.Second
@@ -79,10 +79,10 @@ func parseCommand(raw string) (name string, args []string) {
 	return name, args
 }
 
-// commandResult is a helper that emits an OverseerCommandResultMsg so the
+// commandResult is a helper that emits an MateCommandResultMsg so the
 // chat panel renders a dimmed system line. It also stops the spinner.
 func (m Model) commandResult(text string, isError bool) (tea.Model, tea.Cmd) {
-	return m, shared.Emit(shared.OverseerCommandResultMsg{Text: text, IsError: isError})
+	return m, shared.Emit(shared.MateCommandResultMsg{Text: text, IsError: isError})
 }
 
 // --- /enter ---
@@ -117,19 +117,19 @@ func (m Model) cmdEnter(args []string) (tea.Model, tea.Cmd) {
 		},
 		func(resp service.SendAgentEnterAllResponse, err error) tea.Msg {
 			if err != nil {
-				return shared.OverseerCommandResultMsg{
+				return shared.MateCommandResultMsg{
 					Text:    fmt.Sprintf("could not send enter to %s: %v", sessionName, err),
 					IsError: true,
 				}
 			}
 			if resp.Delivered < agentCount {
-				return shared.OverseerCommandResultMsg{
+				return shared.MateCommandResultMsg{
 					Text: fmt.Sprintf("sent enter to %d of %d agent panes in %s — the rest were unreachable",
 						resp.Delivered, agentCount, sessionName),
 					IsError: true,
 				}
 			}
-			return shared.OverseerCommandResultMsg{
+			return shared.MateCommandResultMsg{
 				Text: fmt.Sprintf("sent enter to %d agent pane(s) in %s", resp.Delivered, sessionName),
 			}
 		},
@@ -159,7 +159,7 @@ func (m Model) cmdSend(args []string) (tea.Model, tea.Cmd) {
 			})
 		},
 		func(_ service.SendAgentPromptResponse, err error) tea.Msg {
-			return shared.OverseerPromptSentMsg{SessionName: sessionName, Err: err}
+			return shared.MatePromptSentMsg{SessionName: sessionName, Err: err}
 		},
 	)
 }
@@ -254,7 +254,7 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 		"  /sessions                       — back to the sessions page",
 		"  /help                           — show this help",
 		"",
-		"Agent mode: type anything without a leading / to chat with the Overseer Agent.",
+		"Agent mode: type anything without a leading / to chat with the First Mate.",
 		"Press : anywhere to run the same commands from a one-line prompt.",
 	}, "\n")
 	return m.commandResult(help, false)

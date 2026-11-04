@@ -40,7 +40,7 @@ func newTestDashboard(t *testing.T) Model {
 		*projSvc,
 		*prSvc,
 		*service.NewIssueService(mocks.NewMockIssueTrackerPort(t), mocks.NewMockTriageSettingsRepository(t), slog.Default()),
-		nil, // overseerService — not needed for these tests
+		nil, // mateService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},
@@ -152,7 +152,7 @@ func newTestDashboardNoEmoji(t *testing.T) Model {
 		*projSvc,
 		*service.NewPullRequestService(mocks.NewMockPullRequestPort(t), mocks.NewMockReviewSettingsRepository(t), slog.Default()),
 		*service.NewIssueService(mocks.NewMockIssueTrackerPort(t), mocks.NewMockTriageSettingsRepository(t), slog.Default()),
-		nil, // overseerService — not needed for these tests
+		nil, // mateService — not needed for these tests
 		nil, // swarmService — not needed for these tests
 		jobs.Model{},
 		[]domain.Launcher{defaultLauncher},

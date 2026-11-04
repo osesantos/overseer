@@ -24,8 +24,8 @@ func seedRepo(t *testing.T) string {
 	dir := t.TempDir()
 	gitCommands := [][]string{
 		{"init", "-q", "-b", "main"},
-		{"config", "user.email", "test@overseer.local"},
-		{"config", "user.name", "Overseer Test"},
+		{"config", "user.email", "test@skipper.local"},
+		{"config", "user.name", "Skipper Test"},
 		{"commit", "--allow-empty", "-q", "-m", "init"},
 	}
 	for _, args := range gitCommands {
@@ -55,7 +55,7 @@ func TestAdapter_CreateWorktreeCreatesBranchedWorktree(t *testing.T) {
 	repo := seedRepo(t)
 	worktree := filepath.Join(t.TempDir(), "wt-alpha")
 
-	if err := a.CreateWorktree(context.Background(), repo, "main", "overseer/alpha", worktree); err != nil {
+	if err := a.CreateWorktree(context.Background(), repo, "main", "skipper/alpha", worktree); err != nil {
 		t.Fatalf("CreateWorktree() error = %v", err)
 	}
 
@@ -69,7 +69,7 @@ func TestAdapter_CreateWorktreeCreatesBranchedWorktree(t *testing.T) {
 	if err != nil {
 		t.Fatalf("git rev-parse HEAD in worktree: %v", err)
 	}
-	if got, want := string(head), "overseer/alpha\n"; got != want {
+	if got, want := string(head), "skipper/alpha\n"; got != want {
 		t.Fatalf("worktree HEAD = %q, want %q", got, want)
 	}
 }
@@ -82,7 +82,7 @@ func TestAdapter_CreateWorktreeFailsForMissingBaseBranch(t *testing.T) {
 	repo := seedRepo(t)
 	worktree := filepath.Join(t.TempDir(), "wt-alpha")
 
-	err = a.CreateWorktree(context.Background(), repo, "no-such-branch", "overseer/alpha", worktree)
+	err = a.CreateWorktree(context.Background(), repo, "no-such-branch", "skipper/alpha", worktree)
 	if err == nil {
 		t.Fatalf("CreateWorktree() error = nil, want non-nil for missing base branch")
 	}
@@ -96,7 +96,7 @@ func TestAdapter_RemoveWorktreeRemovesIt(t *testing.T) {
 	repo := seedRepo(t)
 	worktree := filepath.Join(t.TempDir(), "wt-alpha")
 
-	if err := a.CreateWorktree(context.Background(), repo, "main", "overseer/alpha", worktree); err != nil {
+	if err := a.CreateWorktree(context.Background(), repo, "main", "skipper/alpha", worktree); err != nil {
 		t.Fatalf("CreateWorktree() error = %v", err)
 	}
 	if err := a.RemoveWorktree(context.Background(), repo, worktree); err != nil {
@@ -180,8 +180,8 @@ func TestAdapter_GetDefaultBranchFallsBackToMaster(t *testing.T) {
 	dir := t.TempDir()
 	gitCommands := [][]string{
 		{"init", "-q", "-b", "master"},
-		{"config", "user.email", "test@overseer.local"},
-		{"config", "user.name", "Overseer Test"},
+		{"config", "user.email", "test@skipper.local"},
+		{"config", "user.name", "Skipper Test"},
 		{"commit", "--allow-empty", "-q", "-m", "init"},
 	}
 	for _, args := range gitCommands {
@@ -208,8 +208,8 @@ func TestAdapter_GetDefaultBranchReturnsSentinelWhenNothingResolves(t *testing.T
 	dir := t.TempDir()
 	gitCommands := [][]string{
 		{"init", "-q", "-b", "trunk"},
-		{"config", "user.email", "test@overseer.local"},
-		{"config", "user.name", "Overseer Test"},
+		{"config", "user.email", "test@skipper.local"},
+		{"config", "user.name", "Skipper Test"},
 		{"commit", "--allow-empty", "-q", "-m", "init"},
 	}
 	for _, args := range gitCommands {
@@ -234,8 +234,8 @@ func seedRepoWithRemote(t *testing.T) string {
 	repo := t.TempDir()
 	cmds := [][]string{
 		{"init", "-q", "-b", "main"},
-		{"config", "user.email", "test@overseer.local"},
-		{"config", "user.name", "Overseer Test"},
+		{"config", "user.email", "test@skipper.local"},
+		{"config", "user.name", "Skipper Test"},
 		{"commit", "--allow-empty", "-q", "-m", "init"},
 		{"remote", "add", "origin", upstream},
 		{"push", "-q", "origin", "main"},
@@ -266,8 +266,8 @@ func TestAdapter_PullBranch_WithRemote_FastForwards(t *testing.T) {
 	setupClone := func(dir string, remote string) {
 		cmds := [][]string{
 			{"init", "-q", "-b", "main"},
-			{"config", "user.email", "test@overseer.local"},
-			{"config", "user.name", "Overseer Test"},
+			{"config", "user.email", "test@skipper.local"},
+			{"config", "user.name", "Skipper Test"},
 			{"commit", "--allow-empty", "-q", "-m", "init"},
 			{"remote", "add", "origin", remote},
 			{"push", "-q", "origin", "main"},
@@ -286,8 +286,8 @@ func TestAdapter_PullBranch_WithRemote_FastForwards(t *testing.T) {
 	other := t.TempDir()
 	otherCmds := [][]string{
 		{"init", "-q", "-b", "main"},
-		{"config", "user.email", "test@overseer.local"},
-		{"config", "user.name", "Overseer Test"},
+		{"config", "user.email", "test@skipper.local"},
+		{"config", "user.name", "Skipper Test"},
 		{"remote", "add", "origin", upstream},
 		{"fetch", "-q", "origin"},
 		{"checkout", "-q", "-b", "main", "--track", "origin/main"},

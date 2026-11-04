@@ -158,8 +158,8 @@ func TestCreateForm_SwarmSize_RespectsAConfiguredCeiling(t *testing.T) {
 }
 
 func TestCreateForm_SubmitSwarmWithoutGoal_ShowsErrorAndDoesNotCreate(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	form := newSwarmCreateForm(t, []domain.Project{overseer}, overseer.ID)
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
+	form := newSwarmCreateForm(t, []domain.Project{skipper}, skipper.ID)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("hive"))
 	form = updated.(CreateFormModel)
@@ -175,15 +175,15 @@ func TestCreateForm_SubmitSwarmWithoutGoal_ShowsErrorAndDoesNotCreate(t *testing
 }
 
 func TestCreateForm_SubmitSwarm_PassesSizeAndCarriesTheGoal(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
 	svc, repo, projects, tmux, _ := newCreateFormSessionServiceWithMocks(t)
 
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	projects.EXPECT().Get(mock.Anything, skipper.ID).Return(skipper, nil).Once()
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), overseer.Path, "").
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), skipper.Path, "").
 		Return("tmux-shell", nil).Once()
 	for index := 1; index <= 3; index++ {
-		tmux.EXPECT().CreateSession(mock.Anything, testutil.SwarmAgentTmuxIDString(index), overseer.Path, "opencode").
+		tmux.EXPECT().CreateSession(mock.Anything, testutil.SwarmAgentTmuxIDString(index), skipper.Path, "opencode").
 			Return("tmux-agent", nil).Once()
 	}
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
@@ -191,7 +191,7 @@ func TestCreateForm_SubmitSwarm_PassesSizeAndCarriesTheGoal(t *testing.T) {
 
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
 	form := NewCreateForm(
-		styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID,
+		styles.New(), svc, projectsSvc, []domain.Project{skipper}, skipper.ID,
 		nil, nil, testLaunchers(t), 100, true, domain.SwarmMaxAgents,
 	)
 
@@ -224,21 +224,21 @@ func TestCreateForm_SubmitSwarm_PassesSizeAndCarriesTheGoal(t *testing.T) {
 }
 
 func TestCreateForm_SubmitNonSwarm_CarriesNoGoal(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
 	svc, repo, projects, tmux, _ := newCreateFormSessionServiceWithMocks(t)
 
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	projects.EXPECT().Get(mock.Anything, skipper.ID).Return(skipper, nil).Once()
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), overseer.Path, "").
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), skipper.Path, "").
 		Return("tmux-shell", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), overseer.Path, "opencode").
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), skipper.Path, "opencode").
 		Return("tmux-agent", nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
 	form := NewCreateForm(
-		styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID,
+		styles.New(), svc, projectsSvc, []domain.Project{skipper}, skipper.ID,
 		nil, nil, testLaunchers(t), 100, true, domain.SwarmMaxAgents,
 	)
 

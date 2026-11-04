@@ -164,14 +164,14 @@ func TestAssignWorktree_PopulatesPathAndBranch(t *testing.T) {
 	originalUpdated := s.UpdatedAt
 	time.Sleep(time.Millisecond)
 
-	if err := s.AssignWorktree("/abs/worktree", "overseer/alpha"); err != nil {
+	if err := s.AssignWorktree("/abs/worktree", "skipper/alpha"); err != nil {
 		t.Fatalf("AssignWorktree() error = %v", err)
 	}
 	if s.WorktreePath != "/abs/worktree" {
 		t.Fatalf("WorktreePath = %q, want %q", s.WorktreePath, "/abs/worktree")
 	}
-	if s.Branch != "overseer/alpha" {
-		t.Fatalf("Branch = %q, want %q", s.Branch, "overseer/alpha")
+	if s.Branch != "skipper/alpha" {
+		t.Fatalf("Branch = %q, want %q", s.Branch, "skipper/alpha")
 	}
 	if !s.HasWorktree() {
 		t.Fatalf("HasWorktree() = false, want true")
@@ -183,10 +183,10 @@ func TestAssignWorktree_PopulatesPathAndBranch(t *testing.T) {
 
 func TestAssignWorktree_TrimsFields(t *testing.T) {
 	s, _ := NewSession("alpha", uuid.New())
-	if err := s.AssignWorktree("  /abs/worktree  ", "  overseer/alpha  "); err != nil {
+	if err := s.AssignWorktree("  /abs/worktree  ", "  skipper/alpha  "); err != nil {
 		t.Fatalf("AssignWorktree() error = %v", err)
 	}
-	if s.WorktreePath != "/abs/worktree" || s.Branch != "overseer/alpha" {
+	if s.WorktreePath != "/abs/worktree" || s.Branch != "skipper/alpha" {
 		t.Fatalf("AssignWorktree did not trim fields: %+v", s)
 	}
 }
@@ -200,8 +200,8 @@ func TestAssignWorktree_Validation(t *testing.T) {
 	}{
 		{name: "both empty", worktreePath: "", branch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
 		{name: "path only", worktreePath: "/abs/worktree", branch: "", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "branch only", worktreePath: "", branch: "overseer/alpha", wantErr: ErrSessionWorktreeFieldsMismatch},
-		{name: "relative path", worktreePath: "relative/worktree", branch: "overseer/alpha", wantErr: ErrSessionWorktreePathNotAbsolute},
+		{name: "branch only", worktreePath: "", branch: "skipper/alpha", wantErr: ErrSessionWorktreeFieldsMismatch},
+		{name: "relative path", worktreePath: "relative/worktree", branch: "skipper/alpha", wantErr: ErrSessionWorktreePathNotAbsolute},
 	}
 
 	for _, tt := range tests {

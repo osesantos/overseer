@@ -89,17 +89,17 @@ func TestCreateForm_SpaceOnToggleSwitchesMode(t *testing.T) {
 }
 
 func TestCreateForm_SubmitProjectMode_SendsCreateWorktreeFalseAndNoBranch(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
 	svc, repo, projects, tmux, _ := newCreateFormSessionServiceWithMocks(t)
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	projects.EXPECT().Get(mock.Anything, skipper.ID).Return(skipper, nil).Once()
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), overseer.Path, "").Return("tmux-alpha", nil).Once()
-	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), overseer.Path, "opencode").Return("tmux-alpha-agent", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), skipper.Path, "").Return("tmux-alpha", nil).Once()
+	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), skipper.Path, "opencode").Return("tmux-alpha-agent", nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 	projects.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
 
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, nil, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{skipper}, skipper.ID, nil, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	form = updated.(CreateFormModel)
@@ -123,12 +123,12 @@ func TestCreateForm_SubmitProjectMode_SendsCreateWorktreeFalseAndNoBranch(t *tes
 }
 
 func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
 	svc, repo, projects, tmux, git := newCreateFormSessionServiceWithMocks(t)
-	projects.EXPECT().Get(mock.Anything, overseer.ID).Return(overseer, nil).Once()
+	projects.EXPECT().Get(mock.Anything, skipper.ID).Return(skipper, nil).Once()
 	repo.EXPECT().List(mock.Anything).Return(nil, nil).Once()
-	git.EXPECT().PullBranch(mock.Anything, overseer.Path, "feat/foo").Return(nil).Once()
-	git.EXPECT().CreateWorktree(mock.Anything, overseer.Path, "feat/foo", mock.Anything, mock.Anything).Return(nil).Once()
+	git.EXPECT().PullBranch(mock.Anything, skipper.Path, "feat/foo").Return(nil).Once()
+	git.EXPECT().CreateWorktree(mock.Anything, skipper.Path, "feat/foo", mock.Anything, mock.Anything).Return(nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.UUIDString(), mock.Anything, "").Return("tmux-alpha", nil).Once()
 	tmux.EXPECT().CreateSession(mock.Anything, testutil.AgentTmuxIDString(), mock.Anything, "opencode").Return("tmux-alpha-agent", nil).Once()
 	repo.EXPECT().Save(mock.Anything, mock.Anything).Return(nil).Once()
@@ -136,12 +136,12 @@ func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
 
 	projectsSvc, _ := newProjectsServiceWithMocks(t)
 	branches := map[uuid.UUID][]domain.BranchInfo{
-		overseer.ID: {
+		skipper.ID: {
 			{Name: "feat/foo", Scope: domain.BranchScopeLocal},
 			{Name: "main", Scope: domain.BranchScopeLocal},
 		},
 	}
-	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{overseer}, overseer.ID, branches, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
+	form := NewCreateForm(styles.New(), svc, projectsSvc, []domain.Project{skipper}, skipper.ID, branches, nil, testLaunchers(t), 100, false, domain.SwarmMaxAgents)
 
 	updated, _ := tea.Model(form).Update(formKeyPress("alpha"))
 	_, cmd := tea.Model(updated.(CreateFormModel)).Update(formKeyPress("enter"))
@@ -158,8 +158,8 @@ func TestCreateForm_SubmitWorktreeMode_PassesPickedBaseBranch(t *testing.T) {
 }
 
 func TestCreateForm_SubmitWithoutNameShowsError(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	form := newCreateFormForTest(t, []domain.Project{overseer})
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
+	form := newCreateFormForTest(t, []domain.Project{skipper})
 
 	_, cmd := tea.Model(form).Update(formKeyPress("enter"))
 
@@ -180,14 +180,14 @@ func TestCreateForm_SubmitWithoutRepoShowsError(t *testing.T) {
 }
 
 func TestCreateForm_BranchesLoadedMsg_UpdatesPickerForActiveProject(t *testing.T) {
-	overseer := testutil.MakeProject("/repo/overseer", "Overseer")
-	form := newCreateFormForTest(t, []domain.Project{overseer})
+	skipper := testutil.MakeProject("/repo/skipper", "Skipper")
+	form := newCreateFormForTest(t, []domain.Project{skipper})
 
 	branches := []domain.BranchInfo{
 		{Name: "main", Scope: domain.BranchScopeLocal},
 		{Name: "feat/foo", Scope: domain.BranchScopeLocal},
 	}
-	updated, _ := tea.Model(form).Update(shared.BranchesLoadedMsg{ProjectID: overseer.ID, Branches: branches})
+	updated, _ := tea.Model(form).Update(shared.BranchesLoadedMsg{ProjectID: skipper.ID, Branches: branches})
 	form = updated.(CreateFormModel)
 
 	if len(form.baseBranchPicker.branches) != 2 {

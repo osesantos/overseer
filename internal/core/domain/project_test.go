@@ -12,7 +12,7 @@ import (
 func TestNewProject_CreatesProjectWithProvidedName(t *testing.T) {
 	before := time.Now()
 
-	p, err := NewProject("/home/user/repos/overseer", "overseer")
+	p, err := NewProject("/home/user/repos/skipper", "skipper")
 
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
@@ -20,11 +20,11 @@ func TestNewProject_CreatesProjectWithProvidedName(t *testing.T) {
 	if p.ID == uuid.Nil {
 		t.Fatal("NewProject() ID is nil")
 	}
-	if p.Name != "overseer" {
-		t.Fatalf("NewProject() Name = %q, want %q", p.Name, "overseer")
+	if p.Name != "skipper" {
+		t.Fatalf("NewProject() Name = %q, want %q", p.Name, "skipper")
 	}
-	if p.Path != "/home/user/repos/overseer" {
-		t.Fatalf("NewProject() Path = %q, want %q", p.Path, "/home/user/repos/overseer")
+	if p.Path != "/home/user/repos/skipper" {
+		t.Fatalf("NewProject() Path = %q, want %q", p.Path, "/home/user/repos/skipper")
 	}
 	if p.CreatedAt.Before(before) {
 		t.Fatalf("NewProject() CreatedAt = %v, before creation start %v", p.CreatedAt, before)
@@ -35,12 +35,12 @@ func TestNewProject_CreatesProjectWithProvidedName(t *testing.T) {
 }
 
 func TestNewProject_DerivesNameFromPathBasenameWhenNameEmpty(t *testing.T) {
-	p, err := NewProject("/home/user/repos/overseer", "")
+	p, err := NewProject("/home/user/repos/skipper", "")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}
-	if p.Name != "overseer" {
-		t.Fatalf("NewProject() Name = %q, want %q (basename)", p.Name, "overseer")
+	if p.Name != "skipper" {
+		t.Fatalf("NewProject() Name = %q, want %q (basename)", p.Name, "skipper")
 	}
 }
 
@@ -55,14 +55,14 @@ func TestNewProject_DerivesNameWhenNameIsOnlyWhitespace(t *testing.T) {
 }
 
 func TestNewProject_TrimsPathAndName(t *testing.T) {
-	p, err := NewProject("  /home/user/repos/overseer  ", "  Overseer  ")
+	p, err := NewProject("  /home/user/repos/skipper  ", "  Skipper  ")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}
-	if p.Path != "/home/user/repos/overseer" {
+	if p.Path != "/home/user/repos/skipper" {
 		t.Fatalf("NewProject() Path = %q, want trimmed", p.Path)
 	}
-	if p.Name != "Overseer" {
+	if p.Name != "Skipper" {
 		t.Fatalf("NewProject() Name = %q, want trimmed", p.Name)
 	}
 }
@@ -76,8 +76,8 @@ func TestNewProject_Validation(t *testing.T) {
 	}{
 		{name: "empty path", path: "", project: "x", wantErr: ErrProjectEmptyPath},
 		{name: "blank path", path: "   ", project: "x", wantErr: ErrProjectEmptyPath},
-		{name: "relative path", path: "repos/overseer", project: "x", wantErr: ErrProjectPathNotAbsolute},
-		{name: "dot-relative path", path: "./overseer", project: "x", wantErr: ErrProjectPathNotAbsolute},
+		{name: "relative path", path: "repos/skipper", project: "x", wantErr: ErrProjectPathNotAbsolute},
+		{name: "dot-relative path", path: "./skipper", project: "x", wantErr: ErrProjectPathNotAbsolute},
 		{name: "name too long", path: "/abs/path", project: strings.Repeat("a", 101), wantErr: ErrProjectNameTooLong},
 	}
 
@@ -103,7 +103,7 @@ func TestNewProject_AcceptsExactlyOneHundredCharacterName(t *testing.T) {
 }
 
 func TestProject_Rename_UpdatesNameAndUpdatedAt(t *testing.T) {
-	p, err := NewProject("/repo/overseer", "old")
+	p, err := NewProject("/repo/skipper", "old")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}
@@ -122,7 +122,7 @@ func TestProject_Rename_UpdatesNameAndUpdatedAt(t *testing.T) {
 }
 
 func TestProject_Rename_TrimsName(t *testing.T) {
-	p, err := NewProject("/repo/overseer", "old")
+	p, err := NewProject("/repo/skipper", "old")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}
@@ -136,7 +136,7 @@ func TestProject_Rename_TrimsName(t *testing.T) {
 }
 
 func TestProject_Rename_RejectsEmptyName(t *testing.T) {
-	p, err := NewProject("/repo/overseer", "old")
+	p, err := NewProject("/repo/skipper", "old")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}
@@ -150,7 +150,7 @@ func TestProject_Rename_RejectsEmptyName(t *testing.T) {
 }
 
 func TestProject_Rename_RejectsNameTooLong(t *testing.T) {
-	p, err := NewProject("/repo/overseer", "old")
+	p, err := NewProject("/repo/skipper", "old")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}
@@ -161,7 +161,7 @@ func TestProject_Rename_RejectsNameTooLong(t *testing.T) {
 }
 
 func TestProject_Rename_AcceptsExactlyOneHundredCharacterName(t *testing.T) {
-	p, err := NewProject("/repo/overseer", "old")
+	p, err := NewProject("/repo/skipper", "old")
 	if err != nil {
 		t.Fatalf("NewProject() error = %v", err)
 	}

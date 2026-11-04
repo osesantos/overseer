@@ -330,7 +330,7 @@ func TestEndToEnd_BoardSurvivesAProcessRestart(t *testing.T) {
 		t.Fatalf("post status = %d, want 201", code)
 	}
 
-	// A fresh board over the same data dir stands in for a restarted Overseer.
+	// A fresh board over the same data dir stands in for a restarted Skipper.
 	resolver := paths.NewResolver(s.dataDir)
 	revived := swarmboard.New(resolver, discardLogger())
 

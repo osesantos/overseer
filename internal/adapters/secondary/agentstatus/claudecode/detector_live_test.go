@@ -20,7 +20,7 @@ import (
 // TestPaneDetector_Detect_LiveTmux is an integration test that runs the
 // detector against a real tmux pane on the host. Opt-in via:
 //
-//	OVERSEER_LIVE_TMUX_ID=<session-uuid>-agent go test -tags=live_tmux \
+//	SKIPPER_LIVE_TMUX_ID=<session-uuid>-agent go test -tags=live_tmux \
 //	    ./internal/adapters/secondary/agentstatus/claudecode/ \
 //	    -run TestPaneDetector_Detect_LiveTmux -v
 //
@@ -28,16 +28,16 @@ import (
 // kind — pane content depends on what the agent is doing at the moment of
 // capture — so a clean PASS plus printed output is the success signal.
 func TestPaneDetector_Detect_LiveTmux(t *testing.T) {
-	tmuxIDFromEnv := os.Getenv("OVERSEER_LIVE_TMUX_ID")
+	tmuxIDFromEnv := os.Getenv("SKIPPER_LIVE_TMUX_ID")
 	if tmuxIDFromEnv == "" {
-		t.Skip("set OVERSEER_LIVE_TMUX_ID=<uuid>-agent to run this test")
+		t.Skip("set SKIPPER_LIVE_TMUX_ID=<uuid>-agent to run this test")
 	}
 	if !strings.HasSuffix(tmuxIDFromEnv, "-agent") {
-		t.Fatalf("OVERSEER_LIVE_TMUX_ID must end in -agent: %q", tmuxIDFromEnv)
+		t.Fatalf("SKIPPER_LIVE_TMUX_ID must end in -agent: %q", tmuxIDFromEnv)
 	}
 	sessID, err := uuid.Parse(strings.TrimSuffix(tmuxIDFromEnv, "-agent"))
 	if err != nil {
-		t.Fatalf("OVERSEER_LIVE_TMUX_ID prefix must be a UUID: %v", err)
+		t.Fatalf("SKIPPER_LIVE_TMUX_ID prefix must be a UUID: %v", err)
 	}
 
 	tmuxAdapter, err := tmux.New(slog.New(slog.NewTextHandler(io.Discard, nil)))

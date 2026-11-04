@@ -206,7 +206,7 @@ func TestSessionStore_WorktreeFieldsSurviveReload(t *testing.T) {
 	projectID := uuid.New()
 
 	sess := makeSession(t, "with-worktree", projectID)
-	if err := sess.AssignWorktree("/abs/worktrees/alpha", "overseer/alpha"); err != nil {
+	if err := sess.AssignWorktree("/abs/worktrees/alpha", "skipper/alpha"); err != nil {
 		t.Fatalf("AssignWorktree() error = %v", err)
 	}
 
@@ -229,8 +229,8 @@ func TestSessionStore_WorktreeFieldsSurviveReload(t *testing.T) {
 	if got.WorktreePath != "/abs/worktrees/alpha" {
 		t.Errorf("Get() WorktreePath = %q, want %q", got.WorktreePath, "/abs/worktrees/alpha")
 	}
-	if got.Branch != "overseer/alpha" {
-		t.Errorf("Get() Branch = %q, want %q", got.Branch, "overseer/alpha")
+	if got.Branch != "skipper/alpha" {
+		t.Errorf("Get() Branch = %q, want %q", got.Branch, "skipper/alpha")
 	}
 	if !got.HasWorktree() {
 		t.Errorf("Get() HasWorktree() = false, want true")
@@ -429,7 +429,7 @@ func TestProjectStore_EmptyStoreHasNoProjects(t *testing.T) {
 
 func TestProjectStore_SaveAndGet(t *testing.T) {
 	store := newStore(t).Projects()
-	project := makeProject(t, "/repo/overseer", "Overseer")
+	project := makeProject(t, "/repo/skipper", "Skipper")
 
 	if err := store.Save(context.Background(), project); err != nil {
 		t.Fatalf("Save() error = %v", err)
@@ -439,11 +439,11 @@ func TestProjectStore_SaveAndGet(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get() error = %v", err)
 	}
-	if got.Path != "/repo/overseer" {
-		t.Errorf("Get() Path = %q, want %q", got.Path, "/repo/overseer")
+	if got.Path != "/repo/skipper" {
+		t.Errorf("Get() Path = %q, want %q", got.Path, "/repo/skipper")
 	}
-	if got.Name != "Overseer" {
-		t.Errorf("Get() Name = %q, want %q", got.Name, "Overseer")
+	if got.Name != "Skipper" {
+		t.Errorf("Get() Name = %q, want %q", got.Name, "Skipper")
 	}
 }
 
@@ -520,7 +520,7 @@ func TestStore_PersistsBothAggregatesInSameFile(t *testing.T) {
 	logger := discardLogger()
 	ctx := context.Background()
 
-	project := makeProject(t, "/repo/overseer", "Overseer")
+	project := makeProject(t, "/repo/skipper", "Skipper")
 	sess := makeSession(t, "alpha", project.ID)
 
 	store1, _ := storage.New(path, logger)
@@ -532,7 +532,7 @@ func TestStore_PersistsBothAggregatesInSameFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Get(project) after reload error = %v", err)
 	}
-	if gotProject.Name != "Overseer" {
+	if gotProject.Name != "Skipper" {
 		t.Errorf("Project name lost across reload: %q", gotProject.Name)
 	}
 
