@@ -255,7 +255,7 @@ The `a` toggles on `:prs` and `:triage` are saved, so after the first start they
 - 🎯 **Your choice wins.** A named theme always overrides Omarchy.
 - 🌍 **Works anywhere.** Off Omarchy, Skipper uses `dark` or the theme you named.
 
-Named themes: `dark`, `dracula`, `github-dark`, `tokyo-night`, `monokai`, `one-dark`, `solarized-dark`, `nord`, `catppuccin-mocha`, `porcelain`, `deep-sea`, `sunset`.
+Named themes: `dark`, `dracula`, `github-dark`, `tokyo-night`, `monokai`, `one-dark`, `solarized-dark`, `nord`, `catppuccin-mocha`, `gruvbox-material`, `porcelain`, `deep-sea`, `sunset`.
 
 ### Project discovery
 

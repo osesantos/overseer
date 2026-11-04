@@ -11,7 +11,7 @@ import (
 // all of them, not just the default.
 var themeNames = []string{
 	"dark", "dracula", "github-dark", "tokyo-night", "monokai", "one-dark",
-	"solarized-dark", "nord", "catppuccin-mocha", "porcelain", "deep-sea", "sunset",
+	"solarized-dark", "nord", "catppuccin-mocha", "gruvbox-material", "porcelain", "deep-sea", "sunset",
 }
 
 func TestBoardStyles_AuthorColors_CoverEveryAgentInEveryTheme(t *testing.T) {
