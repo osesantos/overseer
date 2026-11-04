@@ -1,23 +1,23 @@
 ---
-name: overseer-add-feature
-description: Step-by-step hexagonal feature-addition workflow for Overseer.TUI. Activate when adding a new feature, implementing a feature in Overseer, building something in Overseer.TUI, creating a new aggregate, or extending Overseer with new functionality.
+name: skipper-add-feature
+description: Step-by-step hexagonal feature-addition workflow for Skipper. Activate when adding a new feature, implementing a feature in Skipper, building something in Skipper, creating a new aggregate, or extending Skipper with new functionality.
 ---
 
-# Overseer Add Feature
+# Skipper Add Feature
 
 ## When to Use
 
-Activate this skill when you are about to add, extend, or implement any feature in Overseer.TUI. It complements (does not replace) `bubbletea-designer` and `bubbletea-maintenance` — those skills provide generic Bubble Tea guidance; this skill provides the Overseer-specific workflow.
+Activate this skill when you are about to add, extend, or implement any feature in Skipper. It complements (does not replace) `bubbletea-designer` and `bubbletea-maintenance` — those skills provide generic Bubble Tea guidance; this skill provides the Skipper-specific workflow.
 
-**Precedence**: When this skill conflicts with `bubbletea-designer` or `bubbletea-maintenance`, Overseer rules WIN.
+**Precedence**: When this skill conflicts with `bubbletea-designer` or `bubbletea-maintenance`, Skipper rules WIN.
 
 ## Trigger Phrases
 
 - "add a new feature"
-- "implement \<X\> feature in Overseer"
-- "build \<X\> in Overseer.TUI"
+- "implement \<X\> feature in Skipper"
+- "build \<X\> in Skipper"
 - "create a new \<aggregate\>"
-- "extend Overseer with"
+- "extend Skipper with"
 
 ## Workflow
 

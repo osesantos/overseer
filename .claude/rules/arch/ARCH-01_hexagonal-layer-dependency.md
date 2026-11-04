@@ -24,6 +24,6 @@ import (
 ```go
 // internal/core/domain/session.go
 import (
-    "github.com/dnlopes/overseer/internal/adapters/secondary/storage" // FORBIDDEN
+    "github.com/osesantos/skipper/internal/adapters/secondary/storage" // FORBIDDEN
 )
 ```

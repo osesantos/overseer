@@ -1,6 +1,6 @@
 # Hexagonal Architecture Walkthrough
 
-This document traces one complete feature slice through Overseer.TUI's hexagonal architecture: **creating a session** (user keypress → domain → service → adapters → TUI update).
+This document traces one complete feature slice through Skipper's hexagonal architecture: **creating a session** (user keypress → domain → service → adapters → TUI update).
 
 ## The Slice: Session Create
 

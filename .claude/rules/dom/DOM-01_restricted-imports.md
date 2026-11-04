@@ -26,7 +26,7 @@ import (
 ❌ Bad:
 ```go
 import (
-    "github.com/dnlopes/overseer/internal/adapters/secondary/storage" // FORBIDDEN
+    "github.com/osesantos/skipper/internal/adapters/secondary/storage" // FORBIDDEN
     "encoding/json"  // I/O library — FORBIDDEN in domain
 )
 ```

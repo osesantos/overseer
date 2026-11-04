@@ -4,7 +4,7 @@
 
 ---
 
-# Overseer — Agent Reference
+# Skipper — Agent Reference
 
 Everything an agent needs to navigate and extend this codebase without breaking its conventions.
 
@@ -12,26 +12,25 @@ Everything an agent needs to navigate and extend this codebase without breaking 
 
 ## Project Overview
 
-Overseer is a terminal-based dashboard for managing AI agent coding sessions. It is a **Bubble Tea v2** TUI application written in Go, following a strict **hexagonal (ports-and-adapters) architecture**.
+Skipper is a terminal-based dashboard for managing AI agent coding sessions. It is a **Bubble Tea v2** TUI application written in Go, following a strict **hexagonal (ports-and-adapters) architecture**.
 
 Key capabilities:
 - Create and manage tmux-backed coding sessions per Git project/worktree
 - Real-time preview of agent and shell panes
 - Pull-request tracking via GitHub CLI
 - Agent-status detection (idle / running / waiting / dead) per session
-- Overseer chat panel — an LLM meta-agent (Claude Code) that can control sessions
-- Operator slash-commands: `/send`, `/loop`, `/new`, `/delete`, `/list`, `/help`, `/prs`, `/pr`, `/sessions` — also runnable from the k9s-style `:` prompt
+- First Mate chat panel (`ctrl+o`) — an LLM meta-agent (Claude Code) that can control sessions
+- Operator slash-commands: `/send`, `/enter`, `/new`, `/delete`, `/list`, `/help`, `/prs`, `/pr`, `/sessions` — also runnable from the k9s-style `:` prompt
 - **PR tab and page** — a session with a pull request gets a `PR` tab in the inspector (`p` jumps to it) showing the header and description; Enter on it, or `:pr`, opens a full-screen page with Overview / Diff / Comments sections, vim-style scrolling and a themed diff
 - **Triage inbox** — `:triage` lists the team's open RDODCF / RDINC tickets (via `acli`); the `triage-poll` job starts a triage session (project session in the `vault` project + the per-project `triage.commands` launcher) for fresh unassigned tickets
 - **Review inbox** — `:prs` lists every open PR with a review requested from the operator, plus the open PRs they already reviewed; the `pr-review-poll` job starts a review session (detached worktree at the PR head + the configured `pullRequests.reviewCommand`) for eligible PRs
-- Background evaluation loops (`/loop <session> <criteria>`) — runs `claude -p` in the session's working directory; 5s interval between iterations; up to 40 iterations
-- **Swarm sessions** — 2–8 agents on one goal, coordinating through a shared message board served over loopback HTTP; Overseer wakes idle agents via tmux because agent CLIs do not poll
+- **Swarm sessions** — 2–8 agents on one goal, coordinating through a shared message board served over loopback HTTP; Skipper wakes idle agents via tmux because agent CLIs do not poll
 
 ---
 
 ## Architecture Rules
 
-These rules are the single source of truth. **ARCH-10 states: Overseer rules supersede generic skill advice.**
+These rules are the single source of truth. **ARCH-10 states: Skipper rules supersede generic skill advice.**
 
 ### ARCH rules (cross-layer)
 
@@ -46,7 +45,7 @@ These rules are the single source of truth. **ARCH-10 states: Overseer rules sup
 | **ARCH-07** | Error wrapping: `fmt.Errorf("context: %w", err)`. `errs.Wrap` is deprecated — do not use in new code. |
 | **ARCH-08** | Compile-time interface conformance: `var _ Iface = (*Impl)(nil)` at package level for every port implementation. |
 | **ARCH-09** | `*slog.Logger` injected via constructor. Never `log.Print*` or package-level loggers. |
-| **ARCH-10** | Overseer rules WIN when they conflict with generic skill advice. |
+| **ARCH-10** | Skipper rules WIN when they conflict with generic skill advice. |
 
 ### SVC rules (service layer)
 
@@ -90,12 +89,12 @@ These rules are the single source of truth. **ARCH-10 states: Overseer rules sup
 ## Repository Structure
 
 ```
-overseer/
-├── cmd/overseer/          # main.go — wires dependencies, starts tea.Program
+skipper/
+├── cmd/skipper/           # main.go — wires dependencies, starts tea.Program
 ├── internal/
 │   ├── core/
 │   │   ├── domain/        # Domain types, port interfaces, sentinel errors
-│   │   └── service/       # Use-case services (SessionService, ProjectService, OverseerService)
+│   │   └── service/       # Use-case services (SessionService, ProjectService, MateService, …)
 │   ├── adapters/
 │   │   ├── primary/
 │   │   │   ├── boardhttp/  # HTTP board API for swarm agent processes (inbound adapter)
@@ -105,17 +104,17 @@ overseer/
 │   │   │       ├── inspector/      # Right pane: preview tabs with polling + the swarm Agents Board
 │   │   │       ├── jobs/           # Background scheduler (agent-status, PR status, PR inbox, triage inbox, branch cache)
 │   │   │       ├── leftpane/       # Left pane: session list + session details
-│   │   │       ├── overseer/       # Overseer chat panel (model.go, confirm.go, bindings.go)
+│   │   │       ├── mate/           # First Mate chat panel (model.go, confirm.go, bindings.go)
 │   │   │       ├── prs/            # Review inbox page (`:prs`): PRs grouped by repo + review-session column
 │   │   │       ├── pullrequest/    # Full-screen PR page (`:pr` / Enter on the PR tab): Overview, themed Diff, Comments
 │   │   │       ├── session/        # Session list model + create/delete/rename forms
 │   │   │       ├── triage/         # Support ticket inbox page (`:triage`): tickets grouped by Jira project + triage-session column
-│   │   │       ├── sessiondetails/ # Session details card (repo, PR, loop section)
+│   │   │       ├── sessiondetails/ # Session details card (repo, PR, merge verdict, your review)
 │   │   │       ├── shared/         # Messages, helpers, emit utilities
 │   │   │       └── styles/         # Styles, themes, glyphs
 │   │   └── secondary/
 │   │       ├── agentstatus/        # Agent-status detectors (claudecode, opencode, registry)
-│   │       ├── claude/             # OverseerAgentPort impl — invokes `claude -p`
+│   │       ├── claude/             # MateAgentPort impl — invokes `claude -p`
 │   │       ├── git/                # GitAdapter impl — worktree management
 │   │       ├── github/             # GitHub CLI adapter — PR status
 │   │       ├── jira/               # Atlassian CLI (acli) adapter — triage inbox
@@ -140,13 +139,12 @@ overseer/
 ### `internal/core/domain`
 Pure Go structs and interfaces. No I/O. Defines:
 - `Session`, `Project`, `Label`, `SwarmMessage`, `Issue` aggregates
-- Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `OverseerAgentPort`, `SwarmBoardRepository`, `SwarmDescriptorWriter`
-- Overseer types: `LoopState`, `LoopStatus`, `OverseerMessage`, `OverseerAction`, `OverseerSessionContext`
+- Port interfaces: `SessionRepository`, `TmuxAdapter`, `GitAdapter`, `MateAgentPort`, `SwarmBoardRepository`, `SwarmDescriptorWriter`
+- First Mate types (`domain/mate.go`): `MateMessage`, `MateAction`, `MateSessionContext`, `MateResponse`
 - Swarm types: `SwarmMessage`, `SwarmRole`, `SwarmDescriptor`; bounds `SwarmMinAgents` / `SwarmMaxAgents`
-- `ScanForEnd(paneOutput string) bool` — detects the `END` sentinel in loop task output (domain-layer utility)
 - `InferAgentType(agentCommand string) AgentType` — maps a legacy session's agent command string to a typed `AgentType` (lives in `domain/agent_type.go`)
 - `SwarmAgentAuthor(index int) string` — the canonical board author name for an agent (`agent-3`)
-- Sentinel errors: `ErrTmuxSessionNotFound`, `ErrOverseerAgentNotFound`, `ErrSessionNotASwarm`, `ErrSwarmBoardCapReached`, etc.
+- Sentinel errors: `ErrTmuxSessionNotFound`, `ErrMateAgentNotFound`, `ErrSessionNotASwarm`, `ErrSwarmBoardCapReached`, etc.
 
 **Agent tmux naming lives here and nowhere else.** `Session.AgentTmuxID(index)` returns `<uuid>-agent` for a single-agent session and `<uuid>-agent-<index>` for a swarm; `AgentTmuxIDs()` enumerates all of them. Never concatenate `"-agent"` by hand — that convention used to be duplicated across six call sites and is now centralised.
 
@@ -154,7 +152,7 @@ Pure Go structs and interfaces. No I/O. Defines:
 Use-case layer. Each file owns one aggregate:
 - `session.go` — `SessionService`: Create, Rename, Delete, List, Reorder, AttachAgent, AttachShell, SendAgentPrompt, PreviewSession. Agent-targeting methods take an `AgentIndex` (ignored by single-agent sessions).
 - `project.go` — `ProjectService`: Register, Rename, List
-- `overseer.go` — `OverseerService`: Chat, EvaluateLoop
+- `mate.go` — `MateService`: Chat
 - `swarm.go` — `SwarmService`: Post, ListMessages, FlushNudges, Bootstrap
 - `issue.go` — `IssueService`: ListTriageInbox, ResolveAutoTriage, SetAutoTriage, Dismiss, OpenInBrowser. `SessionService.CreateForIssue` / `AutoTriageIssues` start the triage sessions
 
@@ -163,14 +161,14 @@ Use-case layer. Each file owns one aggregate:
 tmux panes do not survive a reboot; session rows, worktrees and Claude's transcripts (`~/.claude/projects/<cwd>/<id>.jsonl`) do. A missing agent pane is recreated only on attach (`AttachAgent` → `ensureTmuxSession`), and the rules for *what* it runs live in `domain/agent_resume.go`:
 
 - **New `claude` sessions** start each agent with `--session-id <AgentConversationID(i)>` and persist `ResumableAgents`. The ID is derived from the session ID and the agent's tmux name, so nothing else is stored.
-- **Recreate** runs `<launcher> --resume <id> || <launcher>`. `<launcher>` is `AgentCommand` minus one trailing quoted argument, so `--permission-mode auto` is kept and a review or triage prompt is never re-sent. An unquoted trailing prompt is not detected; Overseer never writes one.
+- **Recreate** runs `<launcher> --resume <id> || <launcher>`. `<launcher>` is `AgentCommand` minus one trailing quoted argument, so `--permission-mode auto` is kept and a review or triage prompt is never re-sent. An unquoted trailing prompt is not detected; Skipper never writes one.
 - **Older claude sessions** (no `ResumableAgents`) use `--continue` only when they have a worktree. A project session shares its directory with others (`vault` hosts every triage), so it starts as before.
 - **The `||` fallback** catches an unknown ID, an empty `--continue` and a cleaned-up transcript (all exit 1). Claude deletes transcripts after `cleanupPeriodDays`, 30 by default.
 - OpenCode and unknown agents are untouched.
 
 #### Why `SwarmService` splits posting from nudging
 
-Agent CLIs do not loop — they finish a turn and idle at their prompt — so nothing would ever make agent 3 read what agent 2 wrote. Overseer has to poke them by typing into their tmux panes.
+Agent CLIs do not loop — they finish a turn and idle at their prompt — so nothing would ever make agent 3 read what agent 2 wrote. Skipper has to poke them by typing into their tmux panes.
 
 `Post` only records that a nudge is *due*; `FlushNudges` performs it, driven by the `swarm-nudge-flush` scheduler job at `swarm.nudgeDebounce`. That split keeps timing out of the service (so it stays deterministically testable) and coalesces a burst of posts into one round of pokes — the main defence against a swarm nudging itself into an endless conversation. The most recent author is skipped, since they just spoke.
 
@@ -213,7 +211,6 @@ Root Bubble Tea model. Owns:
 - All pane layout and sizing (`root.go`)
 - All global key bindings (`bindings.go`)
 - Operator slash-command execution (`commands.go`)
-- Background loop management (`commands.go`: `startLoopTaskCmd`, `handleLoopTaskCompleted`)
 - Swarm bootstrapping after creation (`root.go`: `bootstrapSwarmCmd`)
 
 #### Key routing — read this before adding a key
@@ -239,12 +236,12 @@ Routing order in `Update`, which matters:
 
 Paste is routed in `root.go` *before* the key branch and follows the same ownership rules as typing: the board's compose line first, then the chat panel, otherwise dropped. It must land in **exactly one** input — the fallthrough broadcast would otherwise deliver it to the chat and the board simultaneously when both are open.
 
-### `internal/adapters/primary/tui/overseer`
-Chat panel model. Handles:
+### `internal/adapters/primary/tui/mate`
+First Mate chat panel model (package `mate`, imported as `mateui`). Handles:
 - Auto-detection of Agent mode (`» `) vs Operator mode (`$ `) based on `/` prefix
 - Viewport-backed scrollable message history
 - Spinner during LLM/command processing
-- `OverseerRoleUser` / `OverseerRoleAgent` / `OverseerRoleSystem` message rendering
+- `MateRoleUser` / `MateRoleAgent` / `MateRoleSystem` message rendering
 
 ### `internal/adapters/primary/tui/inspector`
 Right-pane preview with generation-counter-based polling (prevents chain doubling on `ForceRefreshMsg`).
@@ -310,7 +307,7 @@ Things to know before editing it:
 - **Comments hide noise on purpose.** Bot comments (GraphQL `__typename == Bot`) are left out and counted in the section header; resolved or outdated threads collapse to one line; open threads show the last `hunkTailLines` of their hunk. A rule (the chat separator) closes every entry, like the Agents Board. Machine *users* (a login that is not a GitHub App) are not bots to GitHub and still show.
 
 ### `internal/adapters/primary/boardhttp`
-Inbound HTTP adapter exposing a swarm session's board to the **agent processes**, which live outside Overseer. Requests flow inward through `SwarmService` like the TUI's do (ARCH-05).
+Inbound HTTP adapter exposing a swarm session's board to the **agent processes**, which live outside Skipper. Requests flow inward through `SwarmService` like the TUI's do (ARCH-05).
 
 The TUI does **not** use this server — it shares the process and reads the board through the service directly. There is no loopback round-trip and no WebSocket.
 
@@ -324,15 +321,19 @@ Implements both `SwarmBoardRepository` and `SwarmDescriptorWriter` over a per-se
 - A malformed or partially-written line is **skipped with a warning**, never quarantined or deleted. This is a deliberate reading of SEC-06: a torn append must not cost the operator the rest of the conversation.
 
 ### `internal/adapters/secondary/claude`
-Implements `OverseerAgentPort`. Invokes `claude -p <prompt>` as a subprocess.
-- `Chat`: parses `<action>{...}</action>` fence for structured actions; uses `overseerRequestTimeout = 60s` because LLM calls routinely exceed 30s
-- `RunLoopTask`: runs `claude -p --dangerously-skip-permissions <criteria>` in the session's working directory and returns raw stdout; no timeout (subprocess runs until `claude` exits naturally); the dashboard scans output with `domain.ScanForEnd` to detect task completion
+Implements `MateAgentPort`. Invokes `claude -p <prompt>` as a subprocess.
+- `Chat`: parses `<action>{...}</action>` fence for structured actions; uses `mateRequestTimeout = 60s` because LLM calls routinely exceed 30s
 
 ---
 
+### `internal/shared/paths`
+Every on-disk name comes from here: the data, config and state dirs, the log file and the `skipper/<id>` branch prefix.
+
+**The data and config dirs fall back to the old name.** Skipper was called Overseer until it left its fork. `withLegacyFallback` picks `<base>/overseer` when it exists and `<base>/skipper` does not, so an old install keeps its sessions. The whole data dir falls back, not just `data.json`: `data.json` stores absolute `WorktreePath`s, and `Session.WorktreeIsInsideRoot` checks them against `WorktreeRoot()` before a delete. The state dir does not fall back (it only holds the log). Delete the fallback once nobody runs on the old folders.
+
 ## Markdown Rendering in Chat Panels
 
-Both the Overseer chat panel and the swarm Agents Board render message bodies as markdown via `styles.Markdown` (`charm.land/glamour/v2`).
+Both the First Mate chat panel and the swarm Agents Board render message bodies as markdown via `styles.Markdown` (`charm.land/glamour/v2`).
 
 Rules if you touch either panel:
 
@@ -341,7 +342,7 @@ Rules if you touch either panel:
 - **Bodies are rendered once and cached.** Each panel keeps a `rendered []string` parallel to its message slice. Re-rendering the whole transcript per incoming message — which is what the plain-text version did — does not scale with glamour.
 - **The two slices must stay index-for-index.** Anything that clears messages must clear `rendered` too; a session switch that cleared only one paired the new session's posts with the old session's bodies.
 - **Only a width change invalidates the cache.** `applySizes`/`SetSize` also run on mode changes, which must not pay for a full re-render — hence the `markdown.Width() != vpWidth` guard.
-- **System notices bypass markdown.** They are Overseer's own one-liners carrying paths and errors that reflowing would mangle.
+- **System notices bypass markdown.** They are Skipper's own one-liners carrying paths and errors that reflowing would mangle.
 - **`Render` never returns empty for non-empty input.** A glamour failure degrades to the raw text; a message must never vanish because it could not be prettified.
 
 ### The board appends by Seq, not by trust
@@ -359,7 +360,7 @@ Two invariants hold it together, and both have regression tests:
 
 ### Bordered-panel width
 
-`lipgloss` treats a bordered style's `Width` as the **total** including the border glyphs, so the usable interior is `Width-2`. The chat panel's viewport was sized to the full width and so ran two columns wider than the box it drew into — invisible with plain text, obvious once messages gained a full-width separator. See `borderSideW` in `tui/overseer/model.go`.
+`lipgloss` treats a bordered style's `Width` as the **total** including the border glyphs, so the usable interior is `Width-2`. The chat panel's viewport was sized to the full width and so ran two columns wider than the box it drew into — invisible with plain text, obvious once messages gained a full-width separator. See `borderSideW` in `tui/mate/model.go`.
 
 ## Shared Utilities (`internal/adapters/primary/tui/shared`)
 
@@ -376,7 +377,7 @@ Two invariants hold it together, and both have regression tests:
 
 ## Chat Pane Scroll Behaviour
 
-The Overseer chat panel (`internal/adapters/primary/tui/overseer/model.go`) uses a `charm.land/bubbles/v2/viewport.Model` for scrollable message history.
+The First Mate chat panel (`internal/adapters/primary/tui/mate/model.go`) uses a `charm.land/bubbles/v2/viewport.Model` for scrollable message history.
 
 **Scroll keys** (intercepted before reaching the text input):
 
@@ -397,7 +398,7 @@ The Overseer chat panel (`internal/adapters/primary/tui/overseer/model.go`) uses
 
 ### Adding a new feature
 
-Use the `overseer-add-feature` skill — it provides the step-by-step hexagonal workflow:
+Use the `skipper-add-feature` skill — it provides the step-by-step hexagonal workflow:
 
 ```
 1. Define domain types / port method in internal/core/domain/
@@ -425,7 +426,7 @@ go run github.com/vektra/mockery/v3@v3.5.1
 
 This rewrites every mock, so expect cosmetic diffs in unrelated mock files if the pinned version differs from whatever generated the committed ones.
 
-**Do not run `gofmt -w` on a whole directory.** Several committed files carry pre-existing formatting drift (`domain/agent_type.go`, `service/overseer.go`, `tui/session/bindings.go`, and others). A directory-wide format sweeps them into your diff and buries the actual change. Format only the files you edited.
+**Do not run `gofmt -w` on a whole directory.** Several committed files carry pre-existing formatting drift (`domain/agent_type.go`, `service/mate.go`, `tui/session/bindings.go`, and others). A directory-wide format sweeps them into your diff and buries the actual change. Format only the files you edited.
 
 ### Adding a new operator command
 
@@ -436,7 +437,7 @@ This rewrites every mock, so expect cosmetic diffs in unrelated mock files if th
 
 ### Adding a new slash-command result message
 
-All async results go through `shared.OverseerCommandResultMsg{Text, IsError}` — the chat panel renders them as dimmed system messages with `○ ` prefix. Only create a new message type if the result triggers a state change beyond rendering text in the chat.
+All async results go through `shared.MateCommandResultMsg{Text, IsError}` — the chat panel renders them as dimmed system messages with `○ ` prefix. Only create a new message type if the result triggers a state change beyond rendering text in the chat.
 
 ---
 
@@ -448,14 +449,14 @@ Load these at the start of every session (mandatory):
 |-------|-------------|
 | `bubbletea-designer` | Designing new TUI components, selecting Charmbracelet components, planning architecture |
 | `bubbletea-maintenance` | Debugging existing Bubble Tea code, fixing layout issues, performance problems |
-| `overseer-add-feature` | Step-by-step workflow for adding a new feature to Overseer |
+| `skipper-add-feature` | Step-by-step workflow for adding a new feature to Skipper |
 
 ---
 
 ## Coding Conventions
 
 - **Go version**: 1.24+
-- **Module**: `github.com/dnlopes/overseer`
+- **Module**: `github.com/osesantos/skipper`
 - **Error wrapping**: `fmt.Errorf("context: %w", err)` always; `%v` loses the chain
 - **No global state**: no package-level vars except `key.Binding` declarations and compile-time conformance checks
 - **Context**: always `context.Context` as the first parameter for I/O operations; use `context.Background()` inside `tea.Cmd` closures

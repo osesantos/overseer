@@ -13,7 +13,7 @@ Bubble Tea v2 uses `tea.View.AltScreen` field; the v1 `tea.WithAltScreen()` prog
 ## Example
 ✅ Good:
 ```go
-// cmd/overseer/main.go — wraps internal/adapters/primary/tui/dashboard/model.go
+// cmd/skipper/main.go — wraps internal/adapters/primary/tui/dashboard/model.go
 type altScreenModel struct{ inner tea.Model }
 func (m altScreenModel) View() tea.View {
     v := m.inner.View()
