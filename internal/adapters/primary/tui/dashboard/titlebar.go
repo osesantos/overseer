@@ -34,6 +34,6 @@ func (m TitleBarModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m TitleBarModel) View() tea.View {
-	branding := m.styles.TitleBar.Branding.Width(m.width).Height(m.height).Render(m.appName)
+	branding := m.styles.TitleBar.Branding.Width(m.width).Height(m.height).Render(m.styles.Glyphs.Brand + " " + m.appName)
 	return tea.NewView(branding)
 }

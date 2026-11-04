@@ -3,6 +3,8 @@ package styles
 import "github.com/osesantos/skipper/internal/core/domain"
 
 type Glyphs struct {
+	// Brand prefixes the app name in the title bar.
+	Brand         string
 	Branch        string
 	ProjectMode   string
 	Repo          string
@@ -42,6 +44,7 @@ type Glyphs struct {
 func NewGlyphs(disableEmoji bool) Glyphs {
 	if disableEmoji {
 		return Glyphs{
+			Brand:         "⎈",
 			Branch:        "⎇",
 			ProjectMode:   "·",
 			Repo:          "⊞",
@@ -73,6 +76,7 @@ func NewGlyphs(disableEmoji bool) Glyphs {
 		}
 	}
 	return Glyphs{
+		Brand:         "⛵",
 		Branch:        "🌿",
 		ProjectMode:   "📂",
 		Repo:          "📦",
