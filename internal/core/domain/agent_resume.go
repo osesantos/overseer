@@ -41,7 +41,7 @@ func (s Session) AgentRecreateCommand(index int, cmd string) string {
 }
 
 // LauncherWithoutPrompt drops one trailing quoted argument ("…" or '…'), which is
-// how every prompt Overseer writes ends.
+// how every prompt Skipper writes ends.
 // ponytail: an unquoted trailing prompt (claude fix the bug) is not detected; split
 // AgentCommand into launcher + prompt if one ever appears.
 func LauncherWithoutPrompt(cmd string) string {

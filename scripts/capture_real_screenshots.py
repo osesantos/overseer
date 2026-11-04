@@ -2,6 +2,9 @@ import subprocess
 import re
 from PIL import Image, ImageDraw, ImageFont
 import time
+import os
+
+REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 TERMINAL_BG = (30, 30, 46)
 
@@ -155,8 +158,8 @@ def capture_tmux_state(session_name):
     return result.stdout.splitlines()
 
 def run_and_capture(state_name, keys="", delay=2):
-    subprocess.run(["tmux", "new-session", "-d", "-s", "overseer_cap",
-                   "cd /Users/david.lopes/.config/overseer-personal/worktrees/78ee833c && ./bin/overseer"],
+    subprocess.run(["tmux", "new-session", "-d", "-s", "skipper_cap",
+                   f"cd {REPO} && ./bin/skipper"],
                   capture_output=True)
     
     time.sleep(2)
@@ -164,20 +167,20 @@ def run_and_capture(state_name, keys="", delay=2):
     if keys:
         for key in keys:
             if key == "Escape":
-                subprocess.run(["tmux", "send-keys", "-t", "overseer_cap", "Escape"],
+                subprocess.run(["tmux", "send-keys", "-t", "skipper_cap", "Escape"],
                               capture_output=True)
             else:
-                subprocess.run(["tmux", "send-keys", "-t", "overseer_cap", key],
+                subprocess.run(["tmux", "send-keys", "-t", "skipper_cap", key],
                               capture_output=True)
             time.sleep(0.5)
         time.sleep(0.5)
     
-    lines = capture_tmux_state("overseer_cap")
+    lines = capture_tmux_state("skipper_cap")
     
-    subprocess.run(["tmux", "send-keys", "-t", "overseer_cap", "q"],
+    subprocess.run(["tmux", "send-keys", "-t", "skipper_cap", "q"],
                   capture_output=True)
     time.sleep(0.5)
-    subprocess.run(["tmux", "kill-session", "-t", "overseer_cap"],
+    subprocess.run(["tmux", "kill-session", "-t", "skipper_cap"],
                   capture_output=True)
     
     return lines
@@ -186,19 +189,19 @@ def main():
     print("Capturing dashboard...")
     lines = run_and_capture("dashboard")
     img = render_ansi_to_image(lines)
-    img.save("/Users/david.lopes/.config/overseer-personal/worktrees/78ee833c/docs/screenshots/01-dashboard.png")
+    img.save(os.path.join(REPO, "docs/screenshots/01-dashboard.png"))
     print("Saved 01-dashboard.png")
     
     print("Capturing create form...")
     lines = run_and_capture("create", keys=["n"])
     img = render_ansi_to_image(lines)
-    img.save("/Users/david.lopes/.config/overseer-personal/worktrees/78ee833c/docs/screenshots/02-create-session.png")
+    img.save(os.path.join(REPO, "docs/screenshots/02-create-session.png"))
     print("Saved 02-create-session.png")
     
     print("Capturing help menu...")
     lines = run_and_capture("help", keys=["?"])
     img = render_ansi_to_image(lines)
-    img.save("/Users/david.lopes/.config/overseer-personal/worktrees/78ee833c/docs/screenshots/04-help-menu.png")
+    img.save(os.path.join(REPO, "docs/screenshots/04-help-menu.png"))
     print("Saved 04-help-menu.png")
     
     print("All screenshots captured from real app!")

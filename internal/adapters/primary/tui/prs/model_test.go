@@ -10,9 +10,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 func fixture(t *testing.T) (Model, domain.Session) {

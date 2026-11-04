@@ -1,4 +1,4 @@
-// Package logger constructs the overseer slog.Logger wired to a configured log file.
+// Package logger constructs the skipper slog.Logger wired to a configured log file.
 package logger
 
 import (
@@ -8,14 +8,14 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/dnlopes/overseer/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/shared/paths"
 )
 
 // New creates a slog.Logger that writes JSON to logPath.
 // The caller must defer the returned io.Closer.
-// OVERSEER_LOG_LEVEL env var overrides the level parameter.
+// SKIPPER_LOG_LEVEL env var overrides the level parameter.
 func New(logPath, level string) (*slog.Logger, io.Closer, error) {
-	if envLevel := os.Getenv("OVERSEER_LOG_LEVEL"); envLevel != "" {
+	if envLevel := os.Getenv("SKIPPER_LOG_LEVEL"); envLevel != "" {
 		level = envLevel
 	}
 

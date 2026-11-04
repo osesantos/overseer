@@ -1,4 +1,4 @@
-module github.com/dnlopes/overseer
+module github.com/osesantos/skipper
 
 go 1.25.8
 

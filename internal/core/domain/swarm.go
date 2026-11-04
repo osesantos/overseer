@@ -101,7 +101,7 @@ func SwarmAgentAuthor(index int) string {
 
 // SwarmDescriptor is the bootstrap contract handed to a swarm's agents: where
 // the board lives, who else is on it, and what they are collectively trying to
-// achieve. Agents read it once at startup, which keeps the prompt Overseer has
+// achieve. Agents read it once at startup, which keeps the prompt Skipper has
 // to inject into each pane short.
 //
 // It carries only semantics — how the contract is rendered on disk, and which
@@ -116,7 +116,7 @@ type SwarmDescriptor struct {
 
 // NewSwarmDescriptor constructs a validated bootstrap descriptor and derives the
 // roster from agentCount, so the roster can never disagree with the number of
-// panes Overseer actually spawned.
+// panes Skipper actually spawned.
 func NewSwarmDescriptor(sessionID uuid.UUID, boardURL string, agentCount int, goal string) (SwarmDescriptor, error) {
 	boardURL = strings.TrimSpace(boardURL)
 	goal = strings.TrimSpace(goal)

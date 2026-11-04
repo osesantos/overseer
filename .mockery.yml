@@ -25,7 +25,7 @@ pkgname: "mocks"
 structname: "Mock{{.InterfaceName}}"
 
 packages:
-  github.com/dnlopes/overseer/internal/core/domain:
+  github.com/osesantos/skipper/internal/core/domain:
     interfaces:
       SessionRepository:
       ProjectRepository:

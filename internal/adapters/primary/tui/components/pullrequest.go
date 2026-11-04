@@ -6,8 +6,8 @@ import (
 
 	"charm.land/lipgloss/v2"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // PullRequestHeader renders the lines every PR view opens with: title, state

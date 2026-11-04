@@ -5,7 +5,7 @@
 package mocks
 
 import (
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 	mock "github.com/stretchr/testify/mock"
 )
 

@@ -8,7 +8,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/dnlopes/overseer/internal/shared/omarchy"
+	"github.com/osesantos/skipper/internal/shared/omarchy"
 )
 
 // ListIndentUnit is the canonical column count per nesting level for any
@@ -124,7 +124,7 @@ type BoardStyles struct {
 	Seq lipgloss.Style
 	// Timestamp styles the time prefix on a message.
 	Timestamp lipgloss.Style
-	// SystemText styles board notices that came from Overseer itself.
+	// SystemText styles board notices that came from Skipper itself.
 	SystemText lipgloss.Style
 	// Separator styles the rule drawn between messages.
 	Separator lipgloss.Style

@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 type HelpBarModel struct {

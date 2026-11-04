@@ -7,8 +7,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/testutil/mocks"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/testutil/mocks"
 )
 
 func TestIssueService_ListTriageInbox_MarksSettingsAndFetchesTrackedKeysThatLeftTheQuery(t *testing.T) {

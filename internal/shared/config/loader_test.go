@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/config"
-	"github.com/dnlopes/overseer/internal/shared/errs"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/config"
+	"github.com/osesantos/skipper/internal/shared/errs"
 )
 
 func TestDefault_ReturnsCorrectValues(t *testing.T) {
@@ -417,7 +417,7 @@ dashboard:
 logging:
   level: warn
 storage:
-  dataDir: /tmp/overseer
+  dataDir: /tmp/skipper
 launchers:
   - displayName: Custom Agent
     command: my-agent --foo
@@ -448,8 +448,8 @@ editorCommand: cursor --wait
 	if cfg.Logging.Level != "warn" {
 		t.Errorf("Logging.Level: want warn, got %s", cfg.Logging.Level)
 	}
-	if cfg.Storage.DataDir != "/tmp/overseer" {
-		t.Errorf("Storage.DataDir: want /tmp/overseer, got %s", cfg.Storage.DataDir)
+	if cfg.Storage.DataDir != "/tmp/skipper" {
+		t.Errorf("Storage.DataDir: want /tmp/skipper, got %s", cfg.Storage.DataDir)
 	}
 	if len(cfg.Launchers) != 4 {
 		t.Fatalf("Launchers: want 4 entries, got %d", len(cfg.Launchers))

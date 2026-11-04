@@ -10,7 +10,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 var _ domain.GitAdapter = (*Adapter)(nil)

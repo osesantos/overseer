@@ -7,10 +7,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/components"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // pullRequestView is the PR tab: the selected session's pull request header and

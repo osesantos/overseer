@@ -13,8 +13,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/secondary/storage"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/secondary/storage"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 func TestIntegration_CorruptionRecovery(t *testing.T) {

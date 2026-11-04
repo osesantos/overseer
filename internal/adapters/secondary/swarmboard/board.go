@@ -16,8 +16,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/paths"
 )
 
 const currentSchemaVersion = 1
@@ -116,7 +116,7 @@ var (
 //
 // lastSeq caches the per-session high-water mark so an append does not have to
 // rescan the file. It is populated lazily from disk on first touch, which is
-// what lets a restarted Overseer continue an existing board's sequence.
+// what lets a restarted Skipper continue an existing board's sequence.
 type Board struct {
 	resolver paths.Resolver
 	logger   *slog.Logger

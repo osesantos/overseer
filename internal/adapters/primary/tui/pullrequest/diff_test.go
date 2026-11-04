@@ -7,7 +7,7 @@ import (
 
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 func TestDiffLineKind(t *testing.T) {

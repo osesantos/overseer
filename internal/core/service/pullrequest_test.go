@@ -8,8 +8,8 @@ import (
 
 	"github.com/stretchr/testify/mock"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/testutil/mocks"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/testutil/mocks"
 )
 
 func TestPullRequestService_GetForBranch_HappyPath(t *testing.T) {

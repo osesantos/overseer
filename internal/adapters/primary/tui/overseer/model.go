@@ -11,9 +11,9 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 const (
@@ -233,7 +233,7 @@ func (m *Model) appendMessage(msg domain.OverseerMessage) {
 }
 
 // renderBody converts one message's content to styled text. Agent and user prose
-// goes through markdown; system notices stay literal, because they are Overseer's
+// goes through markdown; system notices stay literal, because they are Skipper's
 // own one-line notes and markdown would only mangle paths and errors in them.
 func (m Model) renderBody(msg domain.OverseerMessage) string {
 	if msg.Role == domain.OverseerRoleSystem {

@@ -7,7 +7,7 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // SwarmBootstrappedMsg reports the outcome of briefing a new swarm's agents.

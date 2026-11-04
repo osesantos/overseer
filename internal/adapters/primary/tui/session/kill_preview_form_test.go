@@ -7,10 +7,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/service"
-	"github.com/dnlopes/overseer/internal/testutil"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/service"
+	"github.com/osesantos/skipper/internal/testutil"
 )
 
 func TestKillPreviewForm_EscapeCancelsPopup(t *testing.T) {

@@ -3,7 +3,7 @@ package dashboard
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 // TitlebarSetActivePaneMsg updates the active pane label in the title bar.

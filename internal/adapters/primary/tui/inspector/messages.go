@@ -5,7 +5,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // errSwarmDisabled is returned when the board is used while swarm mode is off,

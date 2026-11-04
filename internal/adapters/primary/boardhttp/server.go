@@ -1,6 +1,6 @@
 // Package boardhttp exposes a swarm session's message board over HTTP.
 //
-// It is a primary (driving) adapter: the agent processes live outside Overseer
+// It is a primary (driving) adapter: the agent processes live outside Skipper
 // and call in, so requests flow inward through SwarmService exactly like the
 // TUI's do. The TUI itself does not use this server — it shares the process and
 // reads the board through the service directly.
@@ -22,8 +22,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/service"
 )
 
 // readHeaderTimeout bounds how long a client may dawdle over its request

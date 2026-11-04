@@ -5,13 +5,13 @@ import (
 	"os"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/shared/logger"
+	"github.com/osesantos/skipper/internal/shared/logger"
 )
 
 func TestLogger_WritesJSON(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("OVERSEER_LOG_LEVEL", "")
-	logPath := tmp + "/overseer/overseer.log"
+	t.Setenv("SKIPPER_LOG_LEVEL", "")
+	logPath := tmp + "/skipper/skipper.log"
 
 	log, closer, err := logger.New(logPath, "info")
 	if err != nil {
@@ -42,8 +42,8 @@ func TestLogger_WritesJSON(t *testing.T) {
 
 func TestLogger_LevelEnv(t *testing.T) {
 	tmp := t.TempDir()
-	t.Setenv("OVERSEER_LOG_LEVEL", "debug")
-	logPath := tmp + "/overseer/overseer.log"
+	t.Setenv("SKIPPER_LOG_LEVEL", "debug")
+	logPath := tmp + "/skipper/skipper.log"
 
 	log, closer, err := logger.New(logPath, "info")
 	if err != nil {

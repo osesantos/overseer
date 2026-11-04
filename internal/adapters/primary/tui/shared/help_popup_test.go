@@ -7,8 +7,8 @@ import (
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 func keyPressRune(r rune) tea.KeyPressMsg {

@@ -10,7 +10,7 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // postToBoard feeds messages to the board the way the polling chain does.

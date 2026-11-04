@@ -1,6 +1,6 @@
 package styles
 
-import "github.com/dnlopes/overseer/internal/core/domain"
+import "github.com/osesantos/skipper/internal/core/domain"
 
 type Glyphs struct {
 	Branch        string

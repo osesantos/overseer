@@ -9,10 +9,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
-	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
+	sessionui "github.com/osesantos/skipper/internal/adapters/primary/tui/session"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/service"
 )
 
 const (
@@ -264,7 +264,7 @@ func (m Model) cmdHelp() (tea.Model, tea.Cmd) {
 // of args (case-insensitive). It returns the matched session, the remaining
 // words joined as a single string, and whether a match was found.
 //
-// This handles multi-word session names (e.g. "overseer improvements") by
+// This handles multi-word session names (e.g. "skipper improvements") by
 // trying progressively longer prefixes.
 func matchSession(args []string, sessions []domain.Session) (domain.Session, string, bool) {
 	for end := len(args); end >= 1; end-- {

@@ -5,8 +5,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/adapters/secondary/tmux"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/secondary/tmux"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // Compile-time interface satisfaction check.

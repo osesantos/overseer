@@ -5,11 +5,11 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
-	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/sessiondetails"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	sessionui "github.com/osesantos/skipper/internal/adapters/primary/tui/session"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/sessiondetails"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // sessionDetailsHeightPercent is the share of the left-pane height

@@ -4,8 +4,8 @@ import (
 	"flag"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/testutil"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/testutil"
 )
 
 func init() {
@@ -16,7 +16,7 @@ func init() {
 
 func TestColorGolden_TitleBarBranding(t *testing.T) {
 	s := styles.New()
-	out := s.TitleBar.Branding.Render("overseer")
+	out := s.TitleBar.Branding.Render("skipper")
 	testutil.RequireEqualColor(t, "titlebar-branding", out)
 }
 

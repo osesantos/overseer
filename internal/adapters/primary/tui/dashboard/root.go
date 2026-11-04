@@ -16,20 +16,20 @@ import (
 	"charm.land/lipgloss/v2"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/leftpane"
-	overseerui "github.com/dnlopes/overseer/internal/adapters/primary/tui/overseer"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/prs"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/pullrequest"
-	sessionui "github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/sessiondetails"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/triage"
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/components"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/inspector"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/jobs"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/leftpane"
+	overseerui "github.com/osesantos/skipper/internal/adapters/primary/tui/overseer"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/prs"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/pullrequest"
+	sessionui "github.com/osesantos/skipper/internal/adapters/primary/tui/session"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/sessiondetails"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/triage"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/service"
 )
 
 const (
@@ -226,7 +226,7 @@ func New(
 		triage:                  triageOpts,
 		cmdline:                 cmdline,
 		review:                  review,
-		titlebar:                newTitlebar(styles, "overseer"),
+		titlebar:                newTitlebar(styles, "skipper"),
 		leftPane:                left,
 		inspector:               inspector.New(styles, sessionsService, swarmService, previewRefreshInterval),
 		helpBar:                 shared.NewHelpBarModel(styles, slices.Concat(sessionsKeyBindings, inspectorKeyBindings, generalKeyBindings)),

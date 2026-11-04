@@ -9,10 +9,10 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/paths"
-	"github.com/dnlopes/overseer/internal/testutil"
-	"github.com/dnlopes/overseer/internal/testutil/mocks"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/testutil"
+	"github.com/osesantos/skipper/internal/testutil/mocks"
 )
 
 var triageNow = time.Date(2026, 10, 23, 12, 0, 0, 0, time.UTC)

@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/components"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 func TestKeyBadge_RendersBothParts(t *testing.T) {

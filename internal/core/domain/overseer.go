@@ -54,7 +54,7 @@ type OverseerResponse struct {
 
 // OverseerSessionContext is a runtime snapshot of one session, injected into
 // every Chat call so the agent can make informed decisions without querying
-// Overseer's internal state directly.
+// Skipper's internal state directly.
 type OverseerSessionContext struct {
 	SessionID   uuid.UUID
 	SessionName string

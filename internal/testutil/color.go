@@ -11,7 +11,7 @@ import (
 
 	"github.com/aymanbagabas/go-udiff"
 
-	"github.com/dnlopes/overseer/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/shared/paths"
 )
 
 // RequireEqualColor asserts that actual matches the color golden file named by name.

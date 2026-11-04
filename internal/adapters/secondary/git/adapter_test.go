@@ -11,8 +11,8 @@ import (
 	"slices"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/adapters/secondary/git"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/secondary/git"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 func discardLogger() *slog.Logger {

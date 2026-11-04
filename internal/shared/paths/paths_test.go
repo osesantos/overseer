@@ -3,6 +3,7 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 
@@ -15,7 +16,7 @@ func TestNewResolver_NoOverride_UsesXDGDataHome(t *testing.T) {
 
 	r := NewResolver("")
 	got := r.DataFile()
-	want := filepath.Join("/tmp/xdg-data", "overseer", "data.json")
+	want := filepath.Join("/tmp/xdg-data", "skipper", "data.json")
 	if got != want {
 		t.Fatalf("Resolver.DataFile() = %q, want %q", got, want)
 	}
@@ -27,7 +28,7 @@ func TestNewResolver_NoOverride_FallsBackToHomeWhenXDGUnset(t *testing.T) {
 
 	r := NewResolver("")
 	got := r.DataFile()
-	want := filepath.Join("/tmp/home", ".local", "share", "overseer", "data.json")
+	want := filepath.Join("/tmp/home", ".local", "share", "skipper", "data.json")
 	if got != want {
 		t.Fatalf("Resolver.DataFile() = %q, want %q", got, want)
 	}
@@ -76,7 +77,7 @@ func TestResolver_LogFile_JoinedFromStateDir(t *testing.T) {
 
 	r := NewResolver("")
 	got := r.LogFile()
-	want := filepath.Join("/tmp/xdg-state", "overseer", "overseer.log")
+	want := filepath.Join("/tmp/xdg-state", "skipper", "skipper.log")
 	if got != want {
 		t.Fatalf("Resolver.LogFile() = %q, want %q", got, want)
 	}
@@ -86,58 +87,58 @@ func TestResolver_LogFile_NotAffectedByDataDirOverride(t *testing.T) {
 	t.Setenv("XDG_STATE_HOME", "/tmp/xdg-state")
 
 	r := NewResolver("/custom/data")
-	want := filepath.Join("/tmp/xdg-state", "overseer", "overseer.log")
+	want := filepath.Join("/tmp/xdg-state", "skipper", "skipper.log")
 	if got := r.LogFile(); got != want {
 		t.Fatalf("Resolver.LogFile() = %q, want %q (DataDir override must not leak into state paths)", got, want)
 	}
 }
 
 func TestConfigFile_UsesXDGConfigHome(t *testing.T) {
-	t.Setenv("OVERSEER_CONFIG_FILE", "")
+	t.Setenv("SKIPPER_CONFIG_FILE", "")
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
 
 	got := ConfigFile()
-	want := filepath.Join("/tmp/xdg-config", "overseer", "config.yaml")
+	want := filepath.Join("/tmp/xdg-config", "skipper", "config.yaml")
 	if got != want {
 		t.Fatalf("ConfigFile() = %q, want %q", got, want)
 	}
 }
 
 func TestConfigFile_FallsBackToHome(t *testing.T) {
-	t.Setenv("OVERSEER_CONFIG_FILE", "")
+	t.Setenv("SKIPPER_CONFIG_FILE", "")
 	t.Setenv("XDG_CONFIG_HOME", "")
 	t.Setenv("HOME", "/tmp/home")
 
 	got := ConfigFile()
-	want := filepath.Join("/tmp/home", ".config", "overseer", "config.yaml")
+	want := filepath.Join("/tmp/home", ".config", "skipper", "config.yaml")
 	if got != want {
 		t.Fatalf("ConfigFile() = %q, want %q", got, want)
 	}
 }
 
 func TestConfigFile_EnvOverride_TakesPrecedenceOverXDG(t *testing.T) {
-	t.Setenv("OVERSEER_CONFIG_FILE", "/etc/overseer/custom.yaml")
+	t.Setenv("SKIPPER_CONFIG_FILE", "/etc/skipper/custom.yaml")
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
 
 	got := ConfigFile()
-	if got != "/etc/overseer/custom.yaml" {
-		t.Fatalf("ConfigFile() = %q, want env override %q", got, "/etc/overseer/custom.yaml")
+	if got != "/etc/skipper/custom.yaml" {
+		t.Fatalf("ConfigFile() = %q, want env override %q", got, "/etc/skipper/custom.yaml")
 	}
 }
 
 func TestConfigFile_EmptyEnvTreatedAsUnset(t *testing.T) {
-	t.Setenv("OVERSEER_CONFIG_FILE", "")
+	t.Setenv("SKIPPER_CONFIG_FILE", "")
 	t.Setenv("XDG_CONFIG_HOME", "/tmp/xdg-config")
 
 	got := ConfigFile()
-	want := filepath.Join("/tmp/xdg-config", "overseer", "config.yaml")
+	want := filepath.Join("/tmp/xdg-config", "skipper", "config.yaml")
 	if got != want {
 		t.Fatalf("empty env: ConfigFile() = %q, want XDG path %q", got, want)
 	}
 }
 
 func TestConfigFile_EnvOverride_PreservedVerbatim_NotTreatedAsDir(t *testing.T) {
-	t.Setenv("OVERSEER_CONFIG_FILE", "/some/dir/myname.yml")
+	t.Setenv("SKIPPER_CONFIG_FILE", "/some/dir/myname.yml")
 
 	got := ConfigFile()
 	if got != "/some/dir/myname.yml" {
@@ -159,10 +160,10 @@ func TestEnsureDirCreatesDirectory(t *testing.T) {
 	}
 }
 
-func TestSessionFeatureBranchUsesOverseerPrefix(t *testing.T) {
+func TestSessionFeatureBranchUsesSkipperPrefix(t *testing.T) {
 	sessionID := uuid.New()
 	got := SessionFeatureBranch(sessionID)
-	want := "overseer/" + sessionID.String()[:8]
+	want := "skipper/" + sessionID.String()[:8]
 	if got != want {
 		t.Fatalf("SessionFeatureBranch() = %q, want %q", got, want)
 	}
@@ -227,5 +228,72 @@ func TestResolver_SwarmFiles_HonourDataDirOverride(t *testing.T) {
 		if !strings.HasPrefix(got, "/custom/data") {
 			t.Fatalf("Resolver.%s() = %q, want it under the /custom/data override", name, got)
 		}
+	}
+}
+
+func TestWithLegacyFallback(t *testing.T) {
+	const base = "/base"
+	current, legacy := filepath.Join(base, "skipper"), filepath.Join(base, "overseer")
+	tests := []struct {
+		name     string
+		existing []string
+		want     string
+	}{
+		{"neither exists", nil, current},
+		{"only current exists", []string{current}, current},
+		{"only legacy exists", []string{legacy}, legacy},
+		{"both exist", []string{current, legacy}, current},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			exists := func(p string) bool { return slices.Contains(tt.existing, p) }
+			if got := withLegacyFallback(base, exists); got != tt.want {
+				t.Fatalf("withLegacyFallback() = %q, want %q", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestWithLegacyFallback_EmptyBaseStaysEmpty(t *testing.T) {
+	if got := withLegacyFallback("", func(string) bool { return true }); got != "" {
+		t.Fatalf("withLegacyFallback(\"\") = %q, want empty", got)
+	}
+}
+
+func TestNewResolver_UsesLegacyDataDirWhenOnlyItExists(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_DATA_HOME", xdg)
+	if err := EnsureDir(filepath.Join(xdg, "overseer")); err != nil {
+		t.Fatal(err)
+	}
+
+	r := NewResolver("")
+	if got, want := r.WorktreeRoot(), filepath.Join(xdg, "overseer", "worktrees"); got != want {
+		t.Fatalf("Resolver.WorktreeRoot() = %q, want legacy %q", got, want)
+	}
+}
+
+func TestConfigFile_UsesLegacyDirWhenOnlyItExists(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("SKIPPER_CONFIG_FILE", "")
+	t.Setenv("XDG_CONFIG_HOME", xdg)
+	if err := EnsureDir(filepath.Join(xdg, "overseer")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := ConfigFile(), filepath.Join(xdg, "overseer", "config.yaml"); got != want {
+		t.Fatalf("ConfigFile() = %q, want legacy %q", got, want)
+	}
+}
+
+func TestResolver_LogFile_NeverFallsBackToLegacyStateDir(t *testing.T) {
+	xdg := t.TempDir()
+	t.Setenv("XDG_STATE_HOME", xdg)
+	if err := EnsureDir(filepath.Join(xdg, "overseer")); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, want := NewResolver("").LogFile(), filepath.Join(xdg, "skipper", "skipper.log"); got != want {
+		t.Fatalf("Resolver.LogFile() = %q, want %q", got, want)
 	}
 }

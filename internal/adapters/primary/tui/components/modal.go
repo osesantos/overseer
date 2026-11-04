@@ -1,7 +1,7 @@
 package components
 
 import (
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 func Modal(s *styles.Styles, body string, contentWidth, contentHeight int) string {

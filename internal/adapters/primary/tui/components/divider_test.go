@@ -5,8 +5,8 @@ import (
 	"testing"
 
 	"github.com/charmbracelet/x/ansi"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/components"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 func TestHorizontalDivider_CorrectWidth(t *testing.T) {

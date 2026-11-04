@@ -1,6 +1,6 @@
 ---
 name: Bug Report
-about: Create a report to help us improve Overseer
+about: Create a report to help us improve Skipper
 title: "[BUG] "
 labels: bug
 assignees: ''
@@ -15,7 +15,7 @@ A clear and concise description of what the bug is.
 
 Steps to reproduce the behavior:
 
-1. Run overseer with '...'
+1. Run skipper with '...'
 2. Navigate to '...'
 3. Press '...'
 4. See error
@@ -38,14 +38,14 @@ Please complete the following information:
 
 - **OS**: [e.g., macOS 14, Ubuntu 22.04]
 - **Terminal**: [e.g., iTerm2, Alacritty, GNOME Terminal]
-- **Overseer Version**: [e.g., v1.0.0]
+- **Skipper Version**: [e.g., v1.0.0]
 - **Go Version**: [e.g., 1.24.2]
 - **Tmux Version**: [e.g., 3.4]
 - **GitHub CLI Version** (if using PR features): [e.g., 2.40.0]
 
 ## Configuration
 
-If applicable, include your `overseer.yaml` configuration (redact any sensitive paths if needed):
+If applicable, include your `config.yaml` configuration (redact any sensitive paths if needed):
 
 ```yaml
 # Your config here
@@ -54,8 +54,7 @@ If applicable, include your `overseer.yaml` configuration (redact any sensitive 
 ## Logs
 
 If relevant, include log output. You can find logs at:
-- macOS: `~/Library/Application Support/overseer/overseer.log`
-- Linux: `~/.config/overseer/overseer.log`
+- `~/.local/state/skipper/skipper.log` (or `$XDG_STATE_HOME/skipper/skipper.log`)
 
 ## Additional Context
 

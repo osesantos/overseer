@@ -5,12 +5,12 @@ import (
 
 	"charm.land/bubbles/v2/key"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/inspector"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/prs"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/pullrequest"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/session"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/triage"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/inspector"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/prs"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/pullrequest"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/session"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/triage"
 )
 
 var (

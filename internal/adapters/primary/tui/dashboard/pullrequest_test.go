@@ -10,9 +10,9 @@ import (
 	"github.com/charmbracelet/x/ansi"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/jobs"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // prSession is a session in a registered project with an open PR; the project

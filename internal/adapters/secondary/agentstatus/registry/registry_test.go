@@ -4,7 +4,7 @@ import (
 	"context"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 func TestRegistry_DetectorFor_ReturnsRegisteredDetector(t *testing.T) {

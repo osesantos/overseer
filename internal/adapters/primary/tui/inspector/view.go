@@ -3,7 +3,7 @@ package inspector
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // View is one tab inside the inspector. Each view owns its own polling

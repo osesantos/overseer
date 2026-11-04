@@ -1,4 +1,4 @@
-// Package config loads and validates the overseer YAML config file.
+// Package config loads and validates the skipper YAML config file.
 package config
 
 import (
@@ -11,8 +11,8 @@ import (
 
 	yamlv3 "gopkg.in/yaml.v3"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/errs"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/errs"
 )
 
 type DashboardConfig struct {
@@ -53,7 +53,7 @@ type AgentStatusDisplayConfig struct {
 	RowHighlight string `yaml:"rowHighlight"`
 }
 
-// ProjectDiscoveryConfig holds the list of root directories that Overseer
+// ProjectDiscoveryConfig holds the list of root directories that Skipper
 // scans at startup to auto-register git repositories. Each entry is expanded
 // (~ → home dir) before use. Only immediate subdirectories are inspected —
 // no recursive walk is performed.

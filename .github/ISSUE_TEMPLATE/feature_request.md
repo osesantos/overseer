@@ -1,6 +1,6 @@
 ---
 name: Feature Request
-about: Suggest an idea for Overseer
+about: Suggest an idea for Skipper
 title: "[FEATURE] "
 labels: enhancement
 assignees: ''

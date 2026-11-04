@@ -14,11 +14,11 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/errs"
-	"github.com/dnlopes/overseer/internal/shared/paths"
-	"github.com/dnlopes/overseer/internal/testutil"
-	"github.com/dnlopes/overseer/internal/testutil/mocks"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/errs"
+	"github.com/osesantos/skipper/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/testutil"
+	"github.com/osesantos/skipper/internal/testutil/mocks"
 )
 
 func testLogger() *slog.Logger {

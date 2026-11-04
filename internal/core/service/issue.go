@@ -7,7 +7,7 @@ import (
 	"slices"
 	"strings"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 type IssueService struct {

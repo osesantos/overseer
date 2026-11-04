@@ -13,12 +13,12 @@ import (
 	"github.com/google/uuid"
 	"github.com/stretchr/testify/mock"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/boardhttp"
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
-	"github.com/dnlopes/overseer/internal/shared/paths"
-	"github.com/dnlopes/overseer/internal/testutil"
-	"github.com/dnlopes/overseer/internal/testutil/mocks"
+	"github.com/osesantos/skipper/internal/adapters/primary/boardhttp"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/service"
+	"github.com/osesantos/skipper/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/testutil"
+	"github.com/osesantos/skipper/internal/testutil/mocks"
 )
 
 const testBoardCap = 500

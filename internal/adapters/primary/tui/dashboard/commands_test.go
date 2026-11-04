@@ -4,8 +4,8 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // --- matchSession ---

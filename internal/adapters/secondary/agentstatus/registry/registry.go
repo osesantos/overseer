@@ -1,12 +1,12 @@
 // Package registry provides an in-memory implementation of
 // domain.AgentStatusDetectorRegistry. Wiring is constructed once at startup
-// in cmd/overseer/main.go and never mutated thereafter, so the registry
+// in cmd/skipper/main.go and never mutated thereafter, so the registry
 // trades thread-safety for simplicity — concurrent Register calls are not
 // supported.
 package registry
 
 import (
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 // Registry maps an AgentType to its AgentStatusDetector. Last-write-wins

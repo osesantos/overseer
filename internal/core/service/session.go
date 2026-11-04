@@ -14,9 +14,9 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/errs"
-	"github.com/dnlopes/overseer/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/errs"
+	"github.com/osesantos/skipper/internal/shared/paths"
 )
 
 type SessionService struct {
@@ -1021,7 +1021,7 @@ func (s *SessionService) SendAgentPrompt(ctx context.Context, req SendAgentPromp
 
 // --- PreviewSession ---
 
-// PreviewKind selects which tmux session attached to an Overseer session is
+// PreviewKind selects which tmux session attached to a Skipper session is
 // captured by PreviewSession.
 type PreviewKind int
 

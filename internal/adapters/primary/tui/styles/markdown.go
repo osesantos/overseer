@@ -10,7 +10,7 @@ import (
 //
 // It is pinned rather than auto-detected on purpose: glamour's WithAutoStyle
 // probes the terminal background, which makes output depend on where the process
-// is running and so breaks golden tests. Overseer's themes are dark-leaning, so
+// is running and so breaks golden tests. Skipper's themes are dark-leaning, so
 // "dark" is the closest fixed match.
 const markdownStyle = "dark"
 

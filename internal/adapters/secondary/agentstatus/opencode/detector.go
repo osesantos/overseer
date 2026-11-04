@@ -12,8 +12,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/shared"
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/adapters/secondary/agentstatus/shared"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 const (

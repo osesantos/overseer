@@ -11,7 +11,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 func testLogger() *slog.Logger {

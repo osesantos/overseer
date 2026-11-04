@@ -8,8 +8,8 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/shared/paths"
 )
 
 // SwarmService owns the use-cases of a swarm session's communication board:
@@ -18,7 +18,7 @@ import (
 //
 // Waking agents is the part that makes a swarm actually work. Agent CLIs do not
 // loop — they finish a turn and sit idle at their prompt — so nothing would ever
-// make agent 3 read what agent 2 just wrote. Overseer therefore has to poke
+// make agent 3 read what agent 2 just wrote. Skipper therefore has to poke
 // them, which it does by typing into their tmux panes.
 //
 // Post only *records* that a nudge is due; FlushNudges performs it. Splitting
@@ -54,7 +54,7 @@ type SwarmService struct {
 // sequence, leaving the agent holding a prompt it never sent.
 //
 // Rather than model each CLI's readiness (which needs per-pane status detection
-// Overseer does not have yet), the flush job simply re-sends Enter a few times.
+// Skipper does not have yet), the flush job simply re-sends Enter a few times.
 // Enter is safe to repeat: it submits a queued prompt and is a harmless newline
 // otherwise. At the default 2s debounce this covers roughly the first six
 // seconds; a slower cold start is what the operator's broadcast lever is for.

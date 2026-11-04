@@ -13,10 +13,10 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/components"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/components"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/service"
 )
 
 // composeRowHeight is the single row the compose input occupies at the bottom of
@@ -308,7 +308,7 @@ func (v *boardView) renderHeader(msg domain.SwarmMessage) string {
 	case domain.SwarmRoleHuman:
 		author = s.Board.AuthorHuman.Render(msg.Author)
 	case domain.SwarmRoleSystem:
-		author = s.Board.SystemText.Render("overseer")
+		author = s.Board.SystemText.Render("skipper")
 	default:
 		author = s.Board.Author.Foreground(s.Board.AuthorColorFor(agentIndexFromAuthor(msg.Author))).Render(msg.Author)
 	}
@@ -325,7 +325,7 @@ func (v *boardView) renderHeader(msg domain.SwarmMessage) string {
 
 // renderBody converts a message's content to styled text. Agent and human posts
 // go through markdown — they are LLM prose and routinely contain code fences and
-// lists. Overseer's own system notices stay literal so paths and errors in them
+// lists. Skipper's own system notices stay literal so paths and errors in them
 // are not reflowed.
 func (v *boardView) renderBody(msg domain.SwarmMessage) string {
 	if msg.Role == domain.SwarmRoleSystem {

@@ -11,7 +11,7 @@ import (
 
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 type ProjectService struct {
@@ -139,7 +139,7 @@ type DiscoverProjectsResponse struct {
 
 // Discover scans each root directory in req.Paths one level deep, checks
 // every immediate subdirectory for a git repository, and registers any that
-// are not yet known to Overseer. It is intentionally permissive: individual
+// are not yet known to Skipper. It is intentionally permissive: individual
 // subdirectory errors (non-git dirs, permission denied) are logged and
 // skipped so a single bad entry never aborts the whole scan.
 func (s *ProjectService) Discover(ctx context.Context, req DiscoverProjectsRequest) (DiscoverProjectsResponse, error) {

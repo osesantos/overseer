@@ -10,27 +10,27 @@ import (
 	tea "charm.land/bubbletea/v2"
 	"github.com/google/uuid"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/boardhttp"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/dashboard"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/jobs"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
-	"github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/claudecode"
-	"github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/opencode"
-	agentstatusregistry "github.com/dnlopes/overseer/internal/adapters/secondary/agentstatus/registry"
-	claudeadapter "github.com/dnlopes/overseer/internal/adapters/secondary/claude"
-	"github.com/dnlopes/overseer/internal/adapters/secondary/git"
-	githubcli "github.com/dnlopes/overseer/internal/adapters/secondary/github"
-	jiraadapter "github.com/dnlopes/overseer/internal/adapters/secondary/jira"
-	"github.com/dnlopes/overseer/internal/adapters/secondary/storage"
-	"github.com/dnlopes/overseer/internal/adapters/secondary/swarmboard"
-	"github.com/dnlopes/overseer/internal/adapters/secondary/tmux"
-	"github.com/dnlopes/overseer/internal/core/domain"
-	"github.com/dnlopes/overseer/internal/core/service"
-	"github.com/dnlopes/overseer/internal/shared/config"
-	"github.com/dnlopes/overseer/internal/shared/logger"
-	"github.com/dnlopes/overseer/internal/shared/omarchy"
-	"github.com/dnlopes/overseer/internal/shared/paths"
+	"github.com/osesantos/skipper/internal/adapters/primary/boardhttp"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/dashboard"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/jobs"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/secondary/agentstatus/claudecode"
+	"github.com/osesantos/skipper/internal/adapters/secondary/agentstatus/opencode"
+	agentstatusregistry "github.com/osesantos/skipper/internal/adapters/secondary/agentstatus/registry"
+	claudeadapter "github.com/osesantos/skipper/internal/adapters/secondary/claude"
+	"github.com/osesantos/skipper/internal/adapters/secondary/git"
+	githubcli "github.com/osesantos/skipper/internal/adapters/secondary/github"
+	jiraadapter "github.com/osesantos/skipper/internal/adapters/secondary/jira"
+	"github.com/osesantos/skipper/internal/adapters/secondary/storage"
+	"github.com/osesantos/skipper/internal/adapters/secondary/swarmboard"
+	"github.com/osesantos/skipper/internal/adapters/secondary/tmux"
+	"github.com/osesantos/skipper/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/service"
+	"github.com/osesantos/skipper/internal/shared/config"
+	"github.com/osesantos/skipper/internal/shared/logger"
+	"github.com/osesantos/skipper/internal/shared/omarchy"
+	"github.com/osesantos/skipper/internal/shared/paths"
 )
 
 const pullRequestRefreshInterval = time.Minute
@@ -48,7 +48,7 @@ const boardShutdownTimeout = 5 * time.Second
 func main() {
 	cfg, err := config.Load(paths.ConfigFile())
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "overseer: load config: %v\n", err)
+		fmt.Fprintf(os.Stderr, "skipper: load config: %v\n", err)
 		os.Exit(1)
 	}
 
@@ -56,7 +56,7 @@ func main() {
 
 	log, logCloser, err := logger.New(resolver.LogFile(), cfg.Logging.Level)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "overseer: initialize logger: %v\n", err)
+		fmt.Fprintf(os.Stderr, "skipper: initialize logger: %v\n", err)
 		os.Exit(1)
 	}
 	defer logCloser.Close()

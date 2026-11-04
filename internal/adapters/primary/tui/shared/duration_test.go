@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
 )
 
 func TestFormatRelativeDuration(t *testing.T) {

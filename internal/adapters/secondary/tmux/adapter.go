@@ -12,13 +12,13 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 var _ domain.TmuxAdapter = (*Adapter)(nil)
 
 // fieldSep is ASCII Unit Separator (0x1f). It cannot appear in tmux epoch
-// timestamps and is not produced by any well-formed overseer session name,
+// timestamps and is not produced by any well-formed skipper session name,
 // so it is a safe delimiter for our `-F` format output.
 const fieldSep = "\x1f"
 
@@ -188,7 +188,7 @@ func (a *Adapter) ResizeWindow(_ context.Context, tmuxID string, width, height i
 //
 // tmux server options can only be set while the server is running. We call
 // `tmux start-server` first (idempotent — no-op if already running) so the
-// option is applied even when Overseer launches before any tmux session exists.
+// option is applied even when Skipper launches before any tmux session exists.
 // Errors are swallowed with a warning so startup is never aborted.
 func (a *Adapter) EnsureExtendedKeys(_ context.Context) error {
 	// Ensure the server is running before attempting to set a server option.
@@ -212,7 +212,7 @@ func (a *Adapter) EnsureExtendedKeys(_ context.Context) error {
 // EnsureMouseMode sets the tmux server option `mouse on` so mouse-wheel scroll
 // while attached drives tmux's own copy-mode/scrollback on the active pane
 // rather than passing through to the outer terminal's scrollback, which mixes
-// together every session and the Overseer TUI's own screen redraws.
+// together every session and the Skipper TUI's own screen redraws.
 //
 // tmux server options can only be set while the server is running, so we start
 // it first (idempotent — no-op if already running), matching EnsureExtendedKeys.

@@ -1,19 +1,19 @@
 .DEFAULT_GOAL := help
 
 BIN_DIR := bin
-BINARY := $(BIN_DIR)/overseer
+BINARY := $(BIN_DIR)/skipper
 BIN ?= $(HOME)/.local/bin
 
 .PHONY: build install test test-integration update-golden mocks lint run clean tidy qa-tmux help
 
-build: ## Build the overseer binary
+build: ## Build the skipper binary
 	mkdir -p $(BIN_DIR)
-	go build -o $(BINARY) ./cmd/overseer/
-	install -m 755 $(BINARY) ~/go/bin/overseer
+	go build -o $(BINARY) ./cmd/skipper/
+	install -m 755 $(BINARY) ~/go/bin/skipper
 
-install: build ## Build, then install the overseer binary into ~/go/bin and $(BIN) (default ~/.local/bin)
+install: build ## Build, then install the skipper binary into ~/go/bin and $(BIN) (default ~/.local/bin)
 	mkdir -p $(BIN)
-	install -m 755 $(BINARY) $(BIN)/overseer
+	install -m 755 $(BINARY) $(BIN)/skipper
 
 test: ## Run the unit test suite
 	go test -race -cover ./...
@@ -31,7 +31,7 @@ mocks: ## Regenerate testify mocks from domain ports (see .mockery.yml)
 lint: ## Run static analysis
 	golangci-lint run ./...
 
-run: ## Build and run overseer
+run: ## Build and run skipper
 	$(MAKE) build
 	./$(BINARY)
 

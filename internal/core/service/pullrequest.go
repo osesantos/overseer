@@ -7,7 +7,7 @@ import (
 	"log/slog"
 	"slices"
 
-	"github.com/dnlopes/overseer/internal/core/domain"
+	"github.com/osesantos/skipper/internal/core/domain"
 )
 
 type PullRequestService struct {

@@ -3,8 +3,8 @@ package dashboard
 import (
 	tea "charm.land/bubbletea/v2"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/shared"
-	"github.com/dnlopes/overseer/internal/shared/omarchy"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/shared"
+	"github.com/osesantos/skipper/internal/shared/omarchy"
 )
 
 // WithThemeWatch makes the dashboard repaint whenever the Omarchy theme changes; themes is the signal from omarchy.Watch.

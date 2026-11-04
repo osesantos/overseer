@@ -4,7 +4,7 @@ import (
 	"image/color"
 	"testing"
 
-	"github.com/dnlopes/overseer/internal/adapters/primary/tui/styles"
+	"github.com/osesantos/skipper/internal/adapters/primary/tui/styles"
 )
 
 func TestThemes_NoZeroColors(t *testing.T) {
